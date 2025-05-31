@@ -1,0 +1,82 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #e6e6e6; /* Muted light gray */
+  display: block;
+  height: 100vh;
+  margin: 0;
+}
+
+.form-container {
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 20px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); /* Softer shadow */
+  border-radius: 8px;
+  background-color: #f7f7f7; /* Muted light gray */
+  display: absolute;
+  justify-content: center;
+  align-items: center;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  margin-bottom: 5px;
+  color: #4e4e4e; /* Muted dark gray */
+  font-family: 'Inter', sans-serif;
+}
+
+input {
+  width: 50%;
+  border: 1px solid #c4c4c4; /* Subtle muted gray */
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 16px;
+  color: #4e4e4e; /* Muted text color */
+}
+
+input:focus {
+  border-color: #6c87bf; /* Muted lavender */
+  outline: none;
+  box-shadow: 0 0 5px rgba(108, 135, 191, 0.3); /* Subtle focus shadow */
+}
+
+button {
+  background-color: #6c87bf; /* Muted lavender */
+  color: #fff;
+  border: none;
+  padding: 15px 15px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  font-family: 'Inter', sans-serif;
+}
+
+button:hover {
+  background-color: #8aa2d6; /* Lighter muted lavender */
+}
+
+.text-center {
+  text-align: center;
+  color: #4e4e4e; /* Muted dark gray */
+}
+
+/* Spacing for various elements */
+.my-4 {
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.my-5 {
+  margin-top: 3rem;
+  margin-bottom: 3rem;
+}

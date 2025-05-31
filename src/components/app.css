@@ -1,0 +1,198 @@
+.product-card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  border: 1px solid #b0b5b9; /* Muted gray */
+  border-radius: 12px;
+  background-color: #f7f8f8; /* Very light gray */
+  overflow: hidden;
+}
+
+.product-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+.product-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #4a4e56; /* Muted dark gray */
+}
+
+.product-description {
+  font-size: 1rem;
+  color: #8a8f99; /* Soft gray */
+  margin-top: 0.5rem;
+}
+
+.product-price {
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: #7f9a92; /* Muted green */
+  margin-top: 0.75rem;
+}
+
+.product-button {
+  margin-top: 12px;
+  text-align: center;
+}
+
+/* Admin Table Styles */
+.admin-table th,
+.admin-table td {
+  text-align: center;
+  vertical-align: middle;
+  padding: 12px;
+  border: 1px solid #d0d5d9; /* Soft gray */
+}
+
+.admin-table .text-success {
+  color: #7f9a92; /* Muted green */
+}
+
+.admin-table .text-danger {
+  color: #e74c3c; /* Muted red */
+}
+
+.admin-table .btn {
+  margin: 0;
+  padding: 0.5rem 1rem;
+}
+
+/* Spinner */
+.spinner-border {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-width: 0.3em;
+  color: #6c7b8b; /* Muted blue */
+}
+
+/* Modal */
+.modal-content {
+  border-radius: 12px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header,
+.modal-footer {
+  border: none;
+  background-color: #f7f8f8; /* Light gray */
+}
+
+/* Create Product Form */
+.create-product-form {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background-color: #f7f8f8; /* Light gray */
+}
+
+.create-product-form .form-control {
+  border-radius: 6px;
+  border: 1px solid #b0b5b9; /* Muted gray */
+}
+
+.create-product-form .btn-primary {
+  border-radius: 6px;
+  background-color: #6c7b8b; /* Muted blue */
+  border: none;
+}
+
+.create-product-form .btn-primary:hover {
+  background-color: #4e5d64; /* Muted dark blue */
+}
+
+/* Navbar */
+#navbar {
+  background-color: #f7f8f8; /* Light gray */
+  border-bottom: 1px solid #e0e4e8; /* Light muted gray */
+}
+
+#navbar .navbar-brand img {
+  height: 30px;
+  width: auto;
+}
+
+.navbar-nav .nav-link {
+  margin-left: 15px;
+  font-weight: 500;
+  color: #4a4e56; /* Muted dark gray */
+}
+
+.navbar-nav .nav-link.active {
+  color: #6c7b8b; /* Muted blue */
+}
+
+.navbar-nav .nav-link:hover {
+  color: #4e5d64; /* Muted dark blue */
+}
+
+.navbar-toggler {
+  border-color: #6c7b8b; /* Muted blue */
+}
+
+.navbar-toggler-icon {
+  background-image: url('data:image/svg+xml;charset=utf8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30"%3E%3Cpath stroke="%236c7b8b" stroke-width="2" d="M5 7h20M5 15h20M5 23h20" /%3E%3C/svg%3E');
+}
+
+.navbar-collapse {
+  justify-content: flex-end;
+}
+
+.navbar-toggler:not(.collapsed) .navbar-toggler-icon {
+  background-image: url('data:image/svg+xml;charset=utf8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 30 30"%3E%3Cpath stroke="%236c7b8b" stroke-width="2" d="M7 7l16 16M7 23l16-16" /%3E%3C/svg%3E');
+}
+
+/* Loading Spinner */
+.loading-spinner {
+  width: 2.5rem;
+  height: 2.5rem;
+  color: #6c7b8b; /* Muted blue */
+}
+
+/* Cards and Lists */
+.container.mt-5 {
+  margin-top: 3rem;
+}
+
+.card-title {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #4a4e56; /* Muted dark gray */
+}
+
+.card-subtitle {
+  font-size: 1rem;
+  color: #8a8f99; /* Soft gray */
+}
+
+.list-group-item {
+  padding: 1.25rem;
+  border: 1px solid #d0d5d9; /* Soft gray */
+  border-radius: 6px;
+  margin-bottom: 10px;
+  background-color: #f7f8f8; /* Light gray */
+  transition: box-shadow 0.3s ease;
+}
+
+.list-group-item:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.list-group-item strong {
+  color: #4a4e56; /* Muted dark gray */
+}
+
+/* Alerts */
+.alert {
+  margin-bottom: 20px;
+  padding: 1rem;
+  border-radius: 6px;
+}
+
+.alert-info {
+  text-align: center;
+  font-size: 1.1rem;
+  background-color: #d9edf7; /* Soft blue */
+  color: #31708f; /* Muted blue */
+}

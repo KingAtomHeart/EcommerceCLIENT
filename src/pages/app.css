@@ -1,0 +1,163 @@
+.product-card {
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+  border: none;
+  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  background-color: #f7f7f7; /* Soft muted background */
+}
+
+.product-card:hover {
+  transform: translateY(-10px);
+  box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.15); /* Softer hover shadow */
+}
+
+.product-card-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  color: #4e4e4e; /* Muted dark gray for titles */
+  font-family: 'Inter', sans-serif;
+}
+
+.product-card-description {
+  font-size: 1rem;
+  color: #6e6e6e; /* Neutral gray for text */
+  margin-bottom: 0.75rem;
+  font-family: 'Inter', sans-serif;
+}
+
+.product-card-price {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #343a40; /* Muted dark gray for emphasis */
+}
+
+.container.mt-5 {
+  margin-top: 3rem;
+}
+
+.container h2 {
+  font-size: 2rem;
+  font-weight: bold;
+  margin-bottom: 1.5rem;
+  text-align: center;
+  font-family: 'Inter', sans-serif;
+  color: #6c87bf; /* Muted lavender for headers */
+}
+
+.list-group-item {
+  padding: 1.5rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  background-color: #f0f0f0; /* Light muted gray */
+  border: 1px solid #d9d9d9; /* Subtle border */
+}
+
+.list-group-item .row {
+  align-items: center;
+  justify-content: space-between;
+}
+
+button {
+  border-radius: 4px;
+  padding: 1rem 1rem;
+  font-size: 1rem;
+  transition: background-color 0.3s ease;
+  font-family: 'Inter', sans-serif;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  background-color: #e0e0e0; /* Muted disabled background */
+}
+
+button:hover {
+  opacity: 1;
+}
+
+button.btn-secondary {
+  background-color: #9aa4b0; /* Muted neutral gray */
+  border: none;
+}
+
+button.btn-secondary:hover {
+  background-color: #b1bbc8; /* Slightly lighter on hover */
+}
+
+button.btn-danger {
+  background-color: #b86579; /* Muted red tone */
+  border: none;
+}
+
+button.btn-danger:hover {
+  background-color: #a14d65; /* Darker muted red */
+}
+
+.list-group-item strong {
+  font-size: 1.2rem;
+  color: #495057;
+}
+
+.container h3 {
+  text-align: center;
+  margin-top: 2rem;
+  font-weight: bold;
+  color: #6c87bf; /* Muted lavender for sub-headers */
+}
+
+button.mt-3 {
+  width: 50%;
+  padding: 0.75rem;
+}
+
+button.btn-warning {
+  background-color: #6c87bf; /* Muted lavender */
+  border: none;
+}
+
+button.btn-warning:hover {
+  background-color: #8aa2d6; /* Slightly brighter muted lavender */
+}
+
+button.btn-success {
+  background-color: #8daea8; /* Muted green */
+  border: none;
+}
+
+button.btn-success:hover {
+  background-color: #7b9c91; /* Slightly darker muted green */
+}
+
+.text-center.mt-5 .spinner-border {
+  width: 3rem;
+  height: 3rem;
+  color: #6c87bf; /* Muted lavender for loading spinner */
+}
+
+.text-center.mt-5 .loading-spinner {
+  width: 3rem;
+  height: 3rem;
+  color: #6c87bf;
+}
+
+.card-title {
+  font-size: 1.75rem;
+  font-weight: bold;
+  font-family: 'Inter', sans-serif;
+  color: #4e4e4e; /* Neutral dark gray */
+}
+
+.card-body {
+  padding: 2rem;
+}
+
+.card h2 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  font-family: 'Inter', sans-serif;
+  color: #6c87bf;
+}
+
+.list-group-item strong {
+  color: #6e6e6e; /* Neutral muted gray for emphasis */
+}
