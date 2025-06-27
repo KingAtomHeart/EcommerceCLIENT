@@ -13,8 +13,8 @@
 //   const fetchData = useCallback(() => {
 //     setLoading(true); 
 //     const fetchUrl = user && user.isAdmin
-//       ? `${process.env.REACT_APP_API_BASE_URL}/products/all`
-//       : `${process.env.REACT_APP_API_BASE_URL}/products/active`;
+//       ? `${import.meta.env.REACT_APP_API_BASE_URL}/products/all`
+//       : `${import.meta.env.REACT_APP_API_BASE_URL}/products/active`;
 
 //     const fetchOptions = {
 //       method: 'GET',
@@ -84,8 +84,8 @@ export default function Products() {
   const fetchData = useCallback(() => {
     setLoading(true); 
     let fetchUrl = user && user.isAdmin
-      ? `${process.env.REACT_APP_API_BASE_URL}/products/all`
-      : `${process.env.REACT_APP_API_BASE_URL}/products/active`;
+      ? `${import.meta.env.REACT_APP_API_BASE_URL}/products/all`
+      : `${import.meta.env.REACT_APP_API_BASE_URL}/products/active`;
 
     const fetchOptions = {
       method: 'GET',

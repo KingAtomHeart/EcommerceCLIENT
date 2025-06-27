@@ -18,7 +18,7 @@ export default function HomePage() {
     const [error, setError] = useState(null);
   
     useEffect(() => {
-      fetch(`${process.env.REACT_APP_API_BASE_URL}/products/active`)
+      fetch(`${import.meta.env.REACT_APP_API_BASE_URL}/products/active`)
         .then(response => {
           if (response.status >= 200 && response.status < 300) {
             return response.json();

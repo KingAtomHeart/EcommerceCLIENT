@@ -21,7 +21,7 @@ export default function Profile() {
             return;
         }
 
-        fetch(`${process.env.REACT_APP_API_BASE_URL}/users/details`, {
+        fetch(`${import.meta.env.REACT_APP_API_BASE_URL}/users/details`, {
             headers: {
                 Authorization: `Bearer ${token}`
             }
