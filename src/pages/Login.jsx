@@ -18,7 +18,7 @@
 //         e.preventDefault();
 
 //         try {
-//             const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/users/login`, {
+//             const response = await fetch(`${import.meta.env.VITE_APP_API_BASE_URL}/users/login`, {
 //                 method: 'POST',
 //                 headers: {
 //                     'Content-Type': 'application/json',
@@ -50,7 +50,7 @@
 //     // Fetch user details after login
 //     const retrieveUserDetails = async (token) => {
 //         try {
-//             const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/users/details`, {
+//             const response = await fetch(`${import.meta.env.VITE_APP_API_BASE_URL}/users/details`, {
 //                 headers: { Authorization: `Bearer ${token}` },
 //             });
 
@@ -160,7 +160,7 @@ export default function Login() {
 function authenticate(e) {
     e.preventDefault();
 
-    fetch(`${process.env.REACT_APP_API_BASE_URL}/users/login`, {
+    fetch(`${import.meta.env.VITE_APP_API_BASE_URL}/users/login`, {
         method: 'POST',
         headers: {
             "Content-Type": "application/json"
@@ -204,7 +204,7 @@ function authenticate(e) {
 }
 
 function retrieveUserDetails(token) {
-    fetch(`${process.env.REACT_APP_API_BASE_URL}/users/details`, {
+    fetch(`${import.meta.env.VITE_APP_API_BASE_URL}/users/details`, {
         headers: { Authorization: `Bearer ${token}` }
     })
     .then(res => res.json())

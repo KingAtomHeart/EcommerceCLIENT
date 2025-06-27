@@ -22,7 +22,7 @@ export default function CartView() {
 
     const fetchCart = () => {
         setLoading(true);
-        fetch(`${process.env.REACT_APP_API_BASE_URL}/cart/get-cart`, {
+        fetch(`${process.env.VITE_APP_API_BASE_URL}/cart/get-cart`, {
             headers: {
                 Authorization: `Bearer ${localStorage.getItem('token')}`,
             },
@@ -45,7 +45,7 @@ export default function CartView() {
             return;
         }
 
-        fetch(`${process.env.REACT_APP_API_BASE_URL}/cart/update-cart-quantity`, {
+        fetch(`${process.env.VITE_APP_API_BASE_URL}/cart/update-cart-quantity`, {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
@@ -69,7 +69,7 @@ export default function CartView() {
     };
 
     const removeItem = (productId) => {
-        fetch(`${process.env.REACT_APP_API_BASE_URL}/cart/${productId}/remove-from-cart`, {
+        fetch(`${process.env.VITE_APP_API_BASE_URL}/cart/${productId}/remove-from-cart`, {
             method: 'PATCH',
             headers: {
                 Authorization: `Bearer ${localStorage.getItem('token')}`,
@@ -93,7 +93,7 @@ export default function CartView() {
     };
 
     const clearCart = () => {
-        fetch(`${process.env.REACT_APP_API_BASE_URL}/cart/clear-cart`, {
+        fetch(`${process.env.VITE_APP_API_BASE_URL}/cart/clear-cart`, {
             method: 'PUT',
             headers: {
                 Authorization: `Bearer ${localStorage.getItem('token')}`,
@@ -111,7 +111,7 @@ export default function CartView() {
     };
 
     const checkout = () => {
-        fetch(`${process.env.REACT_APP_API_BASE_URL}/orders/checkout`, {
+        fetch(`${process.env.VITE_APP_API_BASE_URL}/orders/checkout`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
