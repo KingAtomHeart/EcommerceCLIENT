@@ -1,18 +1,19 @@
 import { Link } from 'react-router-dom';
+import { useTheme } from '../context/ThemeContext';
 
 export default function Placeholder() {
+  const { theme } = useTheme();
   return (
     <div className="page-body" style={{
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       minHeight: 'calc(100vh - var(--nav-h))', padding: '40px var(--page-pad)',
     }}>
       <div style={{ textAlign: 'center', maxWidth: 480 }}>
-        <div style={{
-          fontFamily: "'DM Serif Display', serif", fontSize: '4rem',
-          color: 'var(--accent)', marginBottom: '24px', lineHeight: 1,
-        }}>
-          ✦
-        </div>
+        <img
+          src={theme === 'dark' ? '/logo-white.svg' : '/logo-black.svg'}
+          alt="Origami Keys"
+          style={{ height: '120px', width: 'auto', marginBottom: '28px', display: 'inline-block' }}
+        />
         <h1 style={{
           fontFamily: "'DM Serif Display', serif",
           fontSize: 'clamp(2rem, 4vw, 2.8rem)',

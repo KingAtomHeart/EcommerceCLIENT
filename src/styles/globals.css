@@ -103,7 +103,8 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
   transition: opacity var(--transition);
 }
 .nav-logo:hover { opacity: 0.75; }
-.nav-logo span { color: var(--accent); font-style: italic; }
+.nav-logo .nav-logo-text { white-space: nowrap; color: var(--ink); font-style: normal; }
+.nav-logo .nav-logo-text span { color: var(--accent); font-style: italic; }
 
 .nav-links { display: flex; gap: 28px; list-style: none; margin-left: auto; }
 .nav-links a {
@@ -771,7 +772,8 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
   font-family: 'DM Serif Display', serif; font-size: 1.25rem; color: var(--ink);
   margin-bottom: 14px; display: inline-block; text-decoration: none;
 }
-.footer-logo span { color: var(--accent); font-style: italic; }
+.footer-logo .footer-logo-text { color: var(--ink); font-style: normal; }
+.footer-logo .footer-logo-text span { color: var(--accent); font-style: italic; }
 .footer-brand p { font-size: 0.875rem; color: var(--ink-muted); line-height: 1.7; max-width: 260px; }
 .footer-col h4 {
   font-size: 0.72rem; font-weight: 600; letter-spacing: 0.12em;

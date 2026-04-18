@@ -1,11 +1,20 @@
 import { Link } from 'react-router-dom';
+import { useTheme } from '../context/ThemeContext';
 
 export default function Footer() {
+  const { theme } = useTheme();
   return (
     <footer className="ok-footer">
       <div className="footer-grid">
         <div className="footer-brand">
-          <Link to="/" className="footer-logo">Origami <span>Keys</span></Link>
+          <Link to="/" className="footer-logo" style={{ display: 'inline-flex', alignItems: 'center', gap: '10px' }}>
+            <img
+              src={theme === 'dark' ? '/logo-white.svg' : '/logo-black.svg'}
+              alt="Origami Keys"
+              style={{ height: '40px', width: 'auto', objectFit: 'contain' }}
+            />
+            <span className="footer-logo-text">Origami <span>Keys</span></span>
+          </Link>
           <p>Precision-built mechanical keyboards and desk accessories — crafted for the detail-obsessed typist.</p>
         </div>
         <div className="footer-col">

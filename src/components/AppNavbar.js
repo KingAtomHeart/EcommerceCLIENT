@@ -36,9 +36,9 @@ export default function AppNavbar() {
           <img
             src={theme === 'dark' ? '/logo-white.svg' : '/logo-black.svg'}
             alt="Origami Keys"
-            style={{ height: '26px', width: 'auto', objectFit: 'contain', display: 'block' }}
+            style={{ height: '40px', width: 'auto', objectFit: 'contain', display: 'block' }}
           />
-          <span style={{ whiteSpace: 'nowrap' }}>Origami <span>Keys</span></span>
+          <span className="nav-logo-text">Origami <span>Keys</span></span>
         </Link>
 
         {/* ── Desktop Links ── */}
