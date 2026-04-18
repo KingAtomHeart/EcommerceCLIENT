@@ -1,272 +1,122 @@
-// import { useState, useEffect, useContext } from 'react';
-// import { Form, Button } from 'react-bootstrap';
-// import { useNavigate, Link } from 'react-router-dom';
-// import UserContext from '../context/UserContext';
-// import { Notyf } from 'notyf';
-// import 'notyf/notyf.min.css';
-
-// export default function Login() {
-//     const notyf = new Notyf();
-//     const { setUser } = useContext(UserContext);
-//     const navigate = useNavigate();
-//     const [email, setEmail] = useState('');
-//     const [password, setPassword] = useState('');
-//     const [isActive, setIsActive] = useState(false);
-
-//     // Handle user authentication
-//     const authenticate = async (e) => {
-//         e.preventDefault();
-
-//         try {
-//             const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/users/login`, {
-//                 method: 'POST',
-//                 headers: {
-//                     'Content-Type': 'application/json',
-//                 },
-//                 body: JSON.stringify({ email, password }),
-//             });
-
-//             const data = await response.json();
-
-//             if (data.access) {
-//                 // Store the token and fetch user details
-//                 localStorage.setItem('token', data.access);
-//                 console.log('User logged in successfully:', localStorage.getItem('token'));
-//                 retrieveUserDetails(data.access);
-
-//                 // Clear input fields
-//                 setEmail('');
-//                 setPassword('');
-//                 notyf.success('Login Successful');
-//             } else {
-//                 handleLoginError(data);
-//             }
-//         } catch (error) {
-//             console.error('Network or server error:', error);
-//             notyf.error('An error occurred. Please try again.');
-//         }
-//     };
-
-//     // Fetch user details after login
-//     const retrieveUserDetails = async (token) => {
-//         try {
-//             const response = await fetch(`${process.env.REACT_APP_API_BASE_URL}/users/details`, {
-//                 headers: { Authorization: `Bearer ${token}` },
-//             });
-
-//             const data = await response.json();
-//             const user = data.user;
-
-//             console.log('User details:', user);
-
-//             // Store user details in local storage and update context
-//             localStorage.setItem('user', JSON.stringify({ id: user._id, isAdmin: user.isAdmin }));
-//             setUser({ id: user._id, isAdmin: user.isAdmin });
-
-//             navigate('/products');
-//         } catch (error) {
-//             console.error('Failed to retrieve user details:', error);
-//             notyf.error('Failed to retrieve user details.');
-//         }
-//     };
-
-//     // Handle login errors
-//     const handleLoginError = (data) => {
-//         console.error('Login error:', data);
-
-//         if (data.error) {
-//             switch (data.error) {
-//                 case 'Email and password do not match':
-//                     notyf.error('Incorrect Credentials. Try Again.');
-//                     break;
-//                 case 'No email found':
-//                     notyf.error('User Not Found. Try Again.');
-//                     break;
-//                 default:
-//                     notyf.error('An error occurred. Please try again.');
-//             }
-//         } else {
-//             notyf.error('Unexpected response. Please try again.');
-//         }
-//     };
-
-//     // Enable/disable login button based on input validity
-//     useEffect(() => {
-//         setIsActive(email !== '' && password !== '');
-//     }, [email, password]);
-
-//     return (
-//         <div className="form-container">
-//             <Form onSubmit={authenticate} className="my-4">
-//                 <h1 className="text-center">Login</h1>
-
-//                 <Form.Group className="mb-4">
-//                     <Form.Label>Email Address</Form.Label>
-//                     <Form.Control
-//                         type="email"
-//                         placeholder="Enter email"
-//                         required
-//                         value={email}
-//                         onChange={(e) => setEmail(e.target.value)}
-//                     />
-//                 </Form.Group>
-
-//                 <Form.Group className="mb-4">
-//                     <Form.Label>Password</Form.Label>
-//                     <Form.Control
-//                         type="password"
-//                         placeholder="Enter password"
-//                         required
-//                         value={password}
-//                         onChange={(e) => setPassword(e.target.value)}
-//                     />
-//                 </Form.Group>
-
-//                 <Button
-//                     variant={isActive ? 'primary' : 'danger'}
-//                     type="submit"
-//                     disabled={!isActive}
-//                     className="w-100"
-//                 >
-//                     Login
-//                 </Button>
-//             </Form>
-
-//             <div className="text-center mt-3">
-//                 <p>
-//                     Don't have an account? <Link to="/register">Sign Up</Link>
-//                 </p>
-//             </div>
-//         </div>
-//     );
-// }
-
-
-import { useState, useEffect, useContext } from 'react';
-import { Form, Button } from 'react-bootstrap';
-import { useNavigate, Link } from 'react-router-dom'; 
+import { useState, useContext } from 'react';
+import { useNavigate, Navigate } from 'react-router-dom';
 import UserContext from '../context/UserContext';
-import { Notyf } from 'notyf';
-import 'notyf/notyf.min.css';
+import { apiFetch } from '../utils/api';
+import toast from 'react-hot-toast';
 
 export default function Login() {
-    const notyf = new Notyf();
-    const { setUser } = useContext(UserContext);
-    const navigate = useNavigate();  
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
-    const [isActive, setIsActive] = useState(false);
+  const { user, setUser } = useContext(UserContext);
+  const navigate = useNavigate();
+  const [tab, setTab] = useState('login');
 
-function authenticate(e) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const [reg, setReg] = useState({ firstName: '', lastName: '', email: '', mobileNo: '', password: '' });
+  const [regSubmitting, setRegSubmitting] = useState(false);
+
+  // Redirect if already logged in — must use Navigate component, not navigate()
+  if (user?.id) return <Navigate to="/products" replace />;
+
+  const handleLogin = async (e) => {
     e.preventDefault();
+    setSubmitting(true);
+    try {
+      const data = await apiFetch('/users/login', {
+        method: 'POST', body: JSON.stringify({ email, password }),
+      });
+      localStorage.setItem('token', data.access);
+      const profile = await apiFetch('/users/details');
+      const u = profile.user;
+      const userData = { id: u._id, isAdmin: u.isAdmin, firstName: u.firstName, lastName: u.lastName, email: u.email, mobileNo: u.mobileNo };
+      localStorage.setItem('user', JSON.stringify(userData));
+      setUser(userData);
+      toast.success('Welcome back!');
+      navigate('/products');
+    } catch (err) {
+      toast.error(err.message);
+    } finally { setSubmitting(false); }
+  };
 
-    fetch(`${process.env.REACT_APP_API_BASE_URL}/users/login`, {
-        method: 'POST',
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ email, password })
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.access) {
-            localStorage.setItem('token', data.access);
-            console.log("client message: User logged in successfully", localStorage.getItem('token'));
-            console.log(data.log);
-            retrieveUserDetails(data.access);
-            setEmail('');
-            setPassword('');
-            notyf.success('Successful Login');
-        } else if (data.error) {
-            console.error(data.log);
-            console.error('client message:', data.error);
-            
-            switch (data.error) {
-                case 'Email and password do not match':
-                    notyf.error('Incorrect Credentials. Try Again');
-                    break;
-                case 'No email found':
-                    notyf.error('User Not Found. Try Again.');
-                    break;
-                default:
-                    notyf.error('An error occurred. Please try again.');
-                    break;
-            }
-        } else {
-            console.log('client message: Unexpected response structure', data);
-            notyf.error('An unexpected error occurred. Please try again.');
-        }
-    })
-    .catch(error => {
-        console.error('client message: Network or server error', error);
-        notyf.error('An error occurred. Please try again.');
-    });
-}
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setRegSubmitting(true);
+    try {
+      await apiFetch('/users/register', {
+        method: 'POST', body: JSON.stringify(reg),
+      });
+      toast.success('Account created! Please sign in.');
+      setTab('login');
+      setEmail(reg.email);
+      setReg({ firstName: '', lastName: '', email: '', mobileNo: '', password: '' });
+    } catch (err) {
+      toast.error(err.message);
+    } finally { setRegSubmitting(false); }
+  };
 
-function retrieveUserDetails(token) {
-    fetch(`${process.env.REACT_APP_API_BASE_URL}/users/details`, {
-        headers: { Authorization: `Bearer ${token}` }
-    })
-    .then(res => res.json())
-    .then(data => {
-        console.log('User details:', data); 
-        const user = data.user; 
-        console.log('Is admin:', user.isAdmin);
+  const setR = (k) => (e) => setReg(r => ({ ...r, [k]: e.target.value }));
 
-        // Save the user details and token in localStorage
-        localStorage.setItem('user', JSON.stringify({ id: user._id, isAdmin: user.isAdmin }));
-        setUser({ id: user._id, isAdmin: user.isAdmin });
+  return (
+    <div className="page-body" style={{ display: 'flex', justifyContent: 'center', padding: '64px var(--page-pad) 80px' }}>
+      <div className="auth-card">
+        <div className="auth-logo">Origami <span>Keys</span></div>
+        <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2rem', letterSpacing: '-0.025em', marginBottom: '8px' }}>My Account</h1>
+        <p style={{ color: 'var(--ink-muted)', fontSize: '0.9rem', marginBottom: '36px', lineHeight: 1.55 }}>
+          Sign in or create an account to track orders and save your preferences.
+        </p>
 
-        navigate('/products');
-    })
-    .catch(error => {
-        console.error('Failed to retrieve user details:', error);
-        notyf.error('Failed to retrieve user details.');
-    });
-}
-
-
-
-    useEffect(() => {
-        setIsActive(email !== '' && password !== '');
-    }, [email, password]);
-
-    return (
-        <div className="form-container">
-            <Form onSubmit={authenticate} className="my-4">
-                <h1 className="text-center">Login</h1>
-                <Form.Group className='mb-4'>
-                    <Form.Label>Email address</Form.Label>
-                    <Form.Control
-                        type="email" 
-                        placeholder="Enter email" 
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                    />
-                </Form.Group>
-                <Form.Group className="mb-4">
-                    <Form.Label>Password</Form.Label>
-                    <Form.Control 
-                        type="password" 
-                        placeholder="Password" 
-                        required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                    />
-                </Form.Group>
-                <Button 
-                    variant={isActive ? "primary" : "danger"} 
-                    type="submit" 
-                    disabled={!isActive}
-                    className="w-100"
-                >
-                    Login
-                </Button>
-            </Form>
-            <div className="text-center mt-3">
-                <p>Don't have an account?{" "}<Link to="/register">Sign Up</Link></p> 
-            </div>
+        <div className="auth-tabs">
+          <button className={`auth-tab ${tab === 'login' ? 'active' : ''}`} onClick={() => setTab('login')}>Sign In</button>
+          <button className={`auth-tab ${tab === 'register' ? 'active' : ''}`} onClick={() => setTab('register')}>Register</button>
         </div>
-    )
+
+        {tab === 'login' && (
+          <form onSubmit={handleLogin} style={{ animation: 'fadeIn 0.25s ease' }}>
+            <div className="form-group">
+              <label className="form-label">Email</label>
+              <input type="email" className="form-input" placeholder="you@example.com" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Password</label>
+              <input type="password" className="form-input" placeholder="••••••••" required value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
+            </div>
+            <button type="submit" className="btn-dark" disabled={submitting || !email || !password} style={{ width: '100%', justifyContent: 'center', marginTop: '8px' }}>
+              <span>{submitting ? 'Signing in…' : 'Sign In'}</span>
+            </button>
+          </form>
+        )}
+
+        {tab === 'register' && (
+          <form onSubmit={handleRegister} style={{ animation: 'fadeIn 0.25s ease' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div className="form-group">
+                <label className="form-label">First Name</label>
+                <input type="text" className="form-input" placeholder="Jane" required value={reg.firstName} onChange={setR('firstName')} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Last Name</label>
+                <input type="text" className="form-input" placeholder="Doe" required value={reg.lastName} onChange={setR('lastName')} />
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Email</label>
+              <input type="email" className="form-input" placeholder="you@example.com" required value={reg.email} onChange={setR('email')} autoComplete="email" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Mobile No.</label>
+              <input type="text" className="form-input" placeholder="09XXXXXXXXX" required maxLength="11" value={reg.mobileNo} onChange={setR('mobileNo')} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Password</label>
+              <input type="password" className="form-input" placeholder="Min. 8 characters" required value={reg.password} onChange={setR('password')} autoComplete="new-password" />
+            </div>
+            <button type="submit" className="btn-dark" disabled={regSubmitting} style={{ width: '100%', justifyContent: 'center', marginTop: '8px' }}>
+              <span>{regSubmitting ? 'Creating…' : 'Create Account'}</span>
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
 }

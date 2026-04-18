@@ -1,232 +1,197 @@
 import { useState, useEffect, useContext } from 'react';
-import { Container, Button, Row, Col, ListGroup, Spinner } from 'react-bootstrap';
 import { Link, useNavigate } from 'react-router-dom';
 import UserContext from '../context/UserContext';
-import { Notyf } from 'notyf';
-import 'notyf/notyf.min.css';
-import './app.css';
+import { apiFetch } from '../utils/api';
+import toast from 'react-hot-toast';
 
 export default function CartView() {
-    const { user } = useContext(UserContext);
-    const [cart, setCart] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const notyf = new Notyf();
-    const navigate = useNavigate();
+  const { user } = useContext(UserContext);
+  const navigate = useNavigate();
+  const [cart, setCart] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        if (user) {
-            fetchCart();
-        }
-    }, [user]);
+  const fetchCart = () => {
+    setLoading(true);
+    apiFetch('/cart/get-cart')
+      .then(data => setCart(data.cart || { cartItems: [], totalPrice: 0 }))
+      .catch(() => setCart({ cartItems: [], totalPrice: 0 }))
+      .finally(() => setLoading(false));
+  };
 
-    const fetchCart = () => {
-        setLoading(true);
-        fetch(`${process.env.REACT_APP_API_BASE_URL}/cart/get-cart`, {
-            headers: {
-                Authorization: `Bearer ${localStorage.getItem('token')}`,
-            },
-        })
-            .then((res) => res.json())
-            .then((data) => {
-                setCart(data.cart || null);
-                setLoading(false);
-            })
-            .catch((err) => {
-                console.error('Fetch error:', err);
-                setError(err.message);
-                setLoading(false);
-            });
-    };
+  useEffect(() => { if (user) fetchCart(); else setLoading(false); }, [user]);
 
-    const updateQuantity = (productId, newQuantity) => {
-        if (newQuantity < 1) {
-            notyf.error('Quantity must be at least 1');
-            return;
-        }
+  const updateQty = async (productId, quantity, kitId, optionValueId) => {
+    if (quantity < 1) return;
+    try {
+      await apiFetch('/cart/update-cart-quantity', {
+        method: 'PATCH',
+        body: JSON.stringify({ productId, quantity, kitId: kitId || undefined, optionValueId: optionValueId || undefined }),
+      });
+      fetchCart();
+    } catch (err) { toast.error(err.message); }
+  };
 
-        fetch(`${process.env.REACT_APP_API_BASE_URL}/cart/update-cart-quantity`, {
-            method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${localStorage.getItem('token')}`,
-            },
-            body: JSON.stringify({ productId, newQuantity }),
-        })
-            .then((res) => res.json())
-            .then((data) => {
-                if (data.message === 'Item quantity updated successfully') {
-                    notyf.success('Quantity updated');
-                    fetchCart();
-                } else {
-                    notyf.error('Error updating quantity');
-                }
-            })
-            .catch((err) => {
-                console.error('Update error:', err);
-                notyf.error('Error updating quantity');
-            });
-    };
+  const removeItem = async (productId, kitId, optionValueId) => {
+    try {
+      const params = new URLSearchParams();
+      if (kitId) params.set('kitId', kitId);
+      if (optionValueId) params.set('optionValueId', optionValueId);
+      const qs = params.toString();
+      const url = `/cart/${productId}/remove-from-cart${qs ? `?${qs}` : ''}`;
+      await apiFetch(url, { method: 'PATCH' });
+      toast.success('Item removed');
+      fetchCart();
+    } catch (err) { toast.error(err.message); }
+  };
 
-    const removeItem = (productId) => {
-        fetch(`${process.env.REACT_APP_API_BASE_URL}/cart/${productId}/remove-from-cart`, {
-            method: 'PATCH',
-            headers: {
-                Authorization: `Bearer ${localStorage.getItem('token')}`,
-            },
-        })
-            .then((res) => res.json())
-            .then((data) => {
-                // if (data.message === 'Item removed from cart successfully') {
-                //     notyf.success('Item removed');
-                //     fetchCart();
-                // } else {
-                //     notyf.error('Error removing item');
-                // }
-                if (data.message && data.message.includes('Item removed')) {
-                    notyf.success('Item removed');
-                    fetchCart();
-                } else {
-                    notyf.error('Error removing item');
-                }
-            });
-    };
+  const clearCart = async () => {
+    try {
+      await apiFetch('/cart/clear-cart', { method: 'PUT' });
+      toast.success('Cart cleared');
+      fetchCart();
+    } catch (err) { toast.error(err.message); }
+  };
 
-    const clearCart = () => {
-        fetch(`${process.env.REACT_APP_API_BASE_URL}/cart/clear-cart`, {
-            method: 'PUT',
-            headers: {
-                Authorization: `Bearer ${localStorage.getItem('token')}`,
-            },
-        })
-            .then((res) => res.json())
-            .then((data) => {
-                if (data.message === 'Cart cleared successfully') {
-                    notyf.success('Cart cleared');
-                    fetchCart();
-                } else {
-                    notyf.error('Error clearing cart');
-                }
-            });
-    };
+  const checkout = async () => {
+    try {
+      const isGroupBuy = items.some(item => item.groupBuyId);
+      const endpoint = isGroupBuy ? '/orders/checkout-group-buy' : '/orders/checkout';
+      await apiFetch(endpoint, { method: 'POST' });
+      toast.success('Order placed successfully!');
+      navigate('/order-history');
+    } catch (err) { toast.error(err.message); }
+  };
 
-    const checkout = () => {
-        fetch(`${process.env.REACT_APP_API_BASE_URL}/orders/checkout`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${localStorage.getItem('token')}`,
-            },
-        })
-            .then((res) => res.json())
-            .then((data) => {
-                if (data.message === 'Ordered Successfully') {
-                    notyf.success('Order placed successfully');
-                    fetchCart();
-                } else {
-                    notyf.error('Error placing order');
-                }
-            })
-            .catch((err) => {
-                console.error('Checkout error:', err);
-                notyf.error('Error placing order');
-            });
-    };
-
-    if (!user) {
-        return (
-            <Container className="text-center mt-5">
-                <p>
-                    Please <Link to="/login">login</Link> to view your cart.
-                </p>
-            </Container>
-        );
-    }
-
-    if (loading) {
-        return (
- /*           <div className="d-flex justify-content-center align-items-center" style={{ height: '50vh' }}>
-                <Spinner animation="border" role="status">
-                    <span className="sr-only">Loading...</span>
-                </Spinner>
-            </div>
-*/
-        <div className="d-flex justify-content-center align-items-center" style={{ height: '50vh' }}>
-            <Spinner animation="border" role="status" aria-label="Loading" />
-        </div>
-
-        );
-    }
-
-    if (error) {
-        return <p className="text-danger text-center mt-5">Error: {error}</p>;
-    }
-
-    if (!cart || cart.cartItems.length === 0) {
-        return (
-            <div className="text-center mt-5">
-                <p>Your cart is empty.</p>
-                <Button variant="primary" onClick={() => navigate('/products')}>
-                    Browse Products
-                </Button>
-            </div>
-        );
-    }
-
+  if (!user) {
     return (
-        <Container className="my-5">
-            <h2 className="text-center mb-4">Your Cart</h2>
-            <ListGroup className="shadow rounded">
-                {cart.cartItems.map((item) => (
-                    <ListGroup.Item
-                        key={item.productId}
-                        className="d-flex justify-content-between align-items-center py-3"
-                    >
-                        <div>
-                            <h5 className="mb-1">{item.productName}</h5>
-                            <p className="mb-0 text-muted">Subtotal: ₱ {item.subtotal}</p>
-                        </div>
-                        <div className="d-flex align-items-center">
-                            <Button
-                                variant="outline-secondary"
-                                size="sm"
-                                onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                                disabled={item.quantity <= 1}
-                                className="mx-1"
-                            >
-                                -
-                            </Button>
-                            <span className="mx-2">{item.quantity}</span>
-                            <Button
-                                variant="outline-secondary"
-                                size="sm"
-                                onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                                className="mx-1"
-                            >
-                                +
-                            </Button>
-                        </div>
-                        <Button
-                            variant="outline-danger"
-                            size="sm"
-                            onClick={() => removeItem(item.productId)}
-                        >
-                            Remove
-                        </Button>
-                    </ListGroup.Item>
-                ))}
-            </ListGroup>
-            <div className="text-end mt-4">
-                <h4>Total: ₱ {cart.totalPrice}</h4>
-                <div>
-                    <Button variant="outline-danger" onClick={clearCart} className="me-2">
-                        Clear Cart
-                    </Button>
-                    <Button variant="success" onClick={checkout}>
-                        Checkout
-                    </Button>
-                </div>
-            </div>
-        </Container>
+      <div className="page-body" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(100vh - var(--nav-h))' }}>
+        <div style={{ textAlign: 'center' }}>
+          <p style={{ color: 'var(--ink-muted)', marginBottom: '20px' }}>Please sign in to view your cart.</p>
+          <Link to="/login" className="btn-dark"><span>Sign In</span></Link>
+        </div>
+      </div>
     );
+  }
+  if (loading) return <div className="page-body loading-center"><div className="spinner" /></div>;
+
+  const items = cart?.cartItems || [];
+  const total = cart?.totalPrice || 0;
+  const isEmpty = items.length === 0;
+  const freeShipThreshold = 5000;
+  const shippingPct = Math.min((total / freeShipThreshold) * 100, 100);
+  const freeShip = total >= freeShipThreshold;
+
+  return (
+    <div className="page-body" style={{ padding: '56px var(--page-pad) 80px' }}>
+      <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.6rem', letterSpacing: '-0.025em', marginBottom: '44px' }}>Your Cart</h1>
+
+      {isEmpty ? (
+        <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--ink-muted)' }}>
+          <svg width="52" height="52" fill="none" stroke="currentColor" strokeWidth="1.4" viewBox="0 0 24 24" style={{ opacity: 0.2, margin: '0 auto 20px', display: 'block' }}><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+          <p style={{ marginBottom: '20px' }}>Your cart is empty.</p>
+          <Link to="/products" className="btn-dark"><span>Start Shopping</span></Link>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: '52px', alignItems: 'start' }} className="cart-layout">
+          <div>
+            {items.map((item, idx) => {
+              const prod = item.productId;
+              const isGroupBuy = !!item.groupBuyId;
+              const gbData = isGroupBuy ? item.groupBuyId : null;
+              const prodName = isGroupBuy
+                ? (item.groupBuyName || (typeof gbData === 'object' ? gbData?.name : null) || 'Group Buy Item')
+                : (prod && typeof prod === 'object' ? prod.name : 'Product');
+              const imgUrl = isGroupBuy
+                ? (typeof gbData === 'object' ? gbData?.images?.[0]?.url : null)
+                : (prod && typeof prod === 'object' ? prod.images?.[0]?.url : null);
+              const itemId = isGroupBuy
+                ? (typeof gbData === 'object' ? gbData?._id : (item.groupBuyId || item._id))
+                : (prod && typeof prod === 'object' ? prod._id : prod);
+              const kitId = item.kitId || null;
+              const optValId = item.selectedOption?.valueId || null;
+
+              let displayName = prodName;
+              if (item.kitName) displayName = `${prodName} — ${item.kitName}`;
+              if (item.selectedOption?.value) {
+                displayName = `${prodName} — ${item.selectedOption.groupName}: ${item.selectedOption.value}`;
+              }
+
+              const configStr = (item.configurations || []).map(c => `${c.name}: ${c.selected}`).join(', ');
+
+              const gbTag = isGroupBuy ? (
+                <span style={{
+                  fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.06em',
+                  textTransform: 'uppercase', padding: '2px 8px', borderRadius: '10px',
+                  background: 'var(--accent-light)', color: 'var(--accent)', marginLeft: '8px'
+                }}>Group Buy</span>
+              ) : null;
+
+              return (
+                <div key={`${itemId}-${kitId || optValId || 'base'}-${idx}`} className="cart-row" style={{ animation: `fadeUp 0.35s ease ${idx * 0.06}s both` }}>
+                  <div className="cart-img">
+                    {imgUrl ? <img src={imgUrl} alt={displayName} />
+                      : <div style={{ width: '100%', height: '100%', background: 'var(--accent-light)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontFamily: "'DM Serif Display', serif", fontSize: '1.2rem',
+                          color: 'var(--accent)' }}>{prodName?.[0]}</div>}
+                  </div>
+                  <div>
+                    <p className="cart-item-name">{displayName}{gbTag}</p>
+                    {configStr && <p className="cart-item-variant">{configStr}</p>}
+                  </div>
+                  <div className="cart-qty">
+                    <button className="qty-btn" onClick={() => updateQty(itemId, item.quantity - 1, kitId, optValId)} disabled={item.quantity <= 1}>−</button>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 600, minWidth: 24, textAlign: 'center' }}>{item.quantity}</span>
+                    <button className="qty-btn" onClick={() => updateQty(itemId, item.quantity + 1, kitId, optValId)}>+</button>
+                  </div>
+                  <p className="cart-item-price">₱{item.subtotal?.toLocaleString()}</p>
+                  <button className="cart-remove" onClick={() => removeItem(itemId, kitId, optValId)}>
+                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Summary */}
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '20px', padding: '28px', position: 'sticky', top: '84px', boxShadow: 'var(--shadow-card)' }}>
+            <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.35rem', marginBottom: '28px' }}>Order Summary</h2>
+
+            <div className="shipping-progress-wrap">
+              <p className="shipping-msg">
+                {freeShip ? '✓ You qualify for free shipping!' : `Add ₱${(freeShipThreshold - total).toLocaleString()} more for free shipping`}
+              </p>
+              <div className="shipping-bar"><div className="shipping-fill" style={{ width: `${shippingPct}%` }} /></div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '12px' }}>
+              <span style={{ color: 'var(--ink-muted)' }}>Subtotal ({items.length} item{items.length !== 1 ? 's' : ''})</span>
+              <span>₱{total.toLocaleString()}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '12px' }}>
+              <span style={{ color: 'var(--ink-muted)' }}>Shipping</span>
+              <span>{freeShip ? 'Free' : '₱150'}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem', fontWeight: 600, borderTop: '1px solid var(--border)', paddingTop: '16px', marginTop: '4px' }}>
+              <span>Total</span>
+              <span>₱{(freeShip ? total : total + 150).toLocaleString()}</span>
+            </div>
+
+            <button onClick={checkout} className="btn-dark" style={{ width: '100%', marginTop: '20px', justifyContent: 'center' }}>
+              <span>Proceed to Checkout →</span>
+            </button>
+            <button onClick={clearCart} style={{ display: 'block', width: '100%', textAlign: 'center', marginTop: '14px', fontSize: '0.84rem', color: 'var(--ink-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
+              Clear Cart
+            </button>
+            <Link to={items.some(i => i.groupBuyId) ? '/group-buys' : '/products'}
+              style={{ display: 'block', textAlign: 'center', marginTop: '8px', fontSize: '0.84rem', color: 'var(--ink-muted)' }}>
+              Continue Shopping
+            </Link>
+          </div>
+        </div>
+      )}
+
+      <style>{`@media (max-width: 900px) { .cart-layout { grid-template-columns: 1fr !important; } }`}</style>
+    </div>
+  );
 }

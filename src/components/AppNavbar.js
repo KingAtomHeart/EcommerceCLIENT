@@ -1,147 +1,169 @@
-// import React, { useContext } from 'react';
-// import { Container, Navbar, Nav } from 'react-bootstrap';
-// import { NavLink } from 'react-router-dom';
-// import UserContext from '../context/UserContext';
-// import logo from '../img/logo.png';
-// import './app.css';
-
-// const AppNavbar = () => {
-//   const { user } = useContext(UserContext);
-
-//   // Render navigation links for authenticated users
-//   const renderUserLinks = () => {
-//     if (!user) {
-//       return (
-//         <>
-//           <Nav.Link as={NavLink} to="/login" exact>
-//             Login
-//           </Nav.Link>
-//           <Nav.Link as={NavLink} to="/register" exact>
-//             Register
-//           </Nav.Link>
-//         </>
-//       );
-//     }
-
-//     const commonLinks = (
-//       <>
-//         <Nav.Link as={NavLink} to="/profile" exact>
-//           Profile
-//         </Nav.Link>
-//         <Nav.Link as={NavLink} to="/logout" exact>
-//           Logout
-//         </Nav.Link>
-//       </>
-//     );
-
-//     if (user.isAdmin) {
-//       return (
-//         <>
-//           <Nav.Link as={NavLink} to="/profile" exact>
-//             Admin Profile
-//           </Nav.Link>
-//           {commonLinks}
-//         </>
-//       );
-//     }
-
-//     return (
-//       <>
-//         <Nav.Link as={NavLink} to="/cart" exact>
-//           Cart
-//         </Nav.Link>
-//         <Nav.Link as={NavLink} to="/order-history" exact>
-//           Order History
-//         </Nav.Link>
-//         {commonLinks}
-//       </>
-//     );
-//   };
-
-//   // Render dashboard link
-//   const renderDashboardLink = () => (
-//     <Nav.Link as={NavLink} to="/products" exact>
-//       {user?.isAdmin ? 'Admin Dashboard' : 'Products'}
-//     </Nav.Link>
-//   );
-
-//   return (
-//     <Navbar expand="lg" className="bg-body-tertiary sticky-top" id="navbar">
-//       <Container fluid>
-//         {/* Logo */}
-//         <Navbar.Brand as={NavLink} to="/">
-//           <img src={logo} alt="Shop Logo" className="navbar-logo" />
-//         </Navbar.Brand>
-
-//         {/* Navbar Toggle for Mobile View */}
-//         <Navbar.Toggle aria-controls="basic-navbar-nav" />
-
-//         {/* Collapsible Navigation */}
-//         <Navbar.Collapse id="basic-navbar-nav">
-//           <Nav className="me-auto">{renderDashboardLink()}</Nav>
-//           <Nav className="ms-auto">{renderUserLinks()}</Nav>
-//         </Navbar.Collapse>
-//       </Container>
-//     </Navbar>
-//   );
-// };
-
-// export default AppNavbar;
-
-
-import { useContext } from 'react';
-import Container from 'react-bootstrap/Container';
-import Navbar from 'react-bootstrap/Navbar';
-import Nav from 'react-bootstrap/Nav';
-import { NavLink } from 'react-router-dom';
+import { useState, useContext, useEffect, useRef } from 'react';
+import { NavLink, Link, useLocation } from 'react-router-dom';
 import UserContext from '../context/UserContext';
-import logo from '../img/logo.png';
-import './app.css';
+import { useTheme } from '../context/ThemeContext';
 
 export default function AppNavbar() {
   const { user } = useContext(UserContext);
+  const { theme, toggleTheme } = useTheme();
+  const location = useLocation();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [shopOpen, setShopOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => { setMobileOpen(false); setShopOpen(false); }, [location]);
+  useEffect(() => {
+    document.body.style.overflow = mobileOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [mobileOpen]);
+
+  // Close shop dropdown when clicking outside
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setShopOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const isAdmin = user?.isAdmin;
+  const isShopActive = location.pathname === '/products' || location.search.includes('cat=');
 
   return (
-    <Navbar expand="lg" className="bg-body-tertiary sticky-top" id="navbar">
-      <Container fluid>
-        <Navbar.Brand as={NavLink} to="/">
+    <>
+      <nav className={`ok-nav ${theme === 'dark' ? 'dark-bg' : 'light-bg'}`}>
+        <Link to="/" className="nav-logo" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <img
-            src={logo}
-            alt="Shop Logo"
-            style={{ height: '30px', width: 'auto' }} 
+            src={theme === 'dark' ? '/logo-white.svg' : '/logo-black.svg'}
+            alt="Origami Keys"
+            style={{ height: '26px', width: 'auto', objectFit: 'contain', display: 'block' }}
           />
-        </Navbar.Brand>
-        <Navbar.Toggle aria-controls="basic-navbar-nav" />
-        <Navbar.Collapse id="basic-navbar-nav">
-          <Nav className="me-auto">
-            {user?.isAdmin ? (
-              <Nav.Link as={NavLink} to="/products" exact="true">Admin Dashboard</Nav.Link>
+          <span style={{ whiteSpace: 'nowrap' }}>Origami <span>Keys</span></span>
+        </Link>
+
+        {/* ── Desktop Links ── */}
+        <ul className="nav-links">
+          {isAdmin ? (
+            <>
+              <li><NavLink to="/products" className={({ isActive }) => isActive ? 'active' : ''}>In Stock</NavLink></li>
+              <li><NavLink to="/group-buys/admin" className={({ isActive }) => isActive ? 'active' : ''}>Group Buys</NavLink></li>
+              <li><NavLink to="/contact/admin" className={({ isActive }) => isActive ? 'active' : ''}>Messages</NavLink></li>
+            </>
+          ) : (
+            <>
+              {/* Shop dropdown */}
+              <li ref={dropdownRef} className="nav-dropdown-wrap">
+                <button
+                  className={`nav-dropdown-trigger ${isShopActive ? 'active' : ''}`}
+                  onClick={() => setShopOpen(!shopOpen)}
+                >
+                  Shop
+                  <svg width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ marginLeft: 4, transition: 'transform 0.2s', transform: shopOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                    <polyline points="6 9 12 15 18 9"/>
+                  </svg>
+                </button>
+                {shopOpen && (
+                  <div className="nav-dropdown">
+                    <Link to="/products" className="nav-dropdown-item" onClick={() => setShopOpen(false)}>
+                      Shop All
+                    </Link>
+                    <Link to="/products?cat=keyboards" className="nav-dropdown-item" onClick={() => setShopOpen(false)}>
+                      Keyboards
+                    </Link>
+                    <Link to="/products?cat=desk-accessories" className="nav-dropdown-item" onClick={() => setShopOpen(false)}>
+                      Desk Accessories
+                    </Link>
+                    <Link to="/products?cat=keycaps" className="nav-dropdown-item" onClick={() => setShopOpen(false)}>
+                      Keycaps
+                    </Link>
+                    <Link to="/products?cat=switches" className="nav-dropdown-item" onClick={() => setShopOpen(false)}>
+                      Switches
+                    </Link>
+                  </div>
+                )}
+              </li>
+              <li><NavLink to="/group-buys" className={({ isActive }) => isActive ? 'active' : ''}>Group Buys</NavLink></li>
+              <li><NavLink to="/community" className={({ isActive }) => isActive ? 'active' : ''}>Community</NavLink></li>
+              <li><NavLink to="/contact" className={({ isActive }) => isActive ? 'active' : ''}>Contact</NavLink></li>
+            </>
+          )}
+        </ul>
+
+        <div className="nav-actions">
+          <button onClick={toggleTheme} className="dark-toggle" aria-label="Toggle dark mode">
+            {theme === 'dark' ? (
+              <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
             ) : (
-              <Nav.Link as={NavLink} to="/products" exact="true">Products</Nav.Link>
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
             )}
-          </Nav>
-          <Nav className="ms-auto">
-            {user && !user.isAdmin && (
+          </button>
+
+          {user ? (
+            <Link to="/profile" className="nav-icon-btn" aria-label="Profile">
+              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+            </Link>
+          ) : (
+            <Link to="/login" className="nav-icon-btn" aria-label="Sign In">
+              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+            </Link>
+          )}
+
+          {(!user || !isAdmin) && (
+            <Link to={user ? "/cart" : "/login"} className="nav-cart-btn">
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+              <span>Cart</span>
+            </Link>
+          )}
+
+          {user && (
+            <Link to="/logout" className="nav-icon-btn nav-icon-btn-desktop" aria-label="Logout">
+              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            </Link>
+          )}
+
+          <button className="mobile-menu-btn" onClick={() => setMobileOpen(!mobileOpen)} aria-label={mobileOpen ? 'Close menu' : 'Open menu'}>
+            <div className={`hamburger ${mobileOpen ? 'open' : ''}`}><span /><span /><span /></div>
+          </button>
+        </div>
+      </nav>
+
+      {/* ── Mobile drawer ── */}
+      <div className={`mobile-drawer-overlay ${mobileOpen ? 'open' : ''}`} onClick={() => setMobileOpen(false)} />
+      <div className={`mobile-drawer ${mobileOpen ? 'open' : ''}`}>
+        <div className="mobile-drawer-inner">
+          <div className="mobile-drawer-links">
+            {isAdmin ? (
               <>
-                <Nav.Link as={NavLink} to="/cart" exact="true">Cart</Nav.Link>
-                <Nav.Link as={NavLink} to="/profile" exact="true">Profile</Nav.Link>
-                <Nav.Link as={NavLink} to="/order-history" exact="true">Order History</Nav.Link>
+                <NavLink to="/products" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>In Stock Products</NavLink>
+                <NavLink to="/group-buys/admin" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Group Buys</NavLink>
+                <NavLink to="/contact/admin" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Messages</NavLink>
+              </>
+            ) : (
+              <>
+                <NavLink to="/products" className={({ isActive }) => `mobile-link ${isActive && !location.search ? 'active' : ''}`}>Shop All</NavLink>
+                <Link to="/products?cat=keyboards" className={`mobile-link ${location.search.includes('keyboards') ? 'active' : ''}`} style={{ paddingLeft: 32 }}>Keyboards</Link>
+                <Link to="/products?cat=desk-accessories" className={`mobile-link ${location.search.includes('desk-accessories') ? 'active' : ''}`} style={{ paddingLeft: 32 }}>Desk Accessories</Link>
+                <Link to="/products?cat=keycaps" className={`mobile-link ${location.search.includes('keycaps') ? 'active' : ''}`} style={{ paddingLeft: 32 }}>Keycaps</Link>
+                <Link to="/products?cat=switches" className={`mobile-link ${location.search.includes('switches') ? 'active' : ''}`} style={{ paddingLeft: 32 }}>Switches</Link>
+                <NavLink to="/group-buys" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Group Buys</NavLink>
+                <NavLink to="/community" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Community</NavLink>
+                <NavLink to="/contact" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Contact</NavLink>
               </>
             )}
-            {user?.isAdmin && (
-              <Nav.Link as={NavLink} to="/profile" exact="true">Admin Profile</Nav.Link>
-            )}
+          </div>
+          <div className="mobile-drawer-divider" />
+          <div className="mobile-drawer-links">
             {user ? (
-              <Nav.Link as={NavLink} to="/logout" exact="true">Logout</Nav.Link>
-            ) : (
               <>
-                <Nav.Link as={NavLink} to="/login" exact="true">Login</Nav.Link>
-                <Nav.Link as={NavLink} to="/register" exact="true">Register</Nav.Link>
+                <NavLink to="/profile" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Profile</NavLink>
+                <Link to="/logout" className="mobile-link" style={{ color: 'var(--ink-muted)' }}>Sign Out</Link>
               </>
+            ) : (
+              <NavLink to="/login" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Sign In</NavLink>
             )}
-          </Nav>
-        </Navbar.Collapse>
-      </Container>
-    </Navbar>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }

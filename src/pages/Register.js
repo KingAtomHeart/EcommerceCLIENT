@@ -1,366 +1,92 @@
-// import { useState, useEffect, useContext } from 'react';
-// import { Form, Button, Row, Col } from 'react-bootstrap';
-// import { Navigate, Link } from 'react-router-dom';
-// import UserContext from '../context/UserContext';
-// import { Notyf } from 'notyf';
-// import 'notyf/notyf.min.css';
-
-// export default function Register() {
-//   const notyf = new Notyf();
-//   const { user } = useContext(UserContext);
-
-//   const [firstName, setFirstName] = useState('');
-//   const [lastName, setLastName] = useState('');
-//   const [email, setEmail] = useState('');
-//   const [mobileNo, setMobileNo] = useState('');
-//   const [password, setPassword] = useState('');
-//   const [confirmPassword, setConfirmPassword] = useState('');
-//   const [isActive, setIsActive] = useState(false);
-//   const [redirectToLogin, setRedirectToLogin] = useState(false);
-
-//   useEffect(() => {
-//     if (
-//       firstName &&
-//       lastName &&
-//       email &&
-//       mobileNo.length === 11 &&
-//       password &&
-//       confirmPassword &&
-//       password === confirmPassword
-//     ) {
-//       setIsActive(true);
-//     } else {
-//       setIsActive(false);
-//     }
-//   }, [firstName, lastName, email, mobileNo, password, confirmPassword]);
-
-//   function registerUser(e) {
-//     e.preventDefault();
-
-//     fetch(`${process.env.REACT_APP_API_BASE_URL}/users/register`, {
-//       method: 'POST',
-//       headers: {
-//         'Content-Type': 'application/json',
-//       },
-//       body: JSON.stringify({
-//         firstName,
-//         lastName,
-//         email,
-//         mobileNo,
-//         password,
-//       }),
-//     })
-//       .then((res) => res.json())
-//       .then((data) => {
-//         if (data.message === 'Registered Successfully') {
-//           setFirstName('');
-//           setLastName('');
-//           setEmail('');
-//           setMobileNo('');
-//           setPassword('');
-//           setConfirmPassword('');
-
-//           notyf.success('Registration successful');
-//           setRedirectToLogin(true);
-//         } else {
-//           notyf.error(data.message || 'Something went wrong.');
-//         }
-//       })
-//       .catch((error) => {
-//         notyf.error('Registration failed.');
-//         console.error('Error:', error);
-//       });
-//   }
-
-//   if (redirectToLogin) {
-//     return <Navigate to="/login" />;
-//   }
-
-//   if (user && user.id) {
-//     return <Navigate to="/" />;
-//   }
-
-//   return (
-//     <div className="form-container">
-//       <Form onSubmit={registerUser} className="my-5">
-//         <h1 className="text-center mb-4">Register</h1>
-
-//         <Row>
-//           <Col md={6}>
-//             <Form.Group className="mb-3">
-//               <Form.Label>First Name:</Form.Label>
-//               <Form.Control
-//                 type="text"
-//                 placeholder="Enter your First Name"
-//                 value={firstName}
-//                 onChange={(e) => setFirstName(e.target.value)}
-//                 required
-//               />
-//             </Form.Group>
-//           </Col>
-
-//           <Col md={6}>
-//             <Form.Group className="mb-3">
-//               <Form.Label>Last Name:</Form.Label>
-//               <Form.Control
-//                 type="text"
-//                 placeholder="Enter your Last Name"
-//                 value={lastName}
-//                 onChange={(e) => setLastName(e.target.value)}
-//                 required
-//               />
-//             </Form.Group>
-//           </Col>
-//         </Row>
-
-//         <Form.Group className="mb-3">
-//           <Form.Label>Email:</Form.Label>
-//           <Form.Control
-//             type="email"
-//             placeholder="Enter your Email"
-//             value={email}
-//             onChange={(e) => setEmail(e.target.value)}
-//             required
-//           />
-//         </Form.Group>
-
-//         <Form.Group className="mb-3">
-//           <Form.Label>Mobile No:</Form.Label>
-//           <Form.Control
-//             type="text"
-//             placeholder="Enter your 11 Digit Mobile No."
-//             value={mobileNo}
-//             onChange={(e) => setMobileNo(e.target.value)}
-//             required
-//             maxLength="11"
-//           />
-//         </Form.Group>
-
-//         <Form.Group className="mb-3">
-//           <Form.Label>Password:</Form.Label>
-//           <Form.Control
-//             type="password"
-//             placeholder="Enter your Password"
-//             value={password}
-//             onChange={(e) => setPassword(e.target.value)}
-//             required
-//           />
-//         </Form.Group>
-
-//         <Form.Group className="mb-3">
-//           <Form.Label>Verify Password:</Form.Label>
-//           <Form.Control
-//             type="password"
-//             placeholder="Verify your Password"
-//             value={confirmPassword}
-//             onChange={(e) => setConfirmPassword(e.target.value)}
-//             required
-//           />
-//         </Form.Group>
-
-//         {isActive ? (
-//           <Button variant="primary" type="submit" className="w-100">
-//             Submit
-//           </Button>
-//         ) : (
-//           <Button variant="danger" type="submit" className="w-100" disabled>
-//             Please enter your registration details
-//           </Button>
-//         )}
-
-//         <div className="text-center mt-3">
-//           <p>
-//             Already have an account? <Link to="/login">Click here</Link> to log in.
-//           </p>
-//         </div>
-//       </Form>
-//     </div>
-//   );
-// }
-
-
-import { useState, useEffect, useContext } from 'react';
-import { Form, Button } from 'react-bootstrap';
-import { Navigate, Link } from 'react-router-dom';
+import { useState, useContext } from 'react';
+import { useNavigate, Link, Navigate } from 'react-router-dom';
 import UserContext from '../context/UserContext';
-import { Notyf } from 'notyf';
-import 'notyf/notyf.min.css';
+import { apiFetch } from '../utils/api';
+import toast from 'react-hot-toast';
 
 export default function Register() {
-  
-  const notyf = new Notyf();
   const { user } = useContext(UserContext);
-  
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-  const [mobileNo, setMobileNo] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [isActive, setIsActive] = useState(false);
-  const [redirectToLogin, setRedirectToLogin] = useState(false); 
+  const navigate = useNavigate();
+  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', mobileNo: '', password: '', confirmPassword: '' });
+  const [submitting, setSubmitting] = useState(false);
 
+  if (user?.id) return <Navigate to="/" />;
 
-  useEffect(() => {
-    if (
-      firstName &&
-      lastName &&
-      email &&
-      mobileNo.length === 11 &&
-      password &&
-      confirmPassword &&
-      password === confirmPassword
-    ) {
-      setIsActive(true);
-    } else {
-      setIsActive(false);
-    }
-  }, [firstName, lastName, email, mobileNo, password, confirmPassword]);
+  const set = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
 
-  function registerUser(e) {
+  const isValid = form.firstName && form.lastName && form.email && form.mobileNo.length === 11 && form.password.length >= 8 && form.password === form.confirmPassword;
+
+  const handleRegister = async (e) => {
     e.preventDefault();
-
-    fetch(`${process.env.REACT_APP_API_BASE_URL}/users/register`, {
-      method: 'POST',
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        firstName,
-        lastName,
-        email,
-        mobileNo,
-        password,
-      }),
-    })
-    .then((res) => res.json())
-    .then((data) => {
-      if (data.message === "Registered Successfully") {
-
-        setFirstName("");
-        setLastName("");
-        setEmail("");
-        setMobileNo("");
-        setPassword("");
-        setConfirmPassword("");
-        
-        console.log("Registered Successfully")
-        console.log("First Name:", data.user.firstName)
-        console.log("Last Name:", data.user.lastName)
-        console.log("Email:", data.user.email)
-        notyf.success("Registration successful");
-        
-
-        setRedirectToLogin(true);
-      } else {
-        notyf.error(data.message || "Something went wrong.");
-      }
-    })
-    .catch((error) => {
-      console.error("Error:", error);
-      notyf.error("Registration failed.");
-    });
-  }
-
-  
-  if (redirectToLogin) {
-    return <Navigate to="/login" />;
-  }
-
-  if (user && user.id) {
-    return <Navigate to="/" />; 
-  }
+    if (!isValid) return;
+    setSubmitting(true);
+    try {
+      await apiFetch('/users/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          firstName: form.firstName, lastName: form.lastName,
+          email: form.email, mobileNo: form.mobileNo, password: form.password,
+        }),
+      });
+      toast.success('Registration successful! Please sign in.');
+      navigate('/login');
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
-    <div className="form-container">
-      <Form onSubmit={registerUser} className="my-5">
-        <h1 className="text-center">Register</h1>
-        
-        <Form.Group className="mb-3">
-          <Form.Label>First Name:</Form.Label>
-          <Form.Control 
-            type="text"
-            placeholder="First Name"
-            value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
-            required
-          />
-        </Form.Group>
+    <div className="page-body" style={{ display: 'flex', justifyContent: 'center', padding: '64px var(--page-pad) 80px' }}>
+      <div className="auth-card" style={{ maxWidth: 520 }}>
+        <div style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.1rem', marginBottom: '32px' }}>
+          Origami <span style={{ color: 'var(--accent)', fontStyle: 'italic' }}>Keys</span>
+        </div>
+        <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2rem', letterSpacing: '-0.025em', marginBottom: '8px' }}>Create Account</h1>
+        <p style={{ color: 'var(--ink-muted)', fontSize: '0.9rem', marginBottom: '36px', lineHeight: 1.55 }}>
+          Join the community. Track orders and save your preferences.
+        </p>
 
-        <Form.Group className="mb-3">
-          <Form.Label>Last Name:</Form.Label>
-          <Form.Control 
-            type="text"
-            placeholder="Last Name"
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-            required
-          />
-        </Form.Group>
+        <form onSubmit={handleRegister}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div className="form-group">
+              <label className="form-label">First Name</label>
+              <input type="text" className="form-input" placeholder="Jane" required value={form.firstName} onChange={set('firstName')} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Last Name</label>
+              <input type="text" className="form-input" placeholder="Doe" required value={form.lastName} onChange={set('lastName')} />
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Email</label>
+            <input type="email" className="form-input" placeholder="you@example.com" required value={form.email} onChange={set('email')} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Mobile No.</label>
+            <input type="text" className="form-input" placeholder="09XXXXXXXXX" required maxLength="11" value={form.mobileNo} onChange={set('mobileNo')} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Password</label>
+            <input type="password" className="form-input" placeholder="Min. 8 characters" required value={form.password} onChange={set('password')} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Confirm Password</label>
+            <input type="password" className="form-input" placeholder="Repeat password" required value={form.confirmPassword} onChange={set('confirmPassword')} />
+          </div>
+          {form.password && form.confirmPassword && form.password !== form.confirmPassword && (
+            <p style={{ color: '#c0392b', fontSize: '0.82rem', marginBottom: '12px' }}>Passwords do not match.</p>
+          )}
+          <button type="submit" className="btn-dark" disabled={submitting || !isValid} style={{ width: '100%', justifyContent: 'center', marginTop: '8px' }}>
+            <span>{submitting ? 'Creating...' : 'Create Account'}</span>
+          </button>
+        </form>
 
-        <Form.Group className="mb-3">
-          <Form.Label>Email:</Form.Label>
-          <Form.Control 
-            type="email"
-            placeholder="Enter your Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-        </Form.Group>
-
-        <Form.Group className="mb-3">
-          <Form.Label>Mobile No:</Form.Label>
-          <Form.Control 
-            type="text"
-            placeholder="Enter your Mobile No. (11 digits)"
-            value={mobileNo}
-            onChange={(e) => setMobileNo(e.target.value)}
-            required
-            maxLength="11"
-          />
-        </Form.Group>
-
-        <Form.Group className="mb-3">
-          <Form.Label>Password:</Form.Label>
-          <Form.Control 
-            type="password"
-            placeholder="Enter your Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </Form.Group>
-
-        <Form.Group className="mb-3">
-          <Form.Label>Verify Password:</Form.Label>
-          <Form.Control 
-            type="password"
-            placeholder="Verify Password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            required
-          />
-        </Form.Group>
-
-        {isActive ? (
-          <Button variant="primary" type="submit" className="w-100">
-            Submit
-          </Button>
-        ) : (
-          <Button variant="danger" type="submit" className="w-100" disabled>
-            Register Now
-          </Button>
-        )}
-
-         <div className="text-center mt-3">
-             <p>
-                 Already have an account?{" "}
-                 <Link to="/login">Click here</Link> to log in.
-             </p>
-         </div>
-
-      </Form>
+        <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '0.84rem', color: 'var(--ink-muted)' }}>
+          Already have an account? <Link to="/login" style={{ color: 'var(--accent)', fontWeight: 500 }}>Sign In</Link>
+        </p>
+      </div>
     </div>
   );
 }
