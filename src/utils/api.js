@@ -1,5 +1,10 @@
 const API = process.env.REACT_APP_API_BASE_URL;
 
+export const cloudinaryOptimize = (url, width = 800) => {
+  if (!url || !url.includes('res.cloudinary.com')) return url;
+  return url.replace('/upload/', `/upload/f_auto,q_auto,w_${width}/`);
+};
+
 export const apiFetch = async (endpoint, options = {}) => {
   const token = localStorage.getItem('token');
   const headers = { ...options.headers };

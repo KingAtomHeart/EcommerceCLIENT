@@ -5,6 +5,8 @@ import ProductCard from '../components/ProductCard';
 import AdminView from '../components/AdminView';
 import { apiFetch } from '../utils/api';
 
+const PAGE_SIZE = 12;
+
 export default function Products() {
   const { user, loading: userLoading } = useContext(UserContext);
   const [products, setProducts] = useState([]);
@@ -14,13 +16,17 @@ export default function Products() {
   const [searchParams] = useSearchParams();
   const [category, setCategory] = useState(searchParams.get('cat') || 'all');
   const [hideOutOfStock, setHideOutOfStock] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // Sync category when URL search params change
   useEffect(() => {
     const cat = searchParams.get('cat');
     if (cat) setCategory(cat);
     else setCategory('all');
+    setVisibleCount(PAGE_SIZE);
   }, [searchParams]);
+
+  useEffect(() => { setVisibleCount(PAGE_SIZE); }, [search, sort, category, hideOutOfStock]);
 
   // FIX: Stabilize fetchProducts with useCallback so the dep array is correct
   const isAdmin = user?.isAdmin;
@@ -67,6 +73,8 @@ export default function Products() {
   if (sort === 'price-asc') filtered = [...filtered].sort((a, b) => a.price - b.price);
   else if (sort === 'price-desc') filtered = [...filtered].sort((a, b) => b.price - a.price);
   else if (sort === 'name') filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+
+  const visible = filtered.slice(0, visibleCount);
 
   const categories = ['all', ...new Set(products.map(p => p.category?.toLowerCase().replace(/\s+/g, '-')).filter(Boolean))];
 
@@ -128,14 +136,28 @@ export default function Products() {
       {loading ? (
         <div className="loading-center"><div className="spinner" /></div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '28px', padding: '24px var(--page-pad) 80px' }}>
-          {filtered.map(p => <ProductCard key={p._id} product={p} />)}
-          {filtered.length === 0 && (
-            <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '80px 20px', color: 'var(--ink-muted)' }}>
-              <p>No products match your search.</p>
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '28px', padding: '24px var(--page-pad) 0' }}>
+            {visible.map(p => <ProductCard key={p._id} product={p} />)}
+            {filtered.length === 0 && (
+              <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '80px 20px', color: 'var(--ink-muted)' }}>
+                <p>No products match your search.</p>
+              </div>
+            )}
+          </div>
+          {visibleCount < filtered.length && (
+            <div style={{ textAlign: 'center', padding: '40px var(--page-pad) 80px' }}>
+              <button className="btn-dark" onClick={() => setVisibleCount(c => c + PAGE_SIZE)}>
+                Load more ({filtered.length - visibleCount} remaining)
+              </button>
             </div>
           )}
-        </div>
+          {visibleCount >= filtered.length && filtered.length > 0 && (
+            <p style={{ textAlign: 'center', padding: '40px var(--page-pad) 80px', color: 'var(--ink-faint)', fontSize: '0.85rem' }}>
+              All {filtered.length} products shown
+            </p>
+          )}
+        </>
       )}
     </div>
   );

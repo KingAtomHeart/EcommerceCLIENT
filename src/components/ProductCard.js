@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { cloudinaryOptimize } from '../utils/api';
 
 const categoryLabel = (slug) => ({
   keyboards: 'Keyboard', keycaps: 'Keycaps', switches: 'Switches',
@@ -8,8 +9,8 @@ const categoryLabel = (slug) => ({
 
 export default function ProductCard({ product }) {
   const { _id, name, description, price, images, category, isActive, stocks } = product;
-  const imgUrl = images?.[0]?.url || null;
-  const secondImg = images?.[1]?.url || null;
+  const imgUrl = cloudinaryOptimize(images?.[0]?.url, 600) || null;
+  const secondImg = cloudinaryOptimize(images?.[1]?.url, 600) || null;
   const hasStockTracking = stocks !== undefined && stocks !== null;
   const outOfStock = hasStockTracking && stocks <= 0;
 
