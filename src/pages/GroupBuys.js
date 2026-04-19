@@ -27,7 +27,7 @@ export default function GroupBuys() {
         <div className="loading-center"><div className="spinner" /></div>
       ) : gbs.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--ink-muted)', background: 'var(--surface)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-          <p style={{ fontSize: '1rem', marginBottom: '8px' }}>No active group buys right now.</p>
+          <p style={{ fontSize: '1rem', marginBottom: '8px' }}>No group buys right now.</p>
           <p style={{ fontSize: '0.84rem' }}>Check back soon or browse our in-stock products.</p>
           <Link to="/products" className="btn-dark" style={{ marginTop: '20px', display: 'inline-flex' }}><span>Shop In Stock</span></Link>
         </div>
