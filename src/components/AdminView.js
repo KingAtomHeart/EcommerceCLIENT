@@ -609,7 +609,16 @@ function ProductConfigManager({ product, fetchData }) {
       options: (c.options || []).map(o => ({ ...o, image: o.image || { url: '', altText: '' } }))
     }))
   );
-  const [rules, setRules] = useState(product.configAvailabilityRules || []);
+  const [rules, setRules] = useState(
+    (product.configAvailabilityRules || []).map(r => ({
+      _id: r._id,
+      conditions: Array.isArray(r.conditions) && r.conditions.length
+        ? r.conditions.map(c => ({ configName: c.configName, selectedValue: c.selectedValue }))
+        : [{ configName: r.configName || '', selectedValue: r.selectedValue || '' }],
+      targetConfigName: r.targetConfigName || '',
+      availableValues: r.availableValues || []
+    }))
+  );
   const [saving, setSaving] = useState(false);
   const [uploadingImg, setUploadingImg] = useState({});
   const [newCfgName, setNewCfgName] = useState('');
@@ -764,61 +773,97 @@ function ProductConfigManager({ product, fetchData }) {
       {configs.length >= 2 && (
         <div style={{ marginTop: '16px', padding: '12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
           <p style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '8px' }}>
-            Availability Rules — restrict which options appear based on another selection
+            Availability Rules — restrict which options appear based on a combination of selections
           </p>
           <p style={{ fontSize: '0.68rem', color: 'var(--ink-muted)', marginBottom: '10px' }}>
-            Example: When Layout = "WKL", Color can only be "Red, Blue, Green" (not Yellow).
+            Example: When Color = "Beige/Mint" AND Layout = "WK" → Grade allows: B-Stock
           </p>
 
-          {rules.map((rule, ri) => (
-            <div key={ri} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '6px', fontSize: '0.78rem', flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 500 }}>When</span>
-              <select className="form-input" style={{ ...inputSm, width: 'auto' }} value={rule.configName}
-                onChange={e => setRules(r => r.map((rr, i) => i !== ri ? rr : { ...rr, configName: e.target.value }))}>
-                <option value="">Select config...</option>
-                {configs.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-              </select>
-              <span>=</span>
-              <select className="form-input" style={{ ...inputSm, width: 'auto' }} value={rule.selectedValue}
-                onChange={e => setRules(r => r.map((rr, i) => i !== ri ? rr : { ...rr, selectedValue: e.target.value }))}>
-                <option value="">Select value...</option>
-                {(configs.find(c => c.name === rule.configName)?.options || []).map(o => (
-                  <option key={o.value} value={o.value}>{o.value}</option>
+          {rules.map((rule, ri) => {
+            const conditionConfigNames = (rule.conditions || []).map(c => c.configName).filter(Boolean);
+            const targetOptions = configs.filter(c => !conditionConfigNames.includes(c.name));
+            return (
+              <div key={ri} style={{ marginBottom: '10px', padding: '8px 10px', background: 'var(--surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
+                {/* Conditions */}
+                {(rule.conditions || []).map((cond, ci) => (
+                  <div key={ci} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '4px', fontSize: '0.78rem', flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 500, minWidth: 30 }}>{ci === 0 ? 'When' : 'AND'}</span>
+                    <select className="form-input" style={{ ...inputSm, width: 'auto' }} value={cond.configName}
+                      onChange={e => setRules(r => r.map((rr, i) => i !== ri ? rr : {
+                        ...rr, conditions: rr.conditions.map((cc, j) => j !== ci ? cc : { configName: e.target.value, selectedValue: '' })
+                      }))}>
+                      <option value="">Select config...</option>
+                      {configs.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                    </select>
+                    <span>=</span>
+                    <select className="form-input" style={{ ...inputSm, width: 'auto' }} value={cond.selectedValue}
+                      onChange={e => setRules(r => r.map((rr, i) => i !== ri ? rr : {
+                        ...rr, conditions: rr.conditions.map((cc, j) => j !== ci ? cc : { ...cc, selectedValue: e.target.value })
+                      }))}>
+                      <option value="">Select value...</option>
+                      {(configs.find(c => c.name === cond.configName)?.options || []).map(o => (
+                        <option key={o.value} value={o.value}>{o.value}</option>
+                      ))}
+                    </select>
+                    {(rule.conditions || []).length > 1 && (
+                      <button onClick={() => setRules(r => r.map((rr, i) => i !== ri ? rr : {
+                        ...rr, conditions: rr.conditions.filter((_, j) => j !== ci)
+                      }))} style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+                    )}
+                  </div>
                 ))}
-              </select>
-              <span style={{ fontWeight: 500 }}>→</span>
-              <select className="form-input" style={{ ...inputSm, width: 'auto' }} value={rule.targetConfigName}
-                onChange={e => setRules(r => r.map((rr, i) => i !== ri ? rr : { ...rr, targetConfigName: e.target.value, availableValues: [] }))}>
-                <option value="">Target config...</option>
-                {configs.filter(c => c.name !== rule.configName).map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
-              </select>
-              <span style={{ fontWeight: 500 }}>allows:</span>
-              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                {(configs.find(c => c.name === rule.targetConfigName)?.options || []).map(o => {
-                  const checked = (rule.availableValues || []).includes(o.value);
-                  return (
-                    <label key={o.value} style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '0.72rem', cursor: 'pointer',
-                      padding: '2px 6px', borderRadius: '8px', border: '1px solid',
-                      borderColor: checked ? 'var(--accent)' : 'var(--border)',
-                      background: checked ? 'var(--accent-light)' : 'transparent',
-                      color: checked ? 'var(--accent)' : 'var(--ink-muted)' }}>
-                      <input type="checkbox" checked={checked} style={{ display: 'none' }}
-                        onChange={() => setRules(r => r.map((rr, i) => i !== ri ? rr : {
-                          ...rr, availableValues: checked
-                            ? rr.availableValues.filter(v => v !== o.value)
-                            : [...(rr.availableValues || []), o.value]
-                        }))} />
-                      {o.value}
-                    </label>
-                  );
-                })}
-              </div>
-              <button onClick={() => setRules(r => r.filter((_, i) => i !== ri))}
-                style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
-            </div>
-          ))}
 
-          <button onClick={() => setRules(r => [...r, { configName: '', selectedValue: '', targetConfigName: '', availableValues: [] }])}
+                {/* Add AND condition */}
+                <button onClick={() => setRules(r => r.map((rr, i) => i !== ri ? rr : {
+                  ...rr, conditions: [...(rr.conditions || []), { configName: '', selectedValue: '' }]
+                }))} style={{ fontSize: '0.64rem', color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 0', marginBottom: '6px' }}>
+                  + AND condition
+                </button>
+
+                {/* Target + allowed values */}
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.78rem' }}>
+                  <span style={{ fontWeight: 500 }}>→</span>
+                  <select className="form-input" style={{ ...inputSm, width: 'auto' }} value={rule.targetConfigName}
+                    onChange={e => setRules(r => r.map((rr, i) => i !== ri ? rr : { ...rr, targetConfigName: e.target.value, availableValues: [] }))}>
+                    <option value="">Target config...</option>
+                    {targetOptions.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                  </select>
+                  <span style={{ fontWeight: 500 }}>allows:</span>
+                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                    {(configs.find(c => c.name === rule.targetConfigName)?.options || []).map(o => {
+                      const checked = (rule.availableValues || []).includes(o.value);
+                      return (
+                        <label key={o.value} style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '0.72rem', cursor: 'pointer',
+                          padding: '2px 6px', borderRadius: '8px', border: '1px solid',
+                          borderColor: checked ? 'var(--accent)' : 'var(--border)',
+                          background: checked ? 'var(--accent-light)' : 'transparent',
+                          color: checked ? 'var(--accent)' : 'var(--ink-muted)' }}>
+                          <input type="checkbox" checked={checked} style={{ display: 'none' }}
+                            onChange={() => setRules(r => r.map((rr, i) => i !== ri ? rr : {
+                              ...rr, availableValues: checked
+                                ? rr.availableValues.filter(v => v !== o.value)
+                                : [...(rr.availableValues || []), o.value]
+                            }))} />
+                          {o.value}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {rule.conditions?.every(c => !c.configName || !c.selectedValue) && (
+                    <span style={{ fontSize: '0.64rem', color: '#c0392b', marginLeft: 4 }}>⚠ incomplete conditions</span>
+                  )}
+                </div>
+
+                {/* Remove rule */}
+                <div style={{ textAlign: 'right', marginTop: '4px' }}>
+                  <button onClick={() => setRules(r => r.filter((_, i) => i !== ri))}
+                    style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove rule</button>
+                </div>
+              </div>
+            );
+          })}
+
+          <button onClick={() => setRules(r => [...r, { conditions: [{ configName: '', selectedValue: '' }], targetConfigName: '', availableValues: [] }])}
             className="admin-card-btn success" style={{ fontSize: '0.68rem', marginTop: '4px' }}>
             + Add Rule
           </button>

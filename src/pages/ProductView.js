@@ -4,6 +4,7 @@ import UserContext from '../context/UserContext';
 import ProductCard from '../components/ProductCard';
 import { RichText } from '../components/AdminView';
 import { apiFetch } from '../utils/api';
+import { allowedValuesForTarget } from '../utils/availabilityRules';
 import toast from 'react-hot-toast';
 
 const categoryLabel = (slug) => ({
@@ -83,17 +84,13 @@ export default function ProductView() {
       const next = { ...prev };
       let changed = false;
       for (const cfg of (product.configurations || [])) {
-        const allowedValues = new Set();
-        let hasRule = false;
-        for (const rule of product.configAvailabilityRules) {
-          if (rule.targetConfigName === cfg.name && prev[rule.configName] === rule.selectedValue) {
-            hasRule = true;
-            (rule.availableValues || []).forEach(v => allowedValues.add(v));
-          }
-        }
-        if (hasRule && prev[cfg.name] && !allowedValues.has(prev[cfg.name])) {
-          // Current selection is blocked by a rule — pick first allowed
-          const firstAllowed = cfg.options?.find(o => o.available !== false && (o.stocks ?? -1) !== 0 && allowedValues.has(o.value));
+        const { restricted, allowed } = allowedValuesForTarget(
+          product.configAvailabilityRules, cfg.name, prev
+        );
+        if (restricted && prev[cfg.name] && !allowed.has(prev[cfg.name])) {
+          const firstAllowed = cfg.options?.find(
+            o => o.available !== false && (o.stocks ?? -1) !== 0 && allowed.has(o.value)
+          );
           next[cfg.name] = firstAllowed?.value || '';
           changed = true;
         }
@@ -207,13 +204,14 @@ export default function ProductView() {
       for (const cfg of (product.configurations || [])) {
         const selected = selectedConfigs[cfg.name];
         if (!selected) continue;
-        for (const rule of product.configAvailabilityRules) {
-          const sourceVal = selectedConfigs[rule.configName];
-          if (rule.targetConfigName === cfg.name && sourceVal === rule.selectedValue) {
-            if (!rule.availableValues.includes(selected)) { soldOut = true; reason = `rule: ${rule.configName}=${sourceVal} blocks ${cfg.name}=${selected}`; break; }
-          }
+        const { restricted, allowed } = allowedValuesForTarget(
+          product.configAvailabilityRules, cfg.name, selectedConfigs
+        );
+        if (restricted && !allowed.has(selected)) {
+          soldOut = true;
+          reason = `rule blocks ${cfg.name}=${selected}`;
+          break;
         }
-        if (soldOut) break;
       }
     }
 
@@ -355,14 +353,9 @@ export default function ProductView() {
               <div style={{ marginBottom: '24px' }}>
                 {product.configurations.map(cfg => {
                   // Apply availability rules: filter options based on other selected configs
-                  const allowedValues = new Set();
-                  let hasRule = false;
-                  for (const rule of (product.configAvailabilityRules || [])) {
-                    if (rule.targetConfigName === cfg.name && selectedConfigs[rule.configName] === rule.selectedValue) {
-                      hasRule = true;
-                      (rule.availableValues || []).forEach(v => allowedValues.add(v));
-                    }
-                  }
+                  const { restricted, allowed } = allowedValuesForTarget(
+                    product.configAvailabilityRules, cfg.name, selectedConfigs
+                  );
 
                   return (
                     <div key={cfg._id || cfg.name} style={{ marginBottom: '16px' }}>
@@ -370,7 +363,7 @@ export default function ProductView() {
                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         {(cfg.options || []).map((opt, oi) => {
                           const cfgStocks = opt.stocks ?? -1;
-                          const ruleBlocked = hasRule && !allowedValues.has(opt.value);
+                          const ruleBlocked = restricted && !allowed.has(opt.value);
                           const avail = opt.available !== false && cfgStocks !== 0 && !ruleBlocked;
                           const isSelected = selectedConfigs[cfg.name] === opt.value;
                           return (

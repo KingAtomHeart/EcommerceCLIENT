@@ -36,14 +36,35 @@ export default function Profile() {
     loadProfile();
   }, [loadProfile]);
 
-  // Fetch orders when tab is first opened
+  // Fetch orders (regular + group buy) when tab is first opened
   useEffect(() => {
     if (activeTab === 'orders' && !ordersLoaded) {
       setOrdersLoading(true);
-      apiFetch('/orders/my-orders')
-        .then(data => { setOrders(data.orders || []); setOrdersLoaded(true); })
-        .catch(() => setOrders([]))
-        .finally(() => setOrdersLoading(false));
+      Promise.all([
+        apiFetch('/orders/my-orders').then(d => d.orders || []).catch(() => []),
+        apiFetch('/group-buys/my/orders').then(d => d.orders || []).catch(() => []),
+      ]).then(([regular, gb]) => {
+        const normalizedGb = gb.map(o => ({
+          _id: o._id,
+          createdAt: o.createdAt,
+          status: o.status,
+          totalPrice: o.totalPrice,
+          isGroupBuy: true,
+          orderCode: o.orderCode,
+          groupBuyName: o.groupBuyId?.name || 'Group Buy',
+          groupBuyStatus: o.groupBuyId?.status || '',
+          groupBuyImage: o.groupBuyId?.images?.[0]?.url || null,
+          groupBuyId: o.groupBuyId,
+          selectedOption: o.selectedOption,
+          configurations: o.configurations || [],
+          kits: o.kits || [],
+          quantity: o.quantity,
+        }));
+        const merged = [...regular.map(o => ({ ...o, isGroupBuy: false })), ...normalizedGb]
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        setOrders(merged);
+        setOrdersLoaded(true);
+      }).catch(() => setOrders([])).finally(() => setOrdersLoading(false));
     }
   }, [activeTab, ordersLoaded]);
 
@@ -229,11 +250,13 @@ function InfoBlock({ label, value }) {
 
 function OrderCard({ order }) {
   const statusColors = {
-    Pending: { bg: 'var(--accent-light)', color: 'var(--accent)' },
-    Processing: { bg: '#fef3cd', color: '#856404' },
-    Shipped: { bg: '#d1ecf1', color: '#0c5460' },
-    Delivered: { bg: '#d4edda', color: '#155724' },
-    Cancelled: { bg: '#f8d7da', color: '#721c24' },
+    Pending:         { bg: 'var(--accent-light)', color: 'var(--accent)' },
+    Processing:      { bg: '#fef3cd', color: '#856404' },
+    Shipped:         { bg: '#d1ecf1', color: '#0c5460' },
+    Delivered:       { bg: '#d4edda', color: '#155724' },
+    Cancelled:       { bg: '#f8d7da', color: '#721c24' },
+    Confirmed:       { bg: 'var(--accent-light)', color: 'var(--accent)' },
+    'In Production': { bg: '#fef3cd', color: '#856404' },
   };
   const sc = statusColors[order.status] || statusColors.Pending;
 
@@ -242,11 +265,36 @@ function OrderCard({ order }) {
       background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)',
       padding: '20px 24px', border: '1px solid var(--border-subtle)',
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          {order.isGroupBuy && (
+            <div style={{ width: 48, height: 48, borderRadius: '8px', overflow: 'hidden', background: 'var(--accent-light)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {order.groupBuyImage
+                ? <img src={order.groupBuyImage} alt={order.groupBuyName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.2rem', color: 'var(--accent)' }}>{order.groupBuyName?.[0]}</span>
+              }
+            </div>
+          )}
           <div>
-            <p style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '2px' }}>Order</p>
-            <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem' }}>{order._id.slice(-8).toUpperCase()}</p>
+            <p style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '2px' }}>
+              {order.isGroupBuy ? 'Group Buy Order' : 'Order'}
+            </p>
+            <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem' }}>
+              {order.isGroupBuy ? (order.groupBuyName || 'Group Buy') : order._id.slice(-8).toUpperCase()}
+            </p>
+            {order.isGroupBuy && order.orderCode && (
+              <p style={{ fontSize: '0.68rem', color: 'var(--ink-faint)', fontFamily: 'monospace', marginTop: '2px' }}>{order.orderCode}</p>
+            )}
+            {order.isGroupBuy && (
+              <div style={{ display: 'flex', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: '8px', background: 'var(--accent-light)', color: 'var(--accent)' }}>Group Buy</span>
+                {order.groupBuyStatus && (
+                  <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: '8px', background: 'var(--bg-secondary)', color: 'var(--ink-muted)', border: '1px solid var(--border)' }}>
+                    GB: {order.groupBuyStatus}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           <div>
             <p style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '2px' }}>Date</p>
@@ -256,19 +304,40 @@ function OrderCard({ order }) {
         <span style={{
           background: sc.bg, color: sc.color,
           fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase',
-          padding: '4px 12px', borderRadius: '20px',
+          padding: '4px 12px', borderRadius: '20px', whiteSpace: 'nowrap',
         }}>
           {order.status}
         </span>
       </div>
 
       <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '10px' }}>
-        {order.productsOrdered.map((item, i) => (
+        {/* Regular order items */}
+        {!order.isGroupBuy && (order.productsOrdered || []).map((item, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '0.84rem' }}>
-            <span>{item.productName} <span style={{ color: 'var(--ink-muted)' }}>x{item.quantity}</span></span>
+            <span>{item.productName} <span style={{ color: 'var(--ink-muted)' }}>×{item.quantity}</span></span>
             <span style={{ fontWeight: 600 }}>₱{item.subtotal?.toLocaleString()}</span>
           </div>
         ))}
+        {/* GB: selected option */}
+        {order.isGroupBuy && order.selectedOption?.value && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '0.84rem' }}>
+            <span>{order.selectedOption.groupName}: {order.selectedOption.value} <span style={{ color: 'var(--ink-muted)' }}>×{order.quantity}</span></span>
+            <span style={{ fontWeight: 600 }}>₱{(order.selectedOption.price * order.quantity)?.toLocaleString()}</span>
+          </div>
+        )}
+        {/* GB: kits */}
+        {order.isGroupBuy && order.kits?.length > 0 && order.kits.map((kit, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '0.84rem' }}>
+            <span>{kit.name} <span style={{ color: 'var(--ink-muted)' }}>×{kit.quantity}</span></span>
+            <span style={{ fontWeight: 600 }}>₱{(kit.price * kit.quantity)?.toLocaleString()}</span>
+          </div>
+        ))}
+        {/* GB: configurations */}
+        {order.isGroupBuy && order.configurations?.length > 0 && (
+          <p style={{ fontSize: '0.78rem', color: 'var(--ink-muted)', padding: '4px 0' }}>
+            {order.configurations.map((c, i) => `${c.name}: ${c.selected}`).join(' | ')}
+          </p>
+        )}
       </div>
 
       <div style={{ borderTop: '1px solid var(--border-subtle)', marginTop: '8px', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', fontWeight: 600 }}>
