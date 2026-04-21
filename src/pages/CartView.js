@@ -52,14 +52,25 @@ export default function CartView() {
     } catch (err) { toast.error(err.message); }
   };
 
+  const [checkingOut, setCheckingOut] = useState(false);
+
   const checkout = async () => {
+    if (checkingOut) return;
+    setCheckingOut(true);
     try {
       const isGroupBuy = items.some(item => item.groupBuyId);
-      const endpoint = isGroupBuy ? '/orders/checkout-group-buy' : '/orders/checkout';
-      await apiFetch(endpoint, { method: 'POST' });
-      toast.success('Order placed successfully!');
-      navigate('/order-history');
-    } catch (err) { toast.error(err.message); }
+      if (isGroupBuy) {
+        await apiFetch('/orders/checkout-group-buy', { method: 'POST' });
+        toast.success('Order placed successfully!');
+        navigate('/order-history');
+        return;
+      }
+      const data = await apiFetch('/orders/create-payment', { method: 'POST' });
+      window.location.href = data.checkoutUrl;
+    } catch (err) {
+      toast.error(err.message);
+      setCheckingOut(false);
+    }
   };
 
   if (!user) {
@@ -116,7 +127,12 @@ export default function CartView() {
                 displayName = `${prodName} — ${item.selectedOption.groupName}: ${item.selectedOption.value}`;
               }
 
-              const configStr = (item.configurations || []).map(c => `${c.name}: ${c.selected}`).join(', ');
+              const variantAttrs = item.variantAttributes && typeof item.variantAttributes === 'object' && !Array.isArray(item.variantAttributes)
+                ? Object.entries(item.variantAttributes)
+                : null;
+              const configStr = variantAttrs
+                ? variantAttrs.map(([k, v]) => `${k}: ${v}`).join(', ')
+                : (item.configurations || []).map(c => `${c.name}: ${c.selected}`).join(', ');
 
               const gbTag = isGroupBuy ? (
                 <span style={{
@@ -177,8 +193,8 @@ export default function CartView() {
               <span>₱{(freeShip ? total : total + 150).toLocaleString()}</span>
             </div>
 
-            <button onClick={checkout} className="btn-dark" style={{ width: '100%', marginTop: '20px', justifyContent: 'center' }}>
-              <span>Proceed to Checkout →</span>
+            <button onClick={checkout} className="btn-dark" style={{ width: '100%', marginTop: '20px', justifyContent: 'center' }} disabled={checkingOut}>
+              <span>{checkingOut ? 'Redirecting to payment…' : 'Proceed to Checkout →'}</span>
             </button>
             <button onClick={clearCart} style={{ display: 'block', width: '100%', textAlign: 'center', marginTop: '14px', fontSize: '0.84rem', color: 'var(--ink-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
               Clear Cart

@@ -1,4 +1,4 @@
-import { useState, useContext, useEffect, useRef } from 'react';
+import { useState, useContext, useEffect } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
 import UserContext from '../context/UserContext';
 import { useTheme } from '../context/ThemeContext';
@@ -8,23 +8,12 @@ export default function AppNavbar() {
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [shopOpen, setShopOpen] = useState(false);
-  const dropdownRef = useRef(null);
 
-  useEffect(() => { setMobileOpen(false); setShopOpen(false); }, [location]);
+  useEffect(() => { setMobileOpen(false); }, [location]);
   useEffect(() => {
     document.body.style.overflow = mobileOpen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [mobileOpen]);
-
-  // Close shop dropdown when clicking outside
-  useEffect(() => {
-    const handleClick = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setShopOpen(false);
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
 
   const isAdmin = user?.isAdmin;
   const isShopActive = location.pathname === '/products' || location.search.includes('cat=');
@@ -52,35 +41,23 @@ export default function AppNavbar() {
           ) : (
             <>
               {/* Shop dropdown */}
-              <li ref={dropdownRef} className="nav-dropdown-wrap">
-                <button
+              <li className="nav-dropdown-wrap">
+                <Link
+                  to="/products"
                   className={`nav-dropdown-trigger ${isShopActive ? 'active' : ''}`}
-                  onClick={() => setShopOpen(!shopOpen)}
                 >
                   Shop
-                  <svg width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ marginLeft: 4, transition: 'transform 0.2s', transform: shopOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                  <svg className="nav-dropdown-chevron" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ marginLeft: 4, transition: 'transform 0.2s' }}>
                     <polyline points="6 9 12 15 18 9"/>
                   </svg>
-                </button>
-                {shopOpen && (
-                  <div className="nav-dropdown">
-                    <Link to="/products" className="nav-dropdown-item" onClick={() => setShopOpen(false)}>
-                      Shop All
-                    </Link>
-                    <Link to="/products?cat=keyboards" className="nav-dropdown-item" onClick={() => setShopOpen(false)}>
-                      Keyboards
-                    </Link>
-                    <Link to="/products?cat=desk-accessories" className="nav-dropdown-item" onClick={() => setShopOpen(false)}>
-                      Desk Accessories
-                    </Link>
-                    <Link to="/products?cat=keycaps" className="nav-dropdown-item" onClick={() => setShopOpen(false)}>
-                      Keycaps
-                    </Link>
-                    <Link to="/products?cat=switches" className="nav-dropdown-item" onClick={() => setShopOpen(false)}>
-                      Switches
-                    </Link>
-                  </div>
-                )}
+                </Link>
+                <div className="nav-dropdown">
+                  <Link to="/products" className="nav-dropdown-item">Shop All</Link>
+                  <Link to="/products?cat=keyboards" className="nav-dropdown-item">Keyboards</Link>
+                  <Link to="/products?cat=desk-accessories" className="nav-dropdown-item">Desk Accessories</Link>
+                  <Link to="/products?cat=keycaps" className="nav-dropdown-item">Keycaps</Link>
+                  <Link to="/products?cat=switches" className="nav-dropdown-item">Switches</Link>
+                </div>
               </li>
               <li><NavLink to="/group-buys" className={({ isActive }) => isActive ? 'active' : ''}>Group Buys</NavLink></li>
               <li><NavLink to="/community" className={({ isActive }) => isActive ? 'active' : ''}>Community</NavLink></li>

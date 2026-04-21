@@ -183,7 +183,11 @@ export default function OrderHistory() {
                     <span>
                       {item.productName}
                       {item.selectedOption?.value && <span style={{ color: 'var(--ink-muted)', marginLeft: 6 }}>{item.selectedOption.groupName}: {item.selectedOption.value}</span>}
-                      {item.configurations?.length > 0 && (
+                      {item.variantAttributes && Object.keys(item.variantAttributes).length > 0 ? (
+                        <span style={{ color: 'var(--ink-muted)', marginLeft: 6, fontSize: '0.82rem' }}>
+                          ({Object.entries(item.variantAttributes).map(([k, v]) => `${k}: ${v}`).join(' | ')})
+                        </span>
+                      ) : item.configurations?.length > 0 && (
                         <span style={{ color: 'var(--ink-muted)', marginLeft: 6, fontSize: '0.82rem' }}>
                           ({item.configurations.map(c => `${c.name}: ${c.selected}`).join(' | ')})
                         </span>

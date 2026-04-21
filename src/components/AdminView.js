@@ -114,6 +114,9 @@ export default function AdminView({ products, fetchData, loading }) {
         .admin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
         .admin-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: box-shadow var(--transition); }
         .admin-card:hover { box-shadow: var(--shadow-md); }
+        .admin-card.expanded { grid-column: 1 / -1; display: flex; flex-direction: row; align-items: stretch; }
+        .admin-card-sidebar { width: 260px; flex-shrink: 0; border-right: 1px solid var(--border-subtle); display: flex; flex-direction: column; }
+        .admin-card-panel { flex: 1; min-width: 0; padding: 16px 20px; overflow: auto; }
         .admin-card-img { aspect-ratio: 16/10; background: var(--accent-light); position: relative; overflow: hidden; }
         .admin-card-img img { width: 100%; height: 100%; object-fit: cover; }
         .admin-card-body { padding: 18px 20px; }
@@ -173,51 +176,59 @@ function ProductCard({ product, fetchData }) {
 
   if (editing) return <EditProductCard product={product} fetchData={fetchData} onClose={() => setEditing(false)} />;
 
+  const expanded = showImages || showOptions || showConfigs;
+
   return (
-    <div className={`admin-card ${!product.isActive ? 'is-archived' : ''}`}>
-      <div className="admin-card-img">
-        {imgUrl ? <img src={imgUrl} alt={product.name} /> : (
-          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Serif Display', serif", fontSize: '2rem', color: 'var(--accent)' }}>{product.name?.[0]}</div>
-        )}
-        <span className={`admin-badge ${product.isActive ? 'active' : 'archived'}`}>{product.isActive ? 'Active' : 'Archived'}</span>
-      </div>
-      <div className="admin-card-body">
-        <p className="admin-card-name">{product.name}</p>
-        <p className="admin-card-meta">{product.category || 'Uncategorized'}</p>
-        <div className="admin-card-row">
-          <span className="admin-card-price">
-            {hasOptions
-              ? `From ₱${Math.min(...product.options.flatMap(g => g.values.map(v => v.price))).toLocaleString()}`
-              : `₱${product.price?.toLocaleString()}`}
-          </span>
-          <span className="admin-card-stock">{hasOptions
-            ? product.options.flatMap(g => g.values).map(v => {
-                const s = v.stocks ?? -1;
-                return s === -1 ? `${v.value}: ∞` : `${v.value}: ${s}`;
-              }).join(', ')
-            : (product.stocks > 0 ? `${product.stocks} in stock` : 'Out of stock')}</span>
+    <div className={`admin-card ${!product.isActive ? 'is-archived' : ''} ${expanded ? 'expanded' : ''}`}>
+      <div className={expanded ? 'admin-card-sidebar' : ''}>
+        <div className="admin-card-img">
+          {imgUrl ? <img src={imgUrl} alt={product.name} /> : (
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Serif Display', serif", fontSize: '2rem', color: 'var(--accent)' }}>{product.name?.[0]}</div>
+          )}
+          <span className={`admin-badge ${product.isActive ? 'active' : 'archived'}`}>{product.isActive ? 'Active' : 'Archived'}</span>
+        </div>
+        <div className="admin-card-body">
+          <p className="admin-card-name">{product.name}</p>
+          <p className="admin-card-meta">{product.category || 'Uncategorized'}</p>
+          <div className="admin-card-row">
+            <span className="admin-card-price">
+              {hasOptions
+                ? `From ₱${Math.min(...product.options.flatMap(g => g.values.map(v => v.price))).toLocaleString()}`
+                : `₱${product.price?.toLocaleString()}`}
+            </span>
+            <span className="admin-card-stock">{hasOptions
+              ? product.options.flatMap(g => g.values).map(v => {
+                  const s = v.stocks ?? -1;
+                  return s === -1 ? `${v.value}: ∞` : `${v.value}: ${s}`;
+                }).join(', ')
+              : (product.stocks > 0 ? `${product.stocks} in stock` : 'Out of stock')}</span>
+          </div>
+        </div>
+        <div className="admin-card-actions">
+          <button className="admin-card-btn" onClick={() => setEditing(true)}>Edit</button>
+          <button className="admin-card-btn" onClick={() => { closeAll(); setShowImages(!showImages); }}>
+            Images ({product.images?.length || 0})
+          </button>
+          <button className="admin-card-btn" onClick={() => { closeAll(); setShowOptions(!showOptions); }}>
+            Options ({product.options?.length || 0})
+          </button>
+          <button className="admin-card-btn" onClick={() => { closeAll(); setShowConfigs(!showConfigs); }}>
+            Configs ({product.configurations?.length || 0})
+          </button>
+          {product.isActive ? (
+            <button className="admin-card-btn danger" onClick={toggleActive}>Archive</button>
+          ) : (
+            <button className="admin-card-btn success" onClick={toggleActive}>Activate</button>
+          )}
         </div>
       </div>
-      <div className="admin-card-actions">
-        <button className="admin-card-btn" onClick={() => setEditing(true)}>Edit</button>
-        <button className="admin-card-btn" onClick={() => { closeAll(); setShowImages(!showImages); }}>
-          Images ({product.images?.length || 0})
-        </button>
-        <button className="admin-card-btn" onClick={() => { closeAll(); setShowOptions(!showOptions); }}>
-          Options ({product.options?.length || 0})
-        </button>
-        <button className="admin-card-btn" onClick={() => { closeAll(); setShowConfigs(!showConfigs); }}>
-          Configs ({product.configurations?.length || 0})
-        </button>
-        {product.isActive ? (
-          <button className="admin-card-btn danger" onClick={toggleActive}>Archive</button>
-        ) : (
-          <button className="admin-card-btn success" onClick={toggleActive}>Activate</button>
-        )}
-      </div>
-      {showImages && <div style={{ padding: '0 20px 16px' }}><ImageManager product={product} fetchData={fetchData} /></div>}
-      {showOptions && <div style={{ padding: '0 20px 16px' }}><OptionsManager product={product} fetchData={fetchData} /></div>}
-      {showConfigs && <div style={{ padding: '0 20px 16px' }}><ProductConfigManager product={product} fetchData={fetchData} /></div>}
+      {expanded && (
+        <div className="admin-card-panel">
+          {showImages && <ImageManager product={product} fetchData={fetchData} />}
+          {showOptions && <OptionsManager product={product} fetchData={fetchData} />}
+          {showConfigs && <ProductConfigManager product={product} fetchData={fetchData} />}
+        </div>
+      )}
     </div>
   );
 }
@@ -603,6 +614,25 @@ function OptionsManager({ product, fetchData }) {
    Config groups add to the base/option price. Each option can have an image.
 ═══════════════════════════════════════════════ */
 function ProductConfigManager({ product, fetchData }) {
+  const [useVariants, setUseVariants] = useState(!!product.useVariants);
+  const [togglingVariants, setTogglingVariants] = useState(false);
+
+  const handleVariantToggle = async (val) => {
+    if (val && product.variants?.length > 0) {
+      setUseVariants(true); return;
+    }
+    if (!val && product.useVariants) {
+      if (!window.confirm('Switch back to classic mode? Your variants will be preserved but hidden until you switch back.')) return;
+      setTogglingVariants(true);
+      try {
+        await apiFetch(`/products/${product._id}/update`, { method: 'PATCH', body: JSON.stringify({ useVariants: false }) });
+        toast.success('Switched to classic mode'); fetchData(); setUseVariants(false);
+      } catch (err) { toast.error(err.message); } finally { setTogglingVariants(false); }
+      return;
+    }
+    setUseVariants(val);
+  };
+
   const [configs, setConfigs] = useState(
     (product.configurations || []).map(c => ({
       ...c,
@@ -679,6 +709,23 @@ function ProductConfigManager({ product, fetchData }) {
 
   return (
     <div style={{ paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
+      {/* Variant system toggle */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', padding: '8px 12px', background: useVariants ? 'var(--accent-light)' : 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: `1px solid ${useVariants ? 'var(--accent)' : 'var(--border)'}` }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, color: useVariants ? 'var(--accent)' : 'var(--ink)' }}>
+          <input type="checkbox" checked={useVariants} disabled={togglingVariants}
+            onChange={e => handleVariantToggle(e.target.checked)}
+            style={{ width: 14, height: 14, cursor: 'pointer' }} />
+          Use variant system (new)
+        </label>
+        <span style={{ fontSize: '0.68rem', color: 'var(--ink-muted)' }}>
+          {useVariants ? 'Each valid combination is one SKU with its own stock.' : 'Classic mode: options + configurations + rules.'}
+        </span>
+      </div>
+
+      {useVariants ? (
+        <VariantEditor product={product} fetchData={fetchData} />
+      ) : (
+      <>
       <p style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '10px' }}>
         Configs — add-on selectors that affect the final price
       </p>
@@ -872,6 +919,291 @@ function ProductConfigManager({ product, fetchData }) {
 
       <button onClick={save} disabled={saving} className="btn-dark" style={{ padding: '7px 16px', fontSize: '0.78rem', marginTop: '12px' }}>
         <span>{saving ? 'Saving...' : 'Save Configs'}</span>
+      </button>
+      </>
+      )}
+    </div>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════
+   VARIANT EDITOR
+═══════════════════════════════════════════════ */
+function VariantEditor({ product, fetchData }) {
+  const [dims, setDims] = useState((product.variantDimensions || []).map(d => ({ name: d.name, values: [...(d.values || [])] })));
+  const [variants, setVariants] = useState((product.variants || []).map(v => ({ _id: v._id, attributes: { ...(v.attributes || {}) }, stock: v.stock ?? -1, price: v.price ?? '', sku: v.sku || '', available: v.available !== false })));
+  const [vImages, setVImages] = useState((product.variantImages || []).map(i => ({ _id: i._id, url: i.url, publicId: i.publicId || '', appliesTo: { ...(i.appliesTo || {}) } })));
+  const [saving, setSaving] = useState(false);
+  const [newDimName, setNewDimName] = useState('');
+  const [newDimValues, setNewDimValues] = useState({});
+  const [converting, setConverting] = useState(false);
+  const inputSm = { fontSize: '0.72rem', padding: '5px 7px' };
+
+  const generateCombos = () => {
+    if (!dims.length || dims.some(d => !d.values.length)) return;
+    const existing = variants.map(v => JSON.stringify(v.attributes));
+    const combos = dims.reduce((acc, d) => acc.flatMap(a => d.values.map(v => ({ ...a, [d.name]: v }))), [{}]);
+    const newOnes = combos.filter(c => !existing.includes(JSON.stringify(c)));
+    setVariants(v => [...v, ...newOnes.map(attrs => ({ attributes: attrs, stock: -1, price: '', sku: '', available: true }))]);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const payload = {
+        useVariants: true,
+        variantDimensions: dims,
+        variants: variants.map(v => ({ ...v, stock: Number(v.stock), price: v.price === '' || v.price == null ? null : Number(v.price) })),
+        variantImages: vImages
+      };
+      await apiFetch(`/products/${product._id}/update`, { method: 'PATCH', body: JSON.stringify(payload) });
+      toast.success('Variants saved'); fetchData();
+    } catch (err) { toast.error(err.message); } finally { setSaving(false); }
+  };
+
+  const handleImportJson = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      await apiFetch(`/products/${product._id}/variants/import`, { method: 'POST', body: JSON.stringify(data) });
+      toast.success('Variants imported'); fetchData();
+    } catch (err) { toast.error(err.message || 'Import failed'); }
+    e.target.value = '';
+  };
+
+  const handleConvert = async () => {
+    if (!window.confirm('Convert legacy configurations to variants? This will set useVariants=true for this product.')) return;
+    setConverting(true);
+    try {
+      const res = await apiFetch(`/products/${product._id}/variants/convert-from-legacy`, { method: 'POST' });
+      toast.success(res.message); fetchData();
+    } catch (err) { toast.error(err.message); } finally { setConverting(false); }
+  };
+
+  const handleUploadVImage = async (file, appliesTo) => {
+    const fd = new FormData();
+    fd.append('images', file);
+    fd.append('appliesTo', JSON.stringify(appliesTo));
+    try {
+      const res = await apiFetch(`/products/${product._id}/variants/image`, { method: 'POST', body: fd });
+      toast.success('Image uploaded'); fetchData();
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const handleDeleteVImage = async (imgId) => {
+    if (imgId) {
+      try { await apiFetch(`/products/${product._id}/variants/image/${imgId}`, { method: 'DELETE' }); }
+      catch (err) { toast.error(err.message); return; }
+    }
+    setVImages(v => v.filter(i => i._id?.toString() !== imgId?.toString()));
+    if (imgId) fetchData();
+  };
+
+  const sampleJson = JSON.stringify({
+    dimensions: dims.length ? dims : [{ name: 'Color', values: ['A', 'B'] }, { name: 'Grade', values: ['A-Stock', 'B-Stock'] }],
+    variants: [{ attributes: { Color: 'A', Grade: 'A-Stock' }, stock: 1, price: null, sku: '' }],
+    images: [{ url: 'https://...', appliesTo: { Color: 'A' } }],
+    replace: true
+  }, null, 2);
+
+  return (
+    <div style={{ paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
+      <p style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '10px' }}>
+        Variant System — each row is one sellable SKU with its own stock
+      </p>
+
+      {product.configurations?.length > 0 && !product.useVariants && (
+        <div style={{ marginBottom: '12px', padding: '8px 12px', background: 'var(--accent-light)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--ink-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>This product has legacy configurations. You can auto-convert them to variants.</span>
+          <button onClick={handleConvert} disabled={converting} className="admin-card-btn" style={{ fontSize: '0.68rem', whiteSpace: 'nowrap', marginLeft: '12px' }}>
+            {converting ? 'Converting...' : 'Convert from Legacy'}
+          </button>
+        </div>
+      )}
+
+      {/* ── Dimensions ── */}
+      <div style={{ marginBottom: '14px' }}>
+        <p style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '6px' }}>Dimensions</p>
+        {dims.map((d, di) => (
+          <div key={di} style={{ marginBottom: '8px', padding: '8px 10px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '6px' }}>
+              <input className="form-input" style={{ ...inputSm, fontWeight: 600, width: 120 }} value={d.name}
+                onChange={e => setDims(p => p.map((dd, i) => i !== di ? dd : { ...dd, name: e.target.value }))} />
+              <button onClick={() => setDims(p => p.filter((_, i) => i !== di))} style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
+              {d.values.map((v, vi) => (
+                <span key={vi} style={{ display: 'flex', alignItems: 'center', gap: '3px', padding: '2px 8px', background: 'var(--accent-light)', color: 'var(--accent)', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 500 }}>
+                  {v}
+                  <button onClick={() => setDims(p => p.map((dd, i) => i !== di ? dd : { ...dd, values: dd.values.filter((_, j) => j !== vi) }))}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: '0.7rem', padding: '0 0 0 2px', lineHeight: 1 }}>×</button>
+                </span>
+              ))}
+              <input className="form-input" style={{ ...inputSm, width: 100, borderStyle: 'dashed' }} placeholder="+ value"
+                value={newDimValues[di] || ''}
+                onChange={e => setNewDimValues(p => ({ ...p, [di]: e.target.value }))}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && newDimValues[di]?.trim()) {
+                    setDims(p => p.map((dd, i) => i !== di ? dd : { ...dd, values: [...dd.values, newDimValues[di].trim()] }));
+                    setNewDimValues(p => ({ ...p, [di]: '' }));
+                    e.preventDefault();
+                  }
+                }} />
+              {newDimValues[di]?.trim() && (
+                <button onClick={() => {
+                  setDims(p => p.map((dd, i) => i !== di ? dd : { ...dd, values: [...dd.values, newDimValues[di].trim()] }));
+                  setNewDimValues(p => ({ ...p, [di]: '' }));
+                }} className="admin-card-btn success" style={{ fontSize: '0.65rem' }}>+</button>
+              )}
+            </div>
+          </div>
+        ))}
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <input className="form-input" style={{ ...inputSm, width: 160, borderStyle: 'dashed' }} placeholder="Dimension name (e.g. Color)"
+            value={newDimName} onChange={e => setNewDimName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && newDimName.trim()) { setDims(p => [...p, { name: newDimName.trim(), values: [] }]); setNewDimName(''); e.preventDefault(); } }} />
+          <button onClick={() => { if (!newDimName.trim()) return; setDims(p => [...p, { name: newDimName.trim(), values: [] }]); setNewDimName(''); }}
+            className="admin-card-btn success" style={{ fontSize: '0.68rem' }}>+ Add Dimension</button>
+          {dims.length > 0 && (
+            <button onClick={generateCombos} className="admin-card-btn" style={{ fontSize: '0.68rem' }}>Generate All Combinations</button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Variants table ── */}
+      <div style={{ marginBottom: '14px' }}>
+        <p style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '6px' }}>
+          Variants ({variants.length})
+        </p>
+        {variants.length > 0 && (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                  {dims.map(d => <th key={d.name} style={{ padding: '4px 6px', textAlign: 'left', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--ink-faint)', whiteSpace: 'nowrap' }}>{d.name}</th>)}
+                  <th style={{ padding: '4px 6px', textAlign: 'left', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Stock</th>
+                  <th style={{ padding: '4px 6px', textAlign: 'left', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Price (₱)</th>
+                  <th style={{ padding: '4px 6px', textAlign: 'left', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--ink-faint)' }}>SKU</th>
+                  <th style={{ padding: '4px 6px', textAlign: 'left', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Avail</th>
+                  <th style={{ padding: '4px 6px' }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {variants.map((v, vi) => (
+                  <tr key={vi} style={{ borderBottom: '1px solid var(--border-subtle)', opacity: v.available ? 1 : 0.5 }}>
+                    {dims.map(d => (
+                      <td key={d.name} style={{ padding: '3px 4px' }}>
+                        <select className="form-input" style={{ ...inputSm, width: 'auto', minWidth: 80 }}
+                          value={v.attributes[d.name] || ''}
+                          onChange={e => setVariants(p => p.map((vv, i) => i !== vi ? vv : { ...vv, attributes: { ...vv.attributes, [d.name]: e.target.value } }))}>
+                          <option value="">—</option>
+                          {d.values.map(val => <option key={val} value={val}>{val}</option>)}
+                        </select>
+                      </td>
+                    ))}
+                    <td style={{ padding: '3px 4px' }}>
+                      <input type="number" className="form-input" style={{ ...inputSm, width: 55 }} value={v.stock === -1 ? '' : v.stock} placeholder="∞"
+                        onChange={e => setVariants(p => p.map((vv, i) => i !== vi ? vv : { ...vv, stock: e.target.value === '' ? -1 : Number(e.target.value) }))} />
+                    </td>
+                    <td style={{ padding: '3px 4px' }}>
+                      <input type="number" className="form-input" style={{ ...inputSm, width: 70 }} value={v.price ?? ''} placeholder="Base"
+                        onChange={e => setVariants(p => p.map((vv, i) => i !== vi ? vv : { ...vv, price: e.target.value === '' ? '' : Number(e.target.value) }))} />
+                    </td>
+                    <td style={{ padding: '3px 4px' }}>
+                      <input className="form-input" style={{ ...inputSm, width: 80 }} value={v.sku}
+                        onChange={e => setVariants(p => p.map((vv, i) => i !== vi ? vv : { ...vv, sku: e.target.value }))} />
+                    </td>
+                    <td style={{ padding: '3px 4px' }}>
+                      <button onClick={() => setVariants(p => p.map((vv, i) => i !== vi ? vv : { ...vv, available: !vv.available }))}
+                        style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '10px', border: '1px solid', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+                          background: v.available ? 'var(--accent-light)' : 'transparent',
+                          color: v.available ? 'var(--accent)' : 'var(--ink-faint)',
+                          borderColor: v.available ? 'var(--accent)' : 'var(--border)' }}>
+                        {v.available ? 'On' : 'Off'}
+                      </button>
+                    </td>
+                    <td style={{ padding: '3px 4px' }}>
+                      <button onClick={() => setVariants(p => p.filter((_, i) => i !== vi))}
+                        style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <button onClick={() => setVariants(p => [...p, { attributes: Object.fromEntries(dims.map(d => [d.name, d.values[0] || ''])), stock: -1, price: '', sku: '', available: true }])}
+          className="admin-card-btn success" style={{ fontSize: '0.68rem', marginTop: '6px' }}>+ Add Variant</button>
+      </div>
+
+      {/* ── Variant Images ── */}
+      <div style={{ marginBottom: '14px' }}>
+        <p style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '6px' }}>
+          Variant Images — attach images to specific dimension combinations
+        </p>
+        <p style={{ fontSize: '0.65rem', color: 'var(--ink-muted)', marginBottom: '8px' }}>
+          Set "Any" for dimensions that should match all values. Most-specific image wins on the product page.
+        </p>
+        {vImages.map((img, ii) => (
+          <div key={ii} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginBottom: '8px', padding: '8px 10px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+            {img.url && <img src={img.url} alt="" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 'var(--radius-sm)', flexShrink: 0 }} />}
+            <div style={{ flex: 1 }}>
+              <input className="form-input" style={{ ...inputSm, width: '100%', marginBottom: '4px' }} placeholder="Image URL" value={img.url}
+                onChange={e => setVImages(p => p.map((vv, i) => i !== ii ? vv : { ...vv, url: e.target.value }))} />
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                {dims.map(d => (
+                  <div key={d.name} style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '0.68rem' }}>
+                    <span style={{ color: 'var(--ink-faint)', fontWeight: 600 }}>{d.name}:</span>
+                    <select className="form-input" style={{ ...inputSm, width: 'auto' }}
+                      value={img.appliesTo?.[d.name] || ''}
+                      onChange={e => setVImages(p => p.map((vv, i) => {
+                        if (i !== ii) return vv;
+                        const at = { ...vv.appliesTo };
+                        if (e.target.value) at[d.name] = e.target.value; else delete at[d.name];
+                        return { ...vv, appliesTo: at };
+                      }))}>
+                      <option value="">Any</option>
+                      {d.values.map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <button onClick={() => handleDeleteVImage(img._id)}
+              style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer', paddingTop: '4px' }}>✕</button>
+          </div>
+        ))}
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <button onClick={() => setVImages(p => [...p, { url: '', publicId: '', appliesTo: {} }])}
+            className="admin-card-btn" style={{ fontSize: '0.68rem' }}>+ Add Image (URL)</button>
+          <label className="admin-card-btn" style={{ fontSize: '0.68rem', cursor: 'pointer' }}>
+            ↑ Upload Image
+            <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
+              const file = e.target.files?.[0]; if (!file) return;
+              await handleUploadVImage(file, {});
+              e.target.value = '';
+            }} />
+          </label>
+        </div>
+      </div>
+
+      {/* ── JSON Import ── */}
+      <div style={{ marginBottom: '14px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+        <p style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '6px' }}>JSON Import</p>
+        <label className="admin-card-btn" style={{ fontSize: '0.68rem', cursor: 'pointer', display: 'inline-block' }}>
+          Choose JSON File
+          <input type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={handleImportJson} />
+        </label>
+        <details style={{ marginTop: '8px' }}>
+          <summary style={{ fontSize: '0.68rem', color: 'var(--ink-muted)', cursor: 'pointer' }}>Show sample JSON format</summary>
+          <pre style={{ fontSize: '0.65rem', background: 'var(--surface)', padding: '8px', borderRadius: 'var(--radius-sm)', overflow: 'auto', maxHeight: 200, marginTop: '6px', border: '1px solid var(--border-subtle)' }}>{sampleJson}</pre>
+        </details>
+      </div>
+
+      <button onClick={save} disabled={saving} className="btn-dark" style={{ padding: '7px 16px', fontSize: '0.78rem' }}>
+        <span>{saving ? 'Saving...' : 'Save Variants'}</span>
       </button>
     </div>
   );

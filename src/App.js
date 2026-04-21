@@ -19,6 +19,7 @@ import GroupBuyAdmin from './pages/GroupBuyAdmin';
 import Placeholder from './pages/Placeholder';
 import Contact from './pages/Contact';
 import ContactAdmin from './pages/ContactAdmin';
+import PaymentSuccess from './pages/PaymentSuccess';
 import './styles/globals.css';
 
 export default function App() {
@@ -55,6 +56,7 @@ export default function App() {
               <Route path="/community" element={<Placeholder />} />
               <Route path="/contact" element={<Contact />} />
               <Route path="/contact/admin" element={<ContactAdmin />} />
+              <Route path="/payment-success" element={<PaymentSuccess />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </ErrorBoundary>

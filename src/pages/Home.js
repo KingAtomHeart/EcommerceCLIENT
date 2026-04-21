@@ -4,6 +4,9 @@ import ProductCard from '../components/ProductCard';
 import GroupBuyCard from '../components/GroupBuyCard';
 import { apiFetch } from '../utils/api';
 
+// Paste your first hero Cloudinary URL here so it shows immediately on load
+const HERO_FALLBACK_IMAGE = '';
+
 const CATEGORIES = [
   { slug: 'keyboards', label: 'Keyboards' },
   { slug: 'keycaps', label: 'Keycaps' },
@@ -89,6 +92,7 @@ export default function Home() {
       <section className="hero" style={{ marginTop: 'var(--nav-h)' }}>
         <HeroCarousel
           images={homepage?.heroImages?.map(i => i.url) || []}
+          fallbackImage={HERO_FALLBACK_IMAGE}
           eyebrow={homepage?.heroEyebrow || 'Spring 2026 Collection'}
           title={homepage?.heroTitle || 'Craft your perfect *setup.*'}
           subtitle={homepage?.heroSubtitle || 'Precision-built mechanical keyboards and desk accessories for those who care about every detail — from switch feel to surface texture.'}
@@ -219,19 +223,20 @@ export default function Home() {
 
 
 /* ─── Hero Carousel ─── */
-function HeroCarousel({ images, eyebrow, title, subtitle, primaryCta, secondaryCta }) {
+function HeroCarousel({ images, fallbackImage, eyebrow, title, subtitle, primaryCta, secondaryCta }) {
   const [current, setCurrent] = useState(0);
   const [scrolled, setScrolled] = useState(false);
   const timerRef = useRef(null);
-  const hasImages = images.length > 0;
+  const displayImages = images.length > 0 ? images : (fallbackImage ? [fallbackImage] : []);
+  const hasImages = displayImages.length > 0;
 
   const startTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    if (images.length <= 1) return;
+    if (displayImages.length <= 1) return;
     timerRef.current = setInterval(() => {
-      setCurrent(prev => (prev + 1) % images.length);
+      setCurrent(prev => (prev + 1) % displayImages.length);
     }, 5000);
-  }, [images.length]);
+  }, [displayImages.length]);
 
   useEffect(() => {
     startTimer();
@@ -253,7 +258,7 @@ function HeroCarousel({ images, eyebrow, title, subtitle, primaryCta, secondaryC
     <>
       <div className="hero-bg">
         {hasImages ? (
-          images.map((src, i) => (
+          displayImages.map((src, i) => (
             <img
               key={i}
               src={src}
@@ -284,9 +289,9 @@ function HeroCarousel({ images, eyebrow, title, subtitle, primaryCta, secondaryC
         </div>
       </div>
 
-      {images.length > 1 && (
+      {displayImages.length > 1 && (
         <div className="hero-dots">
-          {images.map((_, i) => (
+          {displayImages.map((_, i) => (
             <button
               key={i}
               className={`hero-dot ${i === current ? 'active' : ''}`}

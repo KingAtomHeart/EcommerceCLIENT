@@ -5,6 +5,7 @@ import ProductCard from '../components/ProductCard';
 import { RichText } from '../components/AdminView';
 import { apiFetch } from '../utils/api';
 import { allowedValuesForTarget } from '../utils/availabilityRules';
+import { resolveImages, findVariant, allowedValuesFor } from '../utils/variants';
 import toast from 'react-hot-toast';
 
 const categoryLabel = (slug) => ({
@@ -28,10 +29,12 @@ export default function ProductView() {
   const [selectedOption, setSelectedOption] = useState(null);
   // Selected configs: { [configName]: optionValue }
   const [selectedConfigs, setSelectedConfigs] = useState({});
+  // Variant system: { [dimensionName]: value }
+  const [selectedAttrs, setSelectedAttrs] = useState({});
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true); setMainImg(0); setQuantity(1); setSelectedOption(null); setSelectedConfigs({});
+    setLoading(true); setMainImg(0); setQuantity(1); setSelectedOption(null); setSelectedConfigs({}); setSelectedAttrs({});
 
     const loadProduct = async () => {
       try {
@@ -61,6 +64,17 @@ export default function ProductView() {
           if (first) initial[c.name] = first.value;
         });
         setSelectedConfigs(initial);
+
+        // Auto-select first available value per variant dimension
+        if (data.useVariants && data.variantDimensions?.length > 0) {
+          const variantInitial = {};
+          for (const dim of data.variantDimensions) {
+            const allowed = allowedValuesFor(data, dim.name, variantInitial);
+            const first = [...allowed][0];
+            if (first) variantInitial[dim.name] = first;
+          }
+          setSelectedAttrs(variantInitial);
+        }
 
         try {
           const all = await apiFetch('/products/active');
@@ -100,9 +114,23 @@ export default function ProductView() {
   }, [selectedConfigs, product]);
 
 
-  // Build effective image list: option/config image prepended, gallery images follow
+
+  // Build effective image list
   const effectiveImages = useMemo(() => {
     if (!product) return [];
+
+    // Variant image resolution
+    if (product.useVariants) {
+      const variantImgs = resolveImages(product, selectedAttrs);
+      if (variantImgs.length > 0) {
+        const topUrl = variantImgs[0].url;
+        const gallery = product.images || [];
+        const withoutDupe = gallery.filter(img => img.url !== topUrl);
+        return [{ url: topUrl, altText: '', _id: 'vi-top' }, ...variantImgs.slice(1).map((vi, i) => ({ url: vi.url, altText: '', _id: `vi-${i}` })), ...withoutDupe];
+      }
+      return product.images || [];
+    }
+
     let overrideUrl = null;
     // 1. Config options (last config with image wins)
     for (const cfg of (product.configurations || [])) {
@@ -120,15 +148,34 @@ export default function ProductView() {
     }
     const gallery = product.images || [];
     if (!overrideUrl) return gallery;
-    // Deduplicate if override URL already in gallery
     const withoutDupe = gallery.filter(img => img.url !== overrideUrl);
     return [{ url: overrideUrl, altText: '', _id: 'override' }, ...withoutDupe];
-  }, [product, selectedConfigs, selectedOption, hasOptions]);
+  }, [product, selectedConfigs, selectedOption, hasOptions, selectedAttrs]);
 
   const displayedImage = effectiveImages[mainImg]?.url || effectiveImages[0]?.url;
 
   const addToCart = async () => {
     if (!user) { navigate('/login'); return; }
+
+    // Variant-based add to cart
+    if (product.useVariants) {
+      const variant = findVariant(product, selectedAttrs);
+      if (!variant) {
+        const allSelected = (product.variantDimensions || []).every(d => selectedAttrs[d.name]);
+        toast.error(allSelected ? 'This combination is not available.' : 'Please select all options.');
+        return;
+      }
+      if (variant.stock === 0 || variant.available === false) {
+        toast.error('This variant is out of stock.'); return;
+      }
+      setAddingToCart(true);
+      try {
+        await apiFetch('/cart/add-to-cart', { method: 'POST', body: JSON.stringify({ productId: product._id, quantity, variantId: variant._id }) });
+        toast.success('Added to cart!');
+      } catch (err) { toast.error(err.message || 'Failed to add to cart'); }
+      finally { setAddingToCart(false); }
+      return;
+    }
 
     // Validate option selection
     if (hasOptions && !selectedOption) {
@@ -165,7 +212,16 @@ export default function ProductView() {
   if (!product) return <div className="page-body loading-center"><p>Product not found.</p></div>;
 
   // Determine stock status: option stock + config stock + config availability rules
+  // Variant stock status
+  const currentVariant = product?.useVariants ? findVariant(product, selectedAttrs) : null;
+
   const computeStockStatus = () => {
+    // Variant path
+    if (product?.useVariants) {
+      if (!currentVariant) return { soldOut: true, max: 0 };
+      if (currentVariant.available === false || currentVariant.stock === 0) return { soldOut: true, max: 0 };
+      return { soldOut: false, max: currentVariant.stock >= 0 ? currentVariant.stock : 99 };
+    }
     let soldOut = false;
     let max = 99;
     let reason = ''; // DEBUG
@@ -308,8 +364,57 @@ export default function ProductView() {
               <RichText content={product.description} />
             </div>
 
+            {/* ── VARIANT DIMENSIONS ── */}
+            {product.useVariants && (product.variantDimensions || []).length > 0 && (
+              <div style={{ marginBottom: '24px' }}>
+                {product.variantDimensions.map((dim, dimIdx) => {
+                  // Priority cascade: dim N's availability depends only on dims 1..N-1.
+                  // The first dim always shows every in-stock value.
+                  const priorAttrs = {};
+                  for (let i = 0; i < dimIdx; i++) {
+                    const n = product.variantDimensions[i].name;
+                    if (selectedAttrs[n]) priorAttrs[n] = selectedAttrs[n];
+                  }
+                  const dimAllowed = allowedValuesFor(product, dim.name, priorAttrs);
+                  return (
+                    <div key={dim._id || dim.name} style={{ marginBottom: '16px' }}>
+                      <p style={{ fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '8px' }}>{dim.name}</p>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        {(dim.values || []).map((val, vi) => {
+                          const avail = dimAllowed.has(val);
+                          const isSelected = selectedAttrs[dim.name] === val;
+                          return (
+                            <button key={vi}
+                              className={`pill ${isSelected ? 'active' : ''}`}
+                              onClick={() => {
+                                // Set this dim; cascade-correct only LATER dims (never earlier).
+                                const next = { ...selectedAttrs, [dim.name]: val };
+                                for (let j = dimIdx + 1; j < product.variantDimensions.length; j++) {
+                                  const later = product.variantDimensions[j];
+                                  const allowed = allowedValuesFor(product, later.name, next);
+                                  if (!allowed.has(next[later.name])) {
+                                    const first = [...allowed][0];
+                                    if (first) next[later.name] = first;
+                                    else delete next[later.name];
+                                  }
+                                }
+                                setSelectedAttrs(next);
+                                setQuantity(1); setMainImg(0);
+                              }}
+                              style={!avail ? { textDecoration: 'line-through', opacity: 0.4 } : {}}>
+                              {val}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {/* ── OPTIONS (price-setting selectors) ── */}
-            {hasOptions && (
+            {!product.useVariants && hasOptions && (
               <div style={{ marginBottom: '24px' }}>
                 {product.options.map(grp => (
                   <div key={grp._id || grp.name} style={{ marginBottom: '20px' }}>
@@ -349,7 +454,7 @@ export default function ProductView() {
             )}
 
             {/* ── CONFIGS (add-on selectors) ── */}
-            {product.configurations?.length > 0 && (
+            {!product.useVariants && product.configurations?.length > 0 && (
               <div style={{ marginBottom: '24px' }}>
                 {product.configurations.map(cfg => {
                   // Apply availability rules: filter options based on other selected configs
