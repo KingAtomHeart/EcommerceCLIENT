@@ -225,6 +225,7 @@ export default function Home() {
 /* ─── Hero Carousel ─── */
 function HeroCarousel({ images, fallbackImage, eyebrow, title, subtitle, primaryCta, secondaryCta }) {
   const [current, setCurrent] = useState(0);
+  const [mounted, setMounted] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const timerRef = useRef(null);
   const displayImages = images.length > 0 ? images : (fallbackImage ? [fallbackImage] : []);
@@ -239,8 +240,10 @@ function HeroCarousel({ images, fallbackImage, eyebrow, title, subtitle, primary
   }, [displayImages.length]);
 
   useEffect(() => {
+    // Defer adding .active by a frame so the first slide's scale/opacity transition runs on mount.
+    const id = requestAnimationFrame(() => setMounted(true));
     startTimer();
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    return () => { cancelAnimationFrame(id); if (timerRef.current) clearInterval(timerRef.current); };
   }, [startTimer]);
 
   useEffect(() => {
@@ -264,7 +267,7 @@ function HeroCarousel({ images, fallbackImage, eyebrow, title, subtitle, primary
               src={src}
               alt={`Hero ${i + 1}`}
               loading={i === 0 ? 'eager' : 'lazy'}
-              className={`hero-slide ${i === current ? 'active' : ''}`}
+              className={`hero-slide ${mounted && i === current ? 'active' : ''}`}
             />
           ))
         ) : (

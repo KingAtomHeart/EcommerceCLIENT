@@ -65,13 +65,25 @@ export default function ProductView() {
         });
         setSelectedConfigs(initial);
 
-        // Auto-select first available value per variant dimension
+        // Initial auto-select: pick the single variant with the highest stock and use its attrs.
         if (data.useVariants && data.variantDimensions?.length > 0) {
+          const stockVal = v => (v.stock === -1 ? Infinity : (v.stock ?? 0));
+          const best = (data.variants || [])
+            .filter(v => v.available !== false && stockVal(v) > 0)
+            .sort((a, b) => stockVal(b) - stockVal(a))[0];
           const variantInitial = {};
-          for (const dim of data.variantDimensions) {
-            const allowed = allowedValuesFor(data, dim.name, variantInitial);
-            const first = [...allowed][0];
-            if (first) variantInitial[dim.name] = first;
+          if (best) {
+            for (const dim of data.variantDimensions) {
+              const bv = (best.attributes || {})[dim.name];
+              if (bv) variantInitial[dim.name] = bv;
+            }
+          } else {
+            // No in-stock variant; fall back to first allowed per cascade so UI still shows something.
+            for (const dim of data.variantDimensions) {
+              const allowed = allowedValuesFor(data, dim.name, variantInitial);
+              const first = [...allowed][0];
+              if (first) variantInitial[dim.name] = first;
+            }
           }
           setSelectedAttrs(variantInitial);
         }
@@ -387,15 +399,19 @@ export default function ProductView() {
                             <button key={vi}
                               className={`pill ${isSelected ? 'active' : ''}`}
                               onClick={() => {
-                                // Set this dim; cascade-correct only LATER dims (never earlier).
+                                // Set this dim; snap LATER dims to the highest-stock variant that
+                                // matches dims 1..dimIdx. Never touches earlier dims.
                                 const next = { ...selectedAttrs, [dim.name]: val };
-                                for (let j = dimIdx + 1; j < product.variantDimensions.length; j++) {
-                                  const later = product.variantDimensions[j];
-                                  const allowed = allowedValuesFor(product, later.name, next);
-                                  if (!allowed.has(next[later.name])) {
-                                    const first = [...allowed][0];
-                                    if (first) next[later.name] = first;
-                                    else delete next[later.name];
+                                const fixed = product.variantDimensions.slice(0, dimIdx + 1).map(d => d.name);
+                                const stockVal = v => (v.stock === -1 ? Infinity : (v.stock ?? 0));
+                                const best = (product.variants || [])
+                                  .filter(v => v.available !== false && stockVal(v) > 0 && fixed.every(n => (v.attributes || {})[n] === next[n]))
+                                  .sort((a, b) => stockVal(b) - stockVal(a))[0];
+                                if (best) {
+                                  for (let j = dimIdx + 1; j < product.variantDimensions.length; j++) {
+                                    const lname = product.variantDimensions[j].name;
+                                    const bv = (best.attributes || {})[lname];
+                                    if (bv) next[lname] = bv;
                                   }
                                 }
                                 setSelectedAttrs(next);
