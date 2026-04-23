@@ -414,6 +414,12 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
   overflow-x: auto; scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 4px;
 }
+.home-card-grid {
+  display: grid; grid-template-columns: repeat(4,1fr); gap: 20px;
+}
+@media (max-width: 1200px) { .home-card-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 768px)  { .home-card-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; } }
+@media (max-width: 480px)  { .home-card-grid { grid-template-columns: 1fr; } }
 .carousel-track::-webkit-scrollbar { display: none; }
 .carousel-nav { display: flex; gap: 10px; margin-top: 28px; justify-content: flex-end; }
 .carousel-arrow {

@@ -183,7 +183,7 @@ export default function Home() {
             </div>
             <Link to="/group-buys" className="section-link">View all →</Link>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '20px' }}>
+          <div className="home-card-grid">
             {activeGroupBuys.map(gb => <GroupBuyCard key={gb._id} gb={gb} />)}
           </div>
         </section>
@@ -201,7 +201,7 @@ export default function Home() {
             </div>
             <Link to="/group-buys" className="section-link">View all →</Link>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '20px' }}>
+          <div className="home-card-grid">
             {interestChecks.map(gb => <GroupBuyCard key={gb._id} gb={gb} />)}
           </div>
         </section>
