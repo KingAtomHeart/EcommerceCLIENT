@@ -47,17 +47,6 @@ export default function OrderHistory() {
 
   useEffect(() => { loadOrders(); }, [loadOrders]);
 
-  const handleCancel = async (orderId) => {
-    if (!window.confirm('Cancel this group buy order? This cannot be undone.')) return;
-    try {
-      await apiFetch(`/group-buys/orders/${orderId}/cancel`, { method: 'POST' });
-      toast.success('Order cancelled');
-      loadOrders();
-    } catch (err) {
-      toast.error(err.message || 'Failed to cancel order');
-    }
-  };
-
   if (!user) {
     return (
       <div className="page-body" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 'calc(100vh - var(--nav-h))' }}>
@@ -76,8 +65,6 @@ export default function OrderHistory() {
     : orders.filter(o => !o.isGroupBuy);
 
   const filterLabel = filter === 'gb' ? 'group buy' : filter === 'regular' ? 'regular' : null;
-
-  const cancellablePhases = ['interest-check', 'open', 'closing-soon'];
 
   return (
     <div className="page-body" style={{ padding: '56px var(--page-pad) 80px' }}>
@@ -246,11 +233,6 @@ export default function OrderHistory() {
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                   {order.isGroupBuy && order.orderCode && (
                     <span style={{ fontSize: '0.75rem', color: 'var(--ink-faint)', fontFamily: 'monospace' }}>{order.orderCode}</span>
-                  )}
-                  {order.isGroupBuy && order.status === 'Confirmed' && order.groupBuyId?._id && cancellablePhases.includes(order.groupBuyStatus) && (
-                    <button onClick={() => handleCancel(order._id)} className="admin-card-btn" style={{ fontSize: '0.72rem', color: '#c0392b', borderColor: '#c0392b' }}>
-                      Cancel Order
-                    </button>
                   )}
                 </div>
                 <span style={{ fontSize: '1.05rem', fontWeight: 600 }}>₱{order.totalPrice?.toLocaleString()}</span>
