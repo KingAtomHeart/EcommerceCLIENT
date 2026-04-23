@@ -782,7 +782,7 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
   transform: translateY(-1px);
   box-shadow: var(--shadow-sm);
 }
-[data-theme="dark"] .google-btn-wrap:hover .google-btn { background: #f2f2f0; border-color: #f2f2f0; }
+[data-theme="dark"] .google-btn-wrap:hover .google-btn { background: #e3e3dd; border-color: #e3e3dd; box-shadow: 0 4px 16px rgba(255, 255, 255, 0.12); }
 .google-btn-gsi {
   position: absolute; inset: 0;
   opacity: 0;
