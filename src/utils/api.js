@@ -17,13 +17,18 @@ export const apiFetch = async (endpoint, options = {}) => {
   }
 
   const res = await fetch(`${API}${endpoint}`, { ...options, headers });
-  const data = await res.json();
+
+  let data;
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    data = await res.json();
+  } else {
+    const text = await res.text();
+    if (!res.ok) throw new Error(`Request failed (${res.status})`);
+    try { data = JSON.parse(text); } catch { data = {}; }
+  }
 
   if (!res.ok) {
-    // FIX: Handle both flat string errors and nested error objects
-    // API controllers return { error: "string" }
-    // Global errorHandler was returning { error: { message: "..." } } (now fixed)
-    // This safely handles both formats as a fallback
     let errorMsg;
     if (typeof data.error === 'string') {
       errorMsg = data.error;

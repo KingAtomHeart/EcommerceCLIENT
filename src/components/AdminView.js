@@ -1453,25 +1453,29 @@ function StatsPanel({ orders, loading }) {
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '28px' }}>
-        <StatTile label="Net Revenue" value={`₱${netRevenue.toLocaleString()}`} sub={`${activeCount} active order${activeCount !== 1 ? 's' : ''}`} />
-        <StatTile label="Refunds" value={`₱${refundedAmount.toLocaleString()}`} sub={`${refunds.length} cancelled`} subColor={refunds.length > 0 ? '#8b2a31' : 'var(--ink-muted)'} />
-        <StatTile label="Total Orders" value={totalOrders.toLocaleString()} sub="Including cancelled" />
-        <StatTile label="Avg Order Value" value={`₱${Math.round(avgOrder).toLocaleString()}`} sub="Excludes refunds" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px', marginBottom: '20px' }}>
+        <StatTile accent label="Net Revenue" value={`₱${netRevenue.toLocaleString()}`} sub={`${activeCount} active order${activeCount !== 1 ? 's' : ''}`} />
         <StatTile
           label="This Month"
           value={`₱${thisMonthRev.toLocaleString()}`}
           sub={momPct == null ? `${thisMonth.length} order${thisMonth.length !== 1 ? 's' : ''}` : `${momPct >= 0 ? '↑' : '↓'} ${Math.abs(momPct).toFixed(0)}% vs last month`}
-          subColor={momPct == null ? 'var(--ink-muted)' : momPct >= 0 ? '#1f6b3a' : '#8b2a31'}
+          subColor={momPct == null ? 'var(--ink-muted)' : momPct >= 0 ? '#15803d' : '#b91c1c'}
         />
+        <StatTile label="Avg Order" value={`₱${Math.round(avgOrder).toLocaleString()}`} sub="Excludes refunds" />
+        <StatTile label="Total Orders" value={totalOrders.toLocaleString()} sub={`${activeCount} active`} />
+        <StatTile label="Refunds" value={`₱${refundedAmount.toLocaleString()}`} sub={`${refunds.length} cancelled`} subColor={refunds.length > 0 ? '#b91c1c' : 'var(--ink-muted)'} />
       </div>
 
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '22px', marginBottom: '18px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '14px', flexWrap: 'wrap', gap: 8 }}>
           <p style={{ fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Last 30 Days — Revenue</p>
-          <div style={{ display: 'flex', gap: 14, fontSize: '0.72rem', color: 'var(--ink-muted)' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, background: 'var(--ink)', borderRadius: 2 }} /> Revenue</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, background: '#c0392b', borderRadius: 2 }} /> Refunds</span>
+          <div style={{ display: 'flex', gap: 16, fontSize: '0.72rem', color: 'var(--ink-muted)' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <svg width="18" height="10" style={{ display: 'block' }}><line x1="0" y1="5" x2="18" y2="5" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" /></svg>Revenue
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <svg width="18" height="10" style={{ display: 'block' }}><line x1="0" y1="5" x2="18" y2="5" stroke="#ef4444" strokeWidth="2.5" strokeDasharray="4 3" strokeLinecap="round" /></svg>Refunds
+            </span>
           </div>
         </div>
         <RevenueChart series={series} />
@@ -1481,15 +1485,24 @@ function StatsPanel({ orders, loading }) {
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '22px' }}>
           <p style={{ fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '14px' }}>Orders by Status</p>
           {statusRows.length === 0 ? <p style={{ fontSize: '0.88rem', color: 'var(--ink-muted)' }}>No data yet.</p> : (
-            <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 22, alignItems: 'center', flexWrap: 'wrap' }}>
               <StatusDonut rows={statusRows} total={totalOrders} />
-              <div style={{ flex: 1, minWidth: 160, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 150, display: 'flex', flexDirection: 'column', gap: 11 }}>
                 {statusRows.map(([s, c]) => {
                   const pct = (c / totalOrders) * 100;
+                  const color = DONUT_COLORS[s] || '#94a3b8';
                   return (
-                    <div key={s} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                      <StatusBadge status={s} />
-                      <span style={{ fontSize: '0.85rem', fontWeight: 500, whiteSpace: 'nowrap' }}>{c} <span style={{ color: 'var(--ink-muted)', fontWeight: 400 }}>({pct.toFixed(0)}%)</span></span>
+                    <div key={s}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: 4 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                          {s}
+                        </span>
+                        <span style={{ fontWeight: 500 }}>{c} <span style={{ color: 'var(--ink-muted)', fontWeight: 400 }}>({pct.toFixed(0)}%)</span></span>
+                      </div>
+                      <div style={{ height: 4, borderRadius: 2, background: 'var(--border-subtle)' }}>
+                        <div style={{ height: '100%', borderRadius: 2, width: `${pct}%`, background: color, opacity: 0.7 }} />
+                      </div>
                     </div>
                   );
                 })}
@@ -1500,54 +1513,73 @@ function StatsPanel({ orders, loading }) {
 
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '22px' }}>
           <p style={{ fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '14px' }}>Top Products (excl. cancelled)</p>
-          {topProducts.length === 0 ? <p style={{ fontSize: '0.88rem', color: 'var(--ink-muted)' }}>No data yet.</p> : topProducts.map(([name, d], i) => (
-            <div key={name} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: i < topProducts.length - 1 ? '1px solid var(--border-subtle)' : 'none', fontSize: '0.86rem' }}>
-              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 10 }}>{name} <span style={{ color: 'var(--ink-muted)' }}>× {d.qty}</span></span>
-              <span style={{ fontWeight: 500 }}>₱{d.revenue.toLocaleString()}</span>
-            </div>
-          ))}
+          {topProducts.length === 0 ? <p style={{ fontSize: '0.88rem', color: 'var(--ink-muted)' }}>No data yet.</p> : (() => {
+            const maxRev = topProducts[0]?.[1].revenue || 1;
+            return topProducts.map(([name, d], i) => (
+              <div key={name} style={{ padding: '9px 0', borderBottom: i < topProducts.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 5 }}>
+                  <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--ink-faint)', minWidth: 16 }}>#{i + 1}</span>
+                  <span style={{ flex: 1, fontSize: '0.86rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {name} <span style={{ color: 'var(--ink-muted)', fontSize: '0.78rem' }}>× {d.qty}</span>
+                  </span>
+                  <span style={{ fontSize: '0.86rem', fontWeight: 600, whiteSpace: 'nowrap' }}>₱{d.revenue.toLocaleString()}</span>
+                </div>
+                <div style={{ height: 3, borderRadius: 2, background: 'var(--border-subtle)', marginLeft: 24 }}>
+                  <div style={{ height: '100%', borderRadius: 2, width: `${(d.revenue / maxRev) * 100}%`, background: 'var(--accent)', opacity: 0.6 }} />
+                </div>
+              </div>
+            ));
+          })()}
         </div>
       </div>
     </div>
   );
 }
 
-/* ─── Revenue bar chart (last 30 days) ─── */
+/* ─── Revenue line chart (last 30 days) ─── */
+const REV_COLOR = '#22c55e';
+const REF_COLOR = '#ef4444';
+
 function RevenueChart({ series }) {
   const [hover, setHover] = useState(null);
-  const W = 720, H = 200, PAD_L = 40, PAD_R = 14, PAD_T = 14, PAD_B = 26;
+  const W = 720, H = 220, PAD_L = 46, PAD_R = 16, PAD_T = 16, PAD_B = 28;
   const plotW = W - PAD_L - PAD_R;
   const plotH = H - PAD_T - PAD_B;
   const max = Math.max(1, ...series.map(s => Math.max(s.revenue, s.refunds)));
   const n = series.length;
   const stepX = n > 1 ? plotW / (n - 1) : plotW;
+
   const niceStep = (m) => {
     const pow = Math.pow(10, Math.floor(Math.log10(m)));
     const norm = m / pow;
-    const step = norm < 2 ? 0.5 : norm < 5 ? 1 : 2;
-    return step * pow;
+    return (norm < 2 ? 0.5 : norm < 5 ? 1 : 2) * pow;
   };
   const step = niceStep(max);
   const ticks = [];
-  for (let v = 0; v <= max; v += step) ticks.push(v);
-  if (ticks[ticks.length - 1] < max) ticks.push(ticks[ticks.length - 1] + step);
+  for (let v = 0; v <= max + step; v += step) ticks.push(v);
   const yMax = ticks[ticks.length - 1];
+
   const xAt = (i) => PAD_L + i * stepX;
   const yAt = (v) => PAD_T + plotH - (v / yMax) * plotH;
 
   const pathFor = (getVal) => series.map((s, i) => `${i === 0 ? 'M' : 'L'} ${xAt(i).toFixed(2)} ${yAt(getVal(s)).toFixed(2)}`).join(' ');
   const areaFor = (getVal) => {
     if (n === 0) return '';
-    const line = pathFor(getVal);
-    return `${line} L ${xAt(n - 1).toFixed(2)} ${yAt(0)} L ${xAt(0).toFixed(2)} ${yAt(0)} Z`;
+    return `${pathFor(getVal)} L ${xAt(n - 1).toFixed(2)} ${yAt(0)} L ${xAt(0).toFixed(2)} ${yAt(0)} Z`;
   };
   const revPath = pathFor(s => s.revenue);
   const refPath = pathFor(s => s.refunds);
   const revArea = areaFor(s => s.revenue);
+  const hasRefunds = series.some(s => s.refunds > 0);
+
+  // x-axis: first + every ~7 days + last
+  const xLabelIdxs = [0];
+  for (let i = 7; i < n - 4; i += 7) xLabelIdxs.push(i);
+  xLabelIdxs.push(n - 1);
 
   return (
     <div style={{ position: 'relative' }}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block', overflow: 'visible' }}
         onMouseLeave={() => setHover(null)}
         onMouseMove={e => {
           const rect = e.currentTarget.getBoundingClientRect();
@@ -1557,73 +1589,93 @@ function RevenueChart({ series }) {
         }}
       >
         <defs>
-          <linearGradient id="revFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="var(--ink)" stopOpacity="0.18" />
-            <stop offset="100%" stopColor="var(--ink)" stopOpacity="0" />
+          <linearGradient id="revGrad" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={REV_COLOR} stopOpacity="0.22" />
+            <stop offset="100%" stopColor={REV_COLOR} stopOpacity="0" />
           </linearGradient>
         </defs>
         {/* gridlines + y labels */}
         {ticks.map((v, i) => (
           <g key={i}>
             <line x1={PAD_L} x2={W - PAD_R} y1={yAt(v)} y2={yAt(v)} stroke="var(--border-subtle)" strokeWidth="1" />
-            <text x={PAD_L - 6} y={yAt(v) + 3} fontSize="9" textAnchor="end" fill="var(--ink-muted)">₱{v >= 1000 ? `${Math.round(v / 1000)}k` : v}</text>
+            <text x={PAD_L - 7} y={yAt(v) + 3.5} fontSize="9.5" textAnchor="end" fill="var(--ink-muted)">
+              ₱{v >= 1000 ? `${Math.round(v / 1000)}k` : v}
+            </text>
           </g>
         ))}
-        {/* revenue area fill */}
-        <path d={revArea} fill="url(#revFill)" />
+        {/* revenue area */}
+        <path d={revArea} fill="url(#revGrad)" />
         {/* revenue line */}
-        <path d={revPath} fill="none" stroke="var(--ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        {/* refunds line (dashed, only drawn if any refunds exist) */}
-        {series.some(s => s.refunds > 0) && (
-          <path d={refPath} fill="none" stroke="#c0392b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="4 4" />
+        <path d={revPath} fill="none" stroke={REV_COLOR} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        {/* refunds line */}
+        {hasRefunds && (
+          <path d={refPath} fill="none" stroke={REF_COLOR} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="5 4" />
         )}
-        {/* data points */}
+        {/* hover guide */}
+        {hover != null && (
+          <line x1={xAt(hover)} x2={xAt(hover)} y1={PAD_T} y2={PAD_T + plotH} stroke="var(--border)" strokeWidth="1" strokeDasharray="2 3" />
+        )}
+        {/* data dots */}
         {series.map((s, i) => (
           <g key={i}>
-            {s.revenue > 0 && <circle cx={xAt(i)} cy={yAt(s.revenue)} r={hover === i ? 4 : 2.5} fill="var(--ink)" />}
-            {s.refunds > 0 && <circle cx={xAt(i)} cy={yAt(s.refunds)} r={hover === i ? 4 : 2.5} fill="#c0392b" />}
+            {s.revenue > 0 && <circle cx={xAt(i)} cy={yAt(s.revenue)} r={hover === i ? 4.5 : 3} fill={REV_COLOR} />}
+            {s.refunds > 0 && <circle cx={xAt(i)} cy={yAt(s.refunds)} r={hover === i ? 4.5 : 3} fill={REF_COLOR} />}
           </g>
         ))}
-        {/* hover vertical guide */}
-        {hover != null && (
-          <line x1={xAt(hover)} x2={xAt(hover)} y1={PAD_T} y2={PAD_T + plotH} stroke="var(--ink-faint)" strokeWidth="1" strokeDasharray="2 3" />
-        )}
-        {/* x labels: first, middle, last */}
-        {[0, Math.floor(n / 2), n - 1].map(i => {
-          const s = series[i];
-          return (
-            <text key={i} x={xAt(i)} y={H - 6} fontSize="9" textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'} fill="var(--ink-muted)">
-              {s.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-            </text>
-          );
-        })}
+        {/* x labels */}
+        {xLabelIdxs.map(i => (
+          <text key={i} x={xAt(i)} y={H - 6} fontSize="9.5"
+            textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}
+            fill="var(--ink-muted)">
+            {series[i].date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </text>
+        ))}
       </svg>
-      {hover != null && (
-        <div style={{
-          position: 'absolute', pointerEvents: 'none',
-          left: `${(xAt(hover) / W) * 100}%`,
-          top: 0, transform: 'translate(-50%, -8px)',
-          background: 'var(--ink)', color: '#fff', fontSize: '0.72rem',
-          padding: '6px 10px', borderRadius: 6, whiteSpace: 'nowrap',
-        }}>
-          <div style={{ fontWeight: 600, marginBottom: 2 }}>{series[hover].date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
-          <div>Revenue: ₱{series[hover].revenue.toLocaleString()}</div>
-          {series[hover].refunds > 0 && <div style={{ color: '#f5b3b7' }}>Refunded: ₱{series[hover].refunds.toLocaleString()}</div>}
-          <div style={{ color: 'rgba(255,255,255,0.7)' }}>{series[hover].count} order{series[hover].count !== 1 ? 's' : ''}</div>
-        </div>
-      )}
+      {hover != null && (() => {
+        const pct = (xAt(hover) / W) * 100;
+        const clampedLeft = Math.min(Math.max(pct, 8), 92);
+        return (
+          <div style={{
+            position: 'absolute', pointerEvents: 'none',
+            left: `${clampedLeft}%`, top: 0,
+            transform: 'translate(-50%, -110%)',
+            background: 'var(--ink)', color: '#fff', fontSize: '0.72rem',
+            padding: '7px 12px', borderRadius: 7, whiteSpace: 'nowrap',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
+          }}>
+            <div style={{ fontWeight: 600, marginBottom: 3 }}>
+              {series[hover].date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            </div>
+            <div style={{ color: REV_COLOR }}>₱{series[hover].revenue.toLocaleString()}</div>
+            {series[hover].refunds > 0 && <div style={{ color: '#fca5a5' }}>Refunded: ₱{series[hover].refunds.toLocaleString()}</div>}
+            <div style={{ color: 'rgba(255,255,255,0.55)', marginTop: 2 }}>
+              {series[hover].count} order{series[hover].count !== 1 ? 's' : ''}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
 
 /* ─── Status donut ─── */
+const DONUT_COLORS = {
+  Pending: '#f59e0b',
+  Processing: '#3b82f6',
+  Shipped: '#8b5cf6',
+  Delivered: '#22c55e',
+  Cancelled: '#ef4444',
+};
+
 function StatusDonut({ rows, total }) {
-  const SIZE = 140, R = 60, CX = SIZE / 2, CY = SIZE / 2, STROKE = 22;
+  const SIZE = 160, R = 64, CX = SIZE / 2, CY = SIZE / 2, STROKE = 22;
   let start = -Math.PI / 2;
+  const GAP = 0.03; // small gap between segments
   const segs = rows.map(([s, c]) => {
     const frac = c / total;
-    const end = start + frac * 2 * Math.PI;
-    const seg = { s, c, start, end, color: statusStyle(s).color };
+    const span = Math.max(frac * 2 * Math.PI - GAP, 0.01);
+    const end = start + span + GAP;
+    const seg = { s, c, start: start + GAP / 2, end: start + GAP / 2 + span, color: DONUT_COLORS[s] || '#94a3b8' };
     start = end;
     return seg;
   });
@@ -1634,23 +1686,31 @@ function StatusDonut({ rows, total }) {
     return `M ${x0} ${y0} A ${R} ${R} 0 ${large} 1 ${x1} ${y1}`;
   };
   return (
-    <svg width={SIZE} height={SIZE}>
+    <svg width={SIZE} height={SIZE} style={{ flexShrink: 0 }}>
       <circle cx={CX} cy={CY} r={R} fill="none" stroke="var(--border-subtle)" strokeWidth={STROKE} />
       {segs.map((seg, i) => (
-        <path key={i} d={arc(seg.start, seg.end)} stroke={seg.color} strokeWidth={STROKE} fill="none" strokeLinecap="butt" />
+        <path key={i} d={arc(seg.start, seg.end)} stroke={seg.color} strokeWidth={STROKE} fill="none" strokeLinecap="round" />
       ))}
-      <text x={CX} y={CY - 2} textAnchor="middle" fontFamily="'DM Serif Display', serif" fontSize="22" fill="var(--ink)">{total}</text>
-      <text x={CX} y={CY + 14} textAnchor="middle" fontSize="9" fill="var(--ink-muted)" letterSpacing="0.1em">ORDERS</text>
+      <text x={CX} y={CY + 2} textAnchor="middle" fontFamily="'DM Serif Display', serif" fontSize="24" fill="var(--ink)">{total}</text>
+      <text x={CX} y={CY + 16} textAnchor="middle" fontSize="9" fill="var(--ink-muted)" letterSpacing="0.1em">ORDERS</text>
     </svg>
   );
 }
 
-function StatTile({ label, value, sub, subColor }) {
+function StatTile({ label, value, sub, subColor, accent }) {
   return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '20px 22px' }}>
-      <p style={{ fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 8 }}>{label}</p>
-      <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.7rem', letterSpacing: '-0.02em' }}>{value}</p>
-      {sub && <p style={{ fontSize: '0.78rem', color: subColor || 'var(--ink-muted)', marginTop: 4 }}>{sub}</p>}
+    <div style={{
+      background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+      padding: '14px 16px', borderLeft: accent ? '3px solid var(--accent)' : undefined, minWidth: 0,
+    }}>
+      <p style={{ fontSize: '0.63rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 5 }}>{label}</p>
+      <p style={{
+        fontFamily: "'DM Serif Display', serif",
+        fontSize: accent ? '1.55rem' : '1.35rem',
+        letterSpacing: '-0.02em', lineHeight: 1.15,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>{value}</p>
+      {sub && <p style={{ fontSize: '0.7rem', color: subColor || 'var(--ink-muted)', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</p>}
     </div>
   );
 }

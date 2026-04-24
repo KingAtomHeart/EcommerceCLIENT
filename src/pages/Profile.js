@@ -46,8 +46,12 @@ export default function Profile() {
         headers: { Authorization: `Bearer ${token}` },
         body: fd,
       });
+      if (!upRes.ok) {
+        let msg = 'Upload failed';
+        try { const e = await upRes.json(); msg = e.error || msg; } catch {}
+        throw new Error(msg);
+      }
       const upData = await upRes.json();
-      if (!upRes.ok) throw new Error(upData.error || 'Upload failed');
 
       const res = await apiFetch('/users/update-profile-picture', {
         method: 'PATCH', body: JSON.stringify({ url: upData.url }),
