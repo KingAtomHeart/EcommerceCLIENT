@@ -19,20 +19,49 @@ export default function AdminView({ products, fetchData, loading }) {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [viewMode, setViewMode] = useState('grid');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('newest');
+  const [ordersLoaded, setOrdersLoaded] = useState(false);
 
   const fetchOrders = () => {
     setOrdersLoading(true);
     apiFetch('/orders/all-orders')
       .then(data => setOrders(data.orders || []))
       .catch(() => setOrders([]))
-      .finally(() => setOrdersLoading(false));
+      .finally(() => { setOrdersLoading(false); setOrdersLoaded(true); });
   };
+  const updateOrderLocal = (id, patch) => setOrders(prev => prev.map(o => o._id === id ? { ...o, ...patch } : o));
 
-  useEffect(() => { if (tab === 'orders' || tab === 'stats') fetchOrders(); }, [tab]);
+  useEffect(() => {
+    if ((tab === 'orders' || tab === 'stats') && !ordersLoaded) fetchOrders();
+  }, [tab, ordersLoaded]);
 
   const activeCount = products.filter(p => p.isActive).length;
   const archivedCount = products.filter(p => !p.isActive).length;
-  const filtered = showArchived ? products : products.filter(p => p.isActive);
+
+  const filtered = (() => {
+    let list = showArchived ? products : products.filter(p => p.isActive);
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter(p =>
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.category || '').toLowerCase().includes(q) ||
+        (p.description || '').toLowerCase().includes(q)
+      );
+    }
+    const priceOf = p => p.price ?? p.basePrice ?? 0;
+    const sorted = [...list];
+    switch (sortBy) {
+      case 'oldest': sorted.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)); break;
+      case 'name-asc': sorted.sort((a, b) => (a.name || '').localeCompare(b.name || '')); break;
+      case 'name-desc': sorted.sort((a, b) => (b.name || '').localeCompare(a.name || '')); break;
+      case 'price-asc': sorted.sort((a, b) => priceOf(a) - priceOf(b)); break;
+      case 'price-desc': sorted.sort((a, b) => priceOf(b) - priceOf(a)); break;
+      case 'newest':
+      default: sorted.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    }
+    return sorted;
+  })();
 
   if (loading && tab === 'products') return <div className="loading-center"><div className="spinner" /></div>;
 
@@ -59,6 +88,24 @@ export default function AdminView({ products, fetchData, loading }) {
         </div>
         {tab === 'products' && (
           <div className="admin-actions">
+            <div className="admin-search">
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search products..."
+              />
+              {searchQuery && <button onClick={() => setSearchQuery('')} aria-label="Clear">×</button>}
+            </div>
+            <select className="admin-sort" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="name-asc">Name A–Z</option>
+              <option value="name-desc">Name Z–A</option>
+              <option value="price-desc">Price: high to low</option>
+              <option value="price-asc">Price: low to high</option>
+            </select>
             <button className="admin-toggle" onClick={() => setShowArchived(!showArchived)}>
               <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
                 {showArchived ? (<><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>) : (<><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></>)}
@@ -84,6 +131,7 @@ export default function AdminView({ products, fetchData, loading }) {
         <>
           <p style={{ fontSize: '0.82rem', color: 'var(--ink-faint)', marginBottom: '20px' }}>
             Showing {filtered.length} of {products.length} product{products.length !== 1 ? 's' : ''}
+            {searchQuery && ` matching "${searchQuery}"`}
             {!showArchived && archivedCount > 0 && ` (${archivedCount} archived hidden)`}
           </p>
           {viewMode === 'grid' ? (
@@ -97,7 +145,7 @@ export default function AdminView({ products, fetchData, loading }) {
         </>
       )}
 
-      {tab === 'orders' && <OrdersPanel orders={orders} loading={ordersLoading} fetchOrders={fetchOrders} />}
+      {tab === 'orders' && <OrdersPanel orders={orders} loading={ordersLoading} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />}
 
       {tab === 'stats' && <StatsPanel orders={orders} loading={ordersLoading} />}
 
@@ -116,6 +164,14 @@ export default function AdminView({ products, fetchData, loading }) {
         .admin-actions { display: flex; align-items: center; gap: 8px; padding-bottom: 12px; flex-wrap: wrap; }
         .admin-toggle { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--surface); font-family: 'DM Sans', sans-serif; font-size: 0.78rem; color: var(--ink-muted); cursor: pointer; transition: all var(--transition); }
         .admin-toggle:hover { border-color: var(--ink-muted); color: var(--ink); }
+        .admin-search { display: flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--surface); color: var(--ink-muted); transition: all var(--transition); min-width: 220px; }
+        .admin-search:focus-within { border-color: var(--ink-muted); color: var(--ink); }
+        .admin-search input { flex: 1; border: none; outline: none; background: none; font-family: 'DM Sans', sans-serif; font-size: 0.82rem; color: var(--ink); min-width: 0; }
+        .admin-search input::placeholder { color: var(--ink-faint); }
+        .admin-search button { background: none; border: none; cursor: pointer; color: var(--ink-faint); font-size: 1rem; line-height: 1; padding: 0 2px; }
+        .admin-search button:hover { color: var(--ink); }
+        .admin-sort { padding: 8px 14px; border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--surface); font-family: 'DM Sans', sans-serif; font-size: 0.78rem; color: var(--ink-muted); cursor: pointer; transition: all var(--transition); }
+        .admin-sort:hover { border-color: var(--ink-muted); color: var(--ink); }
         .admin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
         .admin-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: box-shadow var(--transition); }
         .admin-card:hover { box-shadow: var(--shadow-md); }
@@ -1266,7 +1322,7 @@ function TableRow({ product, fetchData }) {
 /* ═══════════════════════════════════════════════
    ORDERS PANEL
 ═══════════════════════════════════════════════ */
-function OrdersPanel({ orders, loading, fetchOrders }) {
+function OrdersPanel({ orders, loading, fetchOrders, updateOrderLocal }) {
   const [view, setView] = useState('list');
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}><div className="spinner" /></div>;
   return (
@@ -1285,17 +1341,17 @@ function OrdersPanel({ orders, loading, fetchOrders }) {
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--ink-muted)' }}>No orders yet.</div>
       ) : view === 'list' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          {orders.map(order => <OrderRow key={order._id} order={order} fetchOrders={fetchOrders} />)}
+          {orders.map(order => <OrderRow key={order._id} order={order} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />)}
         </div>
       ) : (
-        <OrdersCalendar orders={orders} fetchOrders={fetchOrders} />
+        <OrdersCalendar orders={orders} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />
       )}
     </div>
   );
 }
 
 /* ─── ORDERS CALENDAR ─── */
-function OrdersCalendar({ orders, fetchOrders }) {
+function OrdersCalendar({ orders, fetchOrders, updateOrderLocal }) {
   const [cursor, setCursor] = useState(() => { const d = new Date(); d.setDate(1); return d; });
   const [selectedKey, setSelectedKey] = useState(() => toKey(new Date()));
 
@@ -1380,7 +1436,7 @@ function OrdersCalendar({ orders, fetchOrders }) {
           <p style={{ color: 'var(--ink-muted)', fontSize: '0.88rem' }}>No orders on this day.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {selectedOrders.map(o => <OrderRow key={o._id} order={o} fetchOrders={fetchOrders} />)}
+            {selectedOrders.map(o => <OrderRow key={o._id} order={o} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />)}
           </div>
         )}
       </div>
@@ -1715,14 +1771,21 @@ function StatTile({ label, value, sub, subColor, accent }) {
   );
 }
 
-function OrderRow({ order, fetchOrders }) {
+function OrderRow({ order, fetchOrders, updateOrderLocal }) {
   const [expanded, setExpanded] = useState(false);
   const [updating, setUpdating] = useState(false);
   const statuses = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
   const updateStatus = async (newStatus) => {
+    const prev = order.status;
     setUpdating(true);
-    try { await apiFetch(`/orders/${order._id}/status`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) }); toast.success(`Status updated to ${newStatus}`); fetchOrders(); }
-    catch (err) { toast.error(err.message); } finally { setUpdating(false); }
+    if (updateOrderLocal) updateOrderLocal(order._id, { status: newStatus });
+    try { await apiFetch(`/orders/${order._id}/status`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) }); toast.success(`Status updated to ${newStatus}`); }
+    catch (err) {
+      if (updateOrderLocal) updateOrderLocal(order._id, { status: prev });
+      else fetchOrders?.();
+      toast.error(err.message);
+    }
+    finally { setUpdating(false); }
   };
   const customer = order.userId;
   const name = typeof customer === 'object' ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim() : 'Unknown';

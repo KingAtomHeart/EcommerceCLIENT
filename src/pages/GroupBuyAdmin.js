@@ -23,14 +23,41 @@ export default function GroupBuyAdmin() {
   const [showCreate, setShowCreate] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [expandedPanel, setExpandedPanel] = useState(null);
-  const [showArchived, setShowArchived] = useState(true);
+  const [showArchived, setShowArchived] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('newest');
 
   if (!user?.isAdmin) return <Navigate to="/products" />;
 
   const fetchGbs = () => { setLoading(true); apiFetch('/group-buys/all').then(d => setGbs(Array.isArray(d) ? d : [])).catch(() => setGbs([])).finally(() => setLoading(false)); };
   useEffect(() => { fetchGbs(); }, []);
 
-  const filtered = showArchived ? gbs : gbs.filter(g => g.isActive);
+  const updateGbLocal = (id, patch) => setGbs(prev => prev.map(g => g._id === id ? { ...g, ...patch } : g));
+
+  const filtered = (() => {
+    let list = showArchived ? gbs : gbs.filter(g => g.isActive);
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter(g =>
+        (g.name || '').toLowerCase().includes(q) ||
+        (g.category || '').toLowerCase().includes(q) ||
+        (g.description || '').toLowerCase().includes(q)
+      );
+    }
+    const sorted = [...list];
+    switch (sortBy) {
+      case 'oldest': sorted.sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)); break;
+      case 'name-asc': sorted.sort((a, b) => (a.name || '').localeCompare(b.name || '')); break;
+      case 'name-desc': sorted.sort((a, b) => (b.name || '').localeCompare(a.name || '')); break;
+      case 'orders-desc': sorted.sort((a, b) => (b.orderCount || 0) - (a.orderCount || 0)); break;
+      case 'price-asc': sorted.sort((a, b) => (a.basePrice || 0) - (b.basePrice || 0)); break;
+      case 'price-desc': sorted.sort((a, b) => (b.basePrice || 0) - (a.basePrice || 0)); break;
+      case 'status': sorted.sort((a, b) => (a.status || '').localeCompare(b.status || '')); break;
+      case 'newest':
+      default: sorted.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    }
+    return sorted;
+  })();
 
   return (
     <div className="page-body" style={{ padding: '56px var(--page-pad) 80px' }}>
@@ -39,7 +66,28 @@ export default function GroupBuyAdmin() {
           <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.4rem', letterSpacing: '-0.025em', marginBottom: '8px' }}>Group Buys</h1>
           <p style={{ color: 'var(--ink-muted)', fontSize: '0.9rem' }}>Manage group buys, interest checks, and orders.</p>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--ink-muted)', minWidth: 220 }}>
+            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search group buys..."
+              style={{ flex: 1, border: 'none', outline: 'none', background: 'none', fontFamily: "'DM Sans', sans-serif", fontSize: '0.82rem', color: 'var(--ink)', minWidth: 0 }}
+            />
+            {searchQuery && <button onClick={() => setSearchQuery('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-faint)', fontSize: '1rem', lineHeight: 1, padding: '0 2px' }}>×</button>}
+          </div>
+          <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: '8px 14px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: 'var(--surface)', fontFamily: "'DM Sans', sans-serif", fontSize: '0.78rem', color: 'var(--ink-muted)', cursor: 'pointer' }}>
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="name-asc">Name A–Z</option>
+            <option value="name-desc">Name Z–A</option>
+            <option value="orders-desc">Most orders</option>
+            <option value="price-desc">Price: high to low</option>
+            <option value="price-asc">Price: low to high</option>
+            <option value="status">By status</option>
+          </select>
           <Pill onClick={() => setShowArchived(!showArchived)}>{showArchived ? 'Hide' : 'Show'} Archived</Pill>
           <button className="btn-dark" onClick={() => setShowCreate(true)} style={{ padding: '10px 24px' }}><span>+ New Group Buy</span></button>
         </div>
@@ -49,12 +97,13 @@ export default function GroupBuyAdmin() {
 
       {loading ? <div className="loading-center"><div className="spinner" /></div> : filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--ink-muted)', background: 'var(--surface)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-          No group buys{!showArchived ? ' (try showing archived)' : ''}.
+          {searchQuery ? `No group buys matching "${searchQuery}".` : `No group buys${!showArchived ? ' (try showing archived)' : ''}.`}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {filtered.map(gb => (
             <GBCard key={gb._id} gb={gb} fetchGbs={fetchGbs}
+              updateGbLocal={updateGbLocal}
               isExpanded={expandedId === gb._id} panel={expandedId === gb._id ? expandedPanel : null}
               onTogglePanel={(p) => {
                 if (expandedId === gb._id && expandedPanel === p) { setExpandedId(null); setExpandedPanel(null); }
@@ -72,11 +121,21 @@ function Pill({ children, onClick, active }) {
   return <button onClick={onClick} style={{ padding: '8px 16px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: active ? 'var(--accent)' : 'none', color: active ? '#fff' : 'var(--ink-muted)', cursor: 'pointer', fontSize: '0.78rem', fontFamily: "'DM Sans', sans-serif", fontWeight: 500, transition: 'var(--transition)' }}>{children}</button>;
 }
 
-function GBCard({ gb, fetchGbs, isExpanded, panel, onTogglePanel }) {
+function GBCard({ gb, fetchGbs, updateGbLocal, isExpanded, panel, onTogglePanel }) {
   const [editing, setEditing] = useState(false);
-  const updateStatus = async (s) => { try { await apiFetch(`/group-buys/${gb._id}/status`, { method: 'PATCH', body: JSON.stringify({ status: s }) }); toast.success(`Status → ${SL[s]}`); fetchGbs(); } catch (err) { toast.error(err.message); } };
-  const toggleActive = async () => { const action = gb.isActive ? 'archive' : 'activate'; try { await apiFetch(`/group-buys/${gb._id}/${action}`, { method: 'PATCH' }); toast.success(gb.isActive ? 'Archived' : 'Activated'); fetchGbs(); } catch (err) { toast.error(err.message); } };
-  const deleteGB = async () => { if (!window.confirm(`Delete "${gb.name}"?`)) return; try { await apiFetch(`/group-buys/${gb._id}`, { method: 'DELETE' }); toast.success('Deleted'); fetchGbs(); } catch (err) { toast.error(err.message); } };
+  const updateStatus = async (s) => {
+    const prev = gb.status;
+    updateGbLocal(gb._id, { status: s });
+    try { await apiFetch(`/group-buys/${gb._id}/status`, { method: 'PATCH', body: JSON.stringify({ status: s }) }); toast.success(`Status → ${SL[s]}`); }
+    catch (err) { updateGbLocal(gb._id, { status: prev }); toast.error(err.message); }
+  };
+  const toggleActive = async () => {
+    const action = gb.isActive ? 'archive' : 'activate';
+    const prev = gb.isActive;
+    updateGbLocal(gb._id, { isActive: !prev });
+    try { await apiFetch(`/group-buys/${gb._id}/${action}`, { method: 'PATCH' }); toast.success(prev ? 'Archived' : 'Activated'); }
+    catch (err) { updateGbLocal(gb._id, { isActive: prev }); toast.error(err.message); }
+  };
   const exportCSV = async (type) => {
     try {
       const token = localStorage.getItem('token');
@@ -126,14 +185,13 @@ function GBCard({ gb, fetchGbs, isExpanded, panel, onTogglePanel }) {
           <Pill onClick={() => onTogglePanel('orders')} active={panel === 'orders'}>Orders ({gb.orderCount})</Pill>
           <Pill onClick={() => exportCSV('orders')}>CSV</Pill>
           <Pill onClick={toggleActive}>{gb.isActive ? 'Archive' : 'Activate'}</Pill>
-          {gb.orderCount === 0 && <Pill onClick={deleteGB}>Delete</Pill>}
         </div>
       </div>
       {panel === 'images' && <ImagePanel gbId={gb._id} images={gb.images || []} fetchGbs={fetchGbs} />}
       {panel === 'options' && <GBOptionsManager gb={gb} fetchGbs={fetchGbs} />}
       {panel === 'configs' && <GBConfigManager gb={gb} fetchGbs={fetchGbs} />}
       {panel === 'interest' && <InterestPanel gb={gb} exportCSV={() => exportCSV('interest')} />}
-      {panel === 'orders' && <OrdersPanel groupBuyId={gb._id} configs={gb.configurations || []} />}
+      {panel === 'orders' && <OrdersPanel groupBuyId={gb._id} />}
     </div>
   );
 }
@@ -590,42 +648,166 @@ function InterestPanel({ gb, exportCSV }) {
 /* ═══════════════════════════════════════════════
    ORDERS PANEL
 ═══════════════════════════════════════════════ */
-function OrdersPanel({ groupBuyId, configs }) {
+function OrdersPanel({ groupBuyId }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => { apiFetch(`/group-buys/${groupBuyId}/orders`).then(d => setOrders(d.orders || [])).catch(() => setOrders([])).finally(() => setLoading(false)); }, [groupBuyId]);
-  const update = async (id, s) => { try { await apiFetch(`/group-buys/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status: s }) }); toast.success('Updated'); const d = await apiFetch(`/group-buys/${groupBuyId}/orders`); setOrders(d.orders || []); } catch (err) { toast.error(err.message); } };
-  const statuses = ['Confirmed', 'In Production', 'Shipped', 'Delivered', 'Cancelled'];
-  const cn = configs.map(c => c.name);
+  const updateOrderLocal = (id, patch) => setOrders(prev => prev.map(o => o._id === id ? { ...o, ...patch } : o));
   if (loading) return <div style={{ padding: '24px', textAlign: 'center' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>;
   if (!orders.length) return <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border)', color: 'var(--ink-muted)', fontSize: '0.82rem' }}>No orders.</div>;
   return (
-    <div style={{ borderTop: '1px solid var(--border)', overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-        <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
-          {['Code', 'Customer', 'Email', 'Option', ...cn, 'Qty', 'Total', 'Status'].map(h => <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', whiteSpace: 'nowrap' }}>{h}</th>)}
-        </tr></thead>
-        <tbody>{orders.map(o => {
-          const u = o.userId; const nm = typeof u === 'object' ? `${u.firstName} ${u.lastName}` : '—';
-          return (
-            <tr key={o._id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-              <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontSize: '0.72rem', fontWeight: 600 }}>{o.orderCode}</td>
-              <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>{nm}</td>
-              <td style={{ padding: '8px 10px', color: 'var(--ink-muted)' }}>{typeof u === 'object' ? u.email : '—'}</td>
-              <td style={{ padding: '8px 10px' }}>{o.selectedOption?.value ? `${o.selectedOption.groupName}: ${o.selectedOption.value}` : '—'}</td>
-              {cn.map(c => <td key={c} style={{ padding: '8px 10px' }}>{o.configurations?.find(x => x.name === c)?.selected || '—'}</td>)}
-              <td style={{ padding: '8px 10px', textAlign: 'center' }}>{o.quantity}</td>
-              <td style={{ padding: '8px 10px', fontWeight: 600 }}>₱{o.totalPrice?.toLocaleString()}</td>
-              <td style={{ padding: '8px 10px' }}>
-                <select value={o.status} onChange={e => update(o._id, e.target.value)}
-                  className={`status-select status-select-sm status-${statusPaletteKey(o.status)}`}>
-                  {statuses.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </td>
-            </tr>
-          );
-        })}</tbody>
-      </table>
+    <div style={{ borderTop: '1px solid var(--border)', padding: '16px 20px', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {orders.map(o => <GBOrderRow key={o._id} order={o} updateOrderLocal={updateOrderLocal} />)}
+    </div>
+  );
+}
+
+function GBOrderRow({ order, updateOrderLocal }) {
+  const [expanded, setExpanded] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const statuses = ['Confirmed', 'In Production', 'Shipped', 'Delivered', 'Cancelled'];
+  const updateStatus = async (newStatus) => {
+    const prev = order.status;
+    setUpdating(true);
+    updateOrderLocal(order._id, { status: newStatus });
+    try { await apiFetch(`/group-buys/orders/${order._id}/status`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) }); toast.success(`Status updated to ${newStatus}`); }
+    catch (err) { updateOrderLocal(order._id, { status: prev }); toast.error(err.message); }
+    finally { setUpdating(false); }
+  };
+
+  const u = order.userId;
+  const name = typeof u === 'object' ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '—';
+  const email = typeof u === 'object' ? u.email : '';
+  const phone = typeof u === 'object' ? u.mobileNo : '';
+  const ship = order.shippingAddress || {};
+  const kits = order.kits || [];
+  const configs = order.configurations || [];
+
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+      <button type="button" onClick={() => setExpanded(e => !e)}
+        style={{
+          width: '100%', display: 'grid', gridTemplateColumns: 'auto 1fr 1fr 1fr auto auto',
+          gap: '20px', alignItems: 'center', padding: '14px 20px', background: 'transparent',
+          border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: 'var(--ink)',
+        }}
+        className="gb-order-header"
+      >
+        <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
+          style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', color: 'var(--ink-muted)' }}>
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+        <div>
+          <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Order</p>
+          <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.9rem', marginTop: 2 }}>{order.orderCode}</p>
+        </div>
+        <div>
+          <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Customer</p>
+          <p style={{ fontSize: '0.86rem', fontWeight: 500, marginTop: 2 }}>{name || '—'}</p>
+        </div>
+        <div>
+          <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Date</p>
+          <p style={{ fontSize: '0.86rem', marginTop: 2 }}>{new Date(order.createdAt).toLocaleDateString()}</p>
+        </div>
+        <StatusBadge status={order.status} />
+        <span style={{ fontWeight: 600, fontSize: '0.92rem', whiteSpace: 'nowrap' }}>₱{order.totalPrice?.toLocaleString()}</span>
+      </button>
+
+      {expanded && (
+        <div style={{ borderTop: '1px solid var(--border-subtle)', padding: '18px 22px', background: 'var(--bg-secondary)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+            <DetailItem label="Email" value={email || '—'} />
+            <DetailItem label="Phone" value={phone || ship.phone || '—'} />
+            <DetailItem label="Order ID" value={order._id} mono />
+            <DetailItem label="Placed" value={new Date(order.createdAt).toLocaleString()} />
+            <DetailItem label="Quantity" value={order.quantity ?? 1} />
+            {order.selectedOption?.value && (
+              <DetailItem label={order.selectedOption.groupName || 'Option'} value={`${order.selectedOption.value}${order.selectedOption.price ? ` — ₱${order.selectedOption.price.toLocaleString()}` : ''}`} />
+            )}
+          </div>
+
+          {configs.length > 0 && (
+            <div style={{ marginBottom: '16px' }}>
+              <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 8 }}>Configurations</p>
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '10px 14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px 16px' }}>
+                {configs.map((c, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
+                    <span style={{ color: 'var(--ink-muted)' }}>{c.name}</span>
+                    <span style={{ fontWeight: 500 }}>{c.selected}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {kits.length > 0 && (
+            <div style={{ marginBottom: '16px' }}>
+              <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 8 }}>Kits</p>
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '10px 14px' }}>
+                {kits.map((k, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '0.84rem', borderBottom: i < kits.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
+                    <span>{k.name} <span style={{ color: 'var(--ink-muted)' }}>× {k.quantity}</span></span>
+                    <span style={{ fontWeight: 500 }}>₱{((k.price || 0) * (k.quantity || 1)).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ marginBottom: '16px' }}>
+            <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 8 }}>Shipping Address</p>
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '14px 16px' }}>
+              {ship.fullName || ship.street || ship.city ? (
+                <>
+                  <p style={{ fontSize: '0.88rem', fontWeight: 500 }}>{ship.fullName || '—'}</p>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--ink-muted)' }}>{ship.phone || '—'}</p>
+                  <p style={{ fontSize: '0.84rem', marginTop: 6, lineHeight: 1.5 }}>
+                    {ship.street || '—'}<br />
+                    {[ship.city, ship.province, ship.zipCode].filter(Boolean).join(', ') || '—'}
+                  </p>
+                </>
+              ) : (
+                <p style={{ fontSize: '0.84rem', color: 'var(--ink-muted)', fontStyle: 'italic' }}>No address recorded</p>
+              )}
+            </div>
+          </div>
+
+          {order.notes && (
+            <div style={{ marginBottom: '16px' }}>
+              <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 8 }}>Notes</p>
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '10px 14px', fontSize: '0.85rem', color: 'var(--ink-muted)', whiteSpace: 'pre-wrap' }}>{order.notes}</div>
+            </div>
+          )}
+
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px 16px', fontSize: '0.88rem', display: 'flex', justifyContent: 'space-between', fontWeight: 600, marginBottom: '16px' }}>
+            <span>Total</span>
+            <span>₱{order.totalPrice?.toLocaleString()}</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>Update status:</span>
+            <select value={order.status} onChange={e => updateStatus(e.target.value)} disabled={updating}
+              className={`status-select status-${statusPaletteKey(order.status)}`}>
+              {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
+      <style>{`
+        .gb-order-header:hover { background: var(--bg-secondary) !important; }
+        @media (max-width: 820px) {
+          .gb-order-header { grid-template-columns: auto 1fr !important; row-gap: 8px !important; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function DetailItem({ label, value, mono }) {
+  return (
+    <div>
+      <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 2 }}>{label}</p>
+      <p style={{ fontSize: '0.84rem', fontFamily: mono ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>{value || '—'}</p>
     </div>
   );
 }
