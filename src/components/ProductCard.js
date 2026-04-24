@@ -7,20 +7,67 @@ const categoryLabel = (slug) => ({
   Uncategorized: 'Product'
 }[slug] || slug || 'Product');
 
+// Stock summary that understands variants, options, and the `-1 = unlimited` convention.
+// Returns { outOfStock, trackedStockLeft } where trackedStockLeft is null when untracked/unlimited.
+export function computeStockSummary({ useVariants, variants, options, stocks }) {
+  // Variant products: sold out iff no usable variant exists.
+  if (useVariants) {
+    const list = variants || [];
+    if (list.length === 0) return { outOfStock: true, trackedStockLeft: 0 };
+    let hasUsable = false;
+    let total = 0;
+    let anyUnlimited = false;
+    for (const v of list) {
+      if (v.available === false) continue;
+      if (v.stock === 0) continue;
+      hasUsable = true;
+      if (v.stock === -1 || v.stock == null) anyUnlimited = true;
+      else total += v.stock;
+    }
+    if (!hasUsable) return { outOfStock: true, trackedStockLeft: 0 };
+    return { outOfStock: false, trackedStockLeft: anyUnlimited ? null : total };
+  }
+  // Option-based products: sold out iff every value is unavailable/empty.
+  if (options && options.length > 0) {
+    let hasUsable = false;
+    let total = 0;
+    let anyUnlimited = false;
+    for (const grp of options) {
+      for (const v of (grp.values || [])) {
+        if (v.available === false) continue;
+        const s = v.stocks;
+        if (s === 0) continue;
+        hasUsable = true;
+        if (s === -1 || s == null || s === undefined) anyUnlimited = true;
+        else total += s;
+      }
+    }
+    if (!hasUsable) return { outOfStock: true, trackedStockLeft: 0 };
+    return { outOfStock: false, trackedStockLeft: anyUnlimited ? null : total };
+  }
+  // Plain products: -1 or missing means untracked/unlimited, not sold out.
+  if (stocks === undefined || stocks === null || stocks === -1) {
+    return { outOfStock: false, trackedStockLeft: null };
+  }
+  if (stocks <= 0) return { outOfStock: true, trackedStockLeft: 0 };
+  return { outOfStock: false, trackedStockLeft: stocks };
+}
+
 export default function ProductCard({ product }) {
-  const { _id, name, description, price, images, category, isActive, stocks } = product;
+  const { _id, name, description, price, images, category, isActive, stocks, useVariants, variants, options } = product;
   const imgUrl = cloudinaryOptimize(images?.[0]?.url, 600) || null;
   const secondImg = cloudinaryOptimize(images?.[1]?.url, 600) || null;
-  const hasStockTracking = stocks !== undefined && stocks !== null;
-  const outOfStock = hasStockTracking && stocks <= 0;
+
+  const { outOfStock, trackedStockLeft } = computeStockSummary({ useVariants, variants, options, stocks });
+  const showLowStock = trackedStockLeft !== null && trackedStockLeft > 0 && trackedStockLeft <= 5;
 
   return (
     <Link to={`/products/${_id}`} className="product-card">
       <div className="card-img">
         {outOfStock && <span className="card-badge out">Sold Out</span>}
         {!outOfStock && !isActive && <span className="card-badge out">Unavailable</span>}
-        {!outOfStock && hasStockTracking && stocks > 0 && stocks <= 5 && (
-          <span className="card-badge low-stock">Only {stocks} left</span>
+        {!outOfStock && showLowStock && (
+          <span className="card-badge low-stock">Only {trackedStockLeft} left</span>
         )}
         {imgUrl ? (
           <>

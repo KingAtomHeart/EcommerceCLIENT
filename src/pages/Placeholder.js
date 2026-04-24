@@ -28,7 +28,7 @@ export default function Placeholder() {
           We're working on something special for this space. Check back soon — we promise it'll be worth the wait.
         </p>
         <Link to="/products" className="btn-dark">
-          <span>Browse the Shop →</span>
+          <span>Browse the Shop</span>
         </Link>
       </div>
     </div>

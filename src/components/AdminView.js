@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../utils/api';
+import { StatusBadge, statusStyle } from '../utils/statusColors';
+import { useTheme } from '../context/ThemeContext';
 import toast from 'react-hot-toast';
 import AdminHomepageEditor from './AdminHomepageEditor';
 
@@ -15,7 +17,7 @@ export default function AdminView({ products, fetchData, loading }) {
   const [tab, setTab] = useState('products');
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
-  const [showArchived, setShowArchived] = useState(true);
+  const [showArchived, setShowArchived] = useState(false);
   const [viewMode, setViewMode] = useState('grid');
 
   const fetchOrders = () => {
@@ -26,7 +28,7 @@ export default function AdminView({ products, fetchData, loading }) {
       .finally(() => setOrdersLoading(false));
   };
 
-  useEffect(() => { if (tab === 'orders') fetchOrders(); }, [tab]);
+  useEffect(() => { if (tab === 'orders' || tab === 'stats') fetchOrders(); }, [tab]);
 
   const activeCount = products.filter(p => p.isActive).length;
   const archivedCount = products.filter(p => !p.isActive).length;
@@ -52,6 +54,7 @@ export default function AdminView({ products, fetchData, loading }) {
         <div className="admin-tabs">
           <button className={`admin-tab ${tab === 'products' ? 'active' : ''}`} onClick={() => setTab('products')}>Products</button>
           <button className={`admin-tab ${tab === 'orders' ? 'active' : ''}`} onClick={() => setTab('orders')}>Orders</button>
+          <button className={`admin-tab ${tab === 'stats' ? 'active' : ''}`} onClick={() => setTab('stats')}>Stats</button>
           <button className={`admin-tab ${tab === 'homepage' ? 'active' : ''}`} onClick={() => setTab('homepage')}>Homepage</button>
         </div>
         {tab === 'products' && (
@@ -95,6 +98,8 @@ export default function AdminView({ products, fetchData, loading }) {
       )}
 
       {tab === 'orders' && <OrdersPanel orders={orders} loading={ordersLoading} fetchOrders={fetchOrders} />}
+
+      {tab === 'stats' && <StatsPanel orders={orders} loading={ordersLoading} />}
 
       {tab === 'homepage' && <AdminHomepageEditor />}
 
@@ -1262,16 +1267,396 @@ function TableRow({ product, fetchData }) {
    ORDERS PANEL
 ═══════════════════════════════════════════════ */
 function OrdersPanel({ orders, loading, fetchOrders }) {
+  const [view, setView] = useState('list');
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}><div className="spinner" /></div>;
-  if (orders.length === 0) return <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--ink-muted)' }}>No orders yet.</div>;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-      {orders.map(order => <OrderRow key={order._id} order={order} fetchOrders={fetchOrders} />)}
+    <div>
+      <div style={{ display: 'flex', gap: '6px', marginBottom: '18px' }}>
+        <button className={`admin-toggle ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')} style={view === 'list' ? { background: 'var(--ink)', color: '#fff', borderColor: 'var(--ink)' } : {}}>
+          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          <span>List</span>
+        </button>
+        <button className={`admin-toggle ${view === 'calendar' ? 'active' : ''}`} onClick={() => setView('calendar')} style={view === 'calendar' ? { background: 'var(--ink)', color: '#fff', borderColor: 'var(--ink)' } : {}}>
+          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span>Calendar</span>
+        </button>
+      </div>
+      {orders.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--ink-muted)' }}>No orders yet.</div>
+      ) : view === 'list' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {orders.map(order => <OrderRow key={order._id} order={order} fetchOrders={fetchOrders} />)}
+        </div>
+      ) : (
+        <OrdersCalendar orders={orders} fetchOrders={fetchOrders} />
+      )}
+    </div>
+  );
+}
+
+/* ─── ORDERS CALENDAR ─── */
+function OrdersCalendar({ orders, fetchOrders }) {
+  const [cursor, setCursor] = useState(() => { const d = new Date(); d.setDate(1); return d; });
+  const [selectedKey, setSelectedKey] = useState(() => toKey(new Date()));
+
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  const firstWeekday = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const prevMonthDays = new Date(year, month, 0).getDate();
+
+  const byDay = {};
+  for (const o of orders) {
+    const k = toKey(new Date(o.createdAt));
+    (byDay[k] ||= []).push(o);
+  }
+
+  const monthName = cursor.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  const cells = [];
+  for (let i = 0; i < firstWeekday; i++) cells.push({ day: prevMonthDays - firstWeekday + i + 1, outside: true });
+  for (let d = 1; d <= daysInMonth; d++) cells.push({ day: d, outside: false, date: new Date(year, month, d) });
+  while (cells.length % 7 !== 0) cells.push({ day: cells.length - firstWeekday - daysInMonth + 1, outside: true });
+
+  const todayKey = toKey(new Date());
+  const selectedOrders = byDay[selectedKey] || [];
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+        <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.4rem' }}>{monthName}</h3>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button className="admin-toggle" onClick={() => setCursor(c => new Date(c.getFullYear(), c.getMonth() - 1, 1))}>‹ Prev</button>
+          <button className="admin-toggle" onClick={() => { const d = new Date(); d.setDate(1); setCursor(d); setSelectedKey(todayKey); }}>Today</button>
+          <button className="admin-toggle" onClick={() => setCursor(c => new Date(c.getFullYear(), c.getMonth() + 1, 1))}>Next ›</button>
+        </div>
+      </div>
+
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', background: 'var(--bg-secondary)' }}>
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+            <div key={d} style={{ padding: '10px', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', textAlign: 'center' }}>{d}</div>
+          ))}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+          {cells.map((c, i) => {
+            const k = c.outside ? null : toKey(c.date);
+            const dayOrders = k ? byDay[k] || [] : [];
+            const count = dayOrders.length;
+            const revenue = dayOrders.reduce((n, o) => n + (o.totalPrice || 0), 0);
+            const isToday = k === todayKey;
+            const isSelected = k === selectedKey;
+            return (
+              <button key={i}
+                disabled={c.outside}
+                onClick={() => k && setSelectedKey(k)}
+                style={{
+                  minHeight: 92, padding: '8px', border: '1px solid var(--border-subtle)',
+                  background: isSelected ? 'var(--accent-light)' : (c.outside ? 'var(--bg-secondary)' : 'transparent'),
+                  opacity: c.outside ? 0.4 : 1, cursor: c.outside ? 'default' : 'pointer',
+                  display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px',
+                  fontFamily: 'inherit', color: 'var(--ink)', textAlign: 'left',
+                  position: 'relative',
+                }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: isToday ? 700 : 500, color: isToday ? 'var(--accent)' : 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, borderRadius: '50%', border: isToday ? '1.5px solid var(--accent)' : 'none' }}>
+                  {c.day}
+                </span>
+                {count > 0 && (
+                  <>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--ink)', background: 'var(--accent-light)', padding: '2px 8px', borderRadius: '10px' }}>{count} order{count > 1 ? 's' : ''}</span>
+                    <span style={{ fontSize: '0.68rem', color: 'var(--ink-muted)' }}>₱{revenue.toLocaleString()}</span>
+                  </>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ marginTop: '22px' }}>
+        <h4 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.1rem', marginBottom: '12px' }}>
+          {formatDateLabel(selectedKey)} · {selectedOrders.length} order{selectedOrders.length !== 1 ? 's' : ''}
+        </h4>
+        {selectedOrders.length === 0 ? (
+          <p style={{ color: 'var(--ink-muted)', fontSize: '0.88rem' }}>No orders on this day.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {selectedOrders.map(o => <OrderRow key={o._id} order={o} fetchOrders={fetchOrders} />)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function toKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function formatDateLabel(key) {
+  if (!key) return '';
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+/* ─── STATS PANEL ─── */
+function StatsPanel({ orders, loading }) {
+  useTheme(); // re-render when theme toggles so inline-styled charts pick up the dark palette
+  if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}><div className="spinner" /></div>;
+
+  const isCancelled = (o) => o.status === 'Cancelled';
+  const active = orders.filter(o => !isCancelled(o));
+  const refunds = orders.filter(isCancelled);
+
+  const grossRevenue = active.reduce((n, o) => n + (o.totalPrice || 0), 0);
+  const refundedAmount = refunds.reduce((n, o) => n + (o.totalPrice || 0), 0);
+  const netRevenue = grossRevenue; // active already excludes cancelled; refunds shown separately
+  const totalOrders = orders.length;
+  const activeCount = active.length;
+  const avgOrder = activeCount > 0 ? grossRevenue / activeCount : 0;
+
+  const now = new Date();
+  const sameMonth = (d, base) => d.getFullYear() === base.getFullYear() && d.getMonth() === base.getMonth();
+  const thisMonth = active.filter(o => sameMonth(new Date(o.createdAt), now));
+  const thisMonthRev = thisMonth.reduce((n, o) => n + (o.totalPrice || 0), 0);
+  const lastMonthBase = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonth = active.filter(o => sameMonth(new Date(o.createdAt), lastMonthBase));
+  const lastMonthRev = lastMonth.reduce((n, o) => n + (o.totalPrice || 0), 0);
+  const momPct = lastMonthRev > 0 ? ((thisMonthRev - lastMonthRev) / lastMonthRev) * 100 : null;
+
+  const byStatus = {};
+  for (const o of orders) byStatus[o.status] = (byStatus[o.status] || 0) + 1;
+  const statusRows = Object.entries(byStatus).sort((a, b) => b[1] - a[1]);
+
+  const byProduct = {};
+  for (const o of active) { // exclude cancelled from top products
+    for (const p of (o.productsOrdered || [])) {
+      const k = p.productName || 'Unknown';
+      if (!byProduct[k]) byProduct[k] = { qty: 0, revenue: 0 };
+      byProduct[k].qty += p.quantity || 0;
+      byProduct[k].revenue += p.subtotal || 0;
+    }
+  }
+  const topProducts = Object.entries(byProduct).sort((a, b) => b[1].revenue - a[1].revenue).slice(0, 5);
+
+  // Last 30 days series
+  const DAYS = 30;
+  const series = [];
+  for (let i = DAYS - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    series.push({ date: d, key: toKey(d), revenue: 0, refunds: 0, count: 0 });
+  }
+  const seriesByKey = Object.fromEntries(series.map(s => [s.key, s]));
+  for (const o of orders) {
+    const k = toKey(new Date(o.createdAt));
+    const s = seriesByKey[k];
+    if (!s) continue;
+    if (isCancelled(o)) s.refunds += o.totalPrice || 0;
+    else { s.revenue += o.totalPrice || 0; s.count += 1; }
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '28px' }}>
+        <StatTile label="Net Revenue" value={`₱${netRevenue.toLocaleString()}`} sub={`${activeCount} active order${activeCount !== 1 ? 's' : ''}`} />
+        <StatTile label="Refunds" value={`₱${refundedAmount.toLocaleString()}`} sub={`${refunds.length} cancelled`} subColor={refunds.length > 0 ? '#8b2a31' : 'var(--ink-muted)'} />
+        <StatTile label="Total Orders" value={totalOrders.toLocaleString()} sub="Including cancelled" />
+        <StatTile label="Avg Order Value" value={`₱${Math.round(avgOrder).toLocaleString()}`} sub="Excludes refunds" />
+        <StatTile
+          label="This Month"
+          value={`₱${thisMonthRev.toLocaleString()}`}
+          sub={momPct == null ? `${thisMonth.length} order${thisMonth.length !== 1 ? 's' : ''}` : `${momPct >= 0 ? '↑' : '↓'} ${Math.abs(momPct).toFixed(0)}% vs last month`}
+          subColor={momPct == null ? 'var(--ink-muted)' : momPct >= 0 ? '#1f6b3a' : '#8b2a31'}
+        />
+      </div>
+
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '22px', marginBottom: '18px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '14px', flexWrap: 'wrap', gap: 8 }}>
+          <p style={{ fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Last 30 Days — Revenue</p>
+          <div style={{ display: 'flex', gap: 14, fontSize: '0.72rem', color: 'var(--ink-muted)' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, background: 'var(--ink)', borderRadius: 2 }} /> Revenue</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 10, height: 10, background: '#c0392b', borderRadius: 2 }} /> Refunds</span>
+          </div>
+        </div>
+        <RevenueChart series={series} />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '18px' }}>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '22px' }}>
+          <p style={{ fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '14px' }}>Orders by Status</p>
+          {statusRows.length === 0 ? <p style={{ fontSize: '0.88rem', color: 'var(--ink-muted)' }}>No data yet.</p> : (
+            <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+              <StatusDonut rows={statusRows} total={totalOrders} />
+              <div style={{ flex: 1, minWidth: 160, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {statusRows.map(([s, c]) => {
+                  const pct = (c / totalOrders) * 100;
+                  return (
+                    <div key={s} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                      <StatusBadge status={s} />
+                      <span style={{ fontSize: '0.85rem', fontWeight: 500, whiteSpace: 'nowrap' }}>{c} <span style={{ color: 'var(--ink-muted)', fontWeight: 400 }}>({pct.toFixed(0)}%)</span></span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '22px' }}>
+          <p style={{ fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '14px' }}>Top Products (excl. cancelled)</p>
+          {topProducts.length === 0 ? <p style={{ fontSize: '0.88rem', color: 'var(--ink-muted)' }}>No data yet.</p> : topProducts.map(([name, d], i) => (
+            <div key={name} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: i < topProducts.length - 1 ? '1px solid var(--border-subtle)' : 'none', fontSize: '0.86rem' }}>
+              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 10 }}>{name} <span style={{ color: 'var(--ink-muted)' }}>× {d.qty}</span></span>
+              <span style={{ fontWeight: 500 }}>₱{d.revenue.toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Revenue bar chart (last 30 days) ─── */
+function RevenueChart({ series }) {
+  const [hover, setHover] = useState(null);
+  const W = 720, H = 200, PAD_L = 40, PAD_R = 14, PAD_T = 14, PAD_B = 26;
+  const plotW = W - PAD_L - PAD_R;
+  const plotH = H - PAD_T - PAD_B;
+  const max = Math.max(1, ...series.map(s => Math.max(s.revenue, s.refunds)));
+  const n = series.length;
+  const stepX = n > 1 ? plotW / (n - 1) : plotW;
+  const niceStep = (m) => {
+    const pow = Math.pow(10, Math.floor(Math.log10(m)));
+    const norm = m / pow;
+    const step = norm < 2 ? 0.5 : norm < 5 ? 1 : 2;
+    return step * pow;
+  };
+  const step = niceStep(max);
+  const ticks = [];
+  for (let v = 0; v <= max; v += step) ticks.push(v);
+  if (ticks[ticks.length - 1] < max) ticks.push(ticks[ticks.length - 1] + step);
+  const yMax = ticks[ticks.length - 1];
+  const xAt = (i) => PAD_L + i * stepX;
+  const yAt = (v) => PAD_T + plotH - (v / yMax) * plotH;
+
+  const pathFor = (getVal) => series.map((s, i) => `${i === 0 ? 'M' : 'L'} ${xAt(i).toFixed(2)} ${yAt(getVal(s)).toFixed(2)}`).join(' ');
+  const areaFor = (getVal) => {
+    if (n === 0) return '';
+    const line = pathFor(getVal);
+    return `${line} L ${xAt(n - 1).toFixed(2)} ${yAt(0)} L ${xAt(0).toFixed(2)} ${yAt(0)} Z`;
+  };
+  const revPath = pathFor(s => s.revenue);
+  const refPath = pathFor(s => s.refunds);
+  const revArea = areaFor(s => s.revenue);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}
+        onMouseLeave={() => setHover(null)}
+        onMouseMove={e => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const xInSvg = ((e.clientX - rect.left) / rect.width) * W;
+          const i = Math.round((xInSvg - PAD_L) / stepX);
+          if (i >= 0 && i < n) setHover(i);
+        }}
+      >
+        <defs>
+          <linearGradient id="revFill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="var(--ink)" stopOpacity="0.18" />
+            <stop offset="100%" stopColor="var(--ink)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {/* gridlines + y labels */}
+        {ticks.map((v, i) => (
+          <g key={i}>
+            <line x1={PAD_L} x2={W - PAD_R} y1={yAt(v)} y2={yAt(v)} stroke="var(--border-subtle)" strokeWidth="1" />
+            <text x={PAD_L - 6} y={yAt(v) + 3} fontSize="9" textAnchor="end" fill="var(--ink-muted)">₱{v >= 1000 ? `${Math.round(v / 1000)}k` : v}</text>
+          </g>
+        ))}
+        {/* revenue area fill */}
+        <path d={revArea} fill="url(#revFill)" />
+        {/* revenue line */}
+        <path d={revPath} fill="none" stroke="var(--ink)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        {/* refunds line (dashed, only drawn if any refunds exist) */}
+        {series.some(s => s.refunds > 0) && (
+          <path d={refPath} fill="none" stroke="#c0392b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="4 4" />
+        )}
+        {/* data points */}
+        {series.map((s, i) => (
+          <g key={i}>
+            {s.revenue > 0 && <circle cx={xAt(i)} cy={yAt(s.revenue)} r={hover === i ? 4 : 2.5} fill="var(--ink)" />}
+            {s.refunds > 0 && <circle cx={xAt(i)} cy={yAt(s.refunds)} r={hover === i ? 4 : 2.5} fill="#c0392b" />}
+          </g>
+        ))}
+        {/* hover vertical guide */}
+        {hover != null && (
+          <line x1={xAt(hover)} x2={xAt(hover)} y1={PAD_T} y2={PAD_T + plotH} stroke="var(--ink-faint)" strokeWidth="1" strokeDasharray="2 3" />
+        )}
+        {/* x labels: first, middle, last */}
+        {[0, Math.floor(n / 2), n - 1].map(i => {
+          const s = series[i];
+          return (
+            <text key={i} x={xAt(i)} y={H - 6} fontSize="9" textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'} fill="var(--ink-muted)">
+              {s.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            </text>
+          );
+        })}
+      </svg>
+      {hover != null && (
+        <div style={{
+          position: 'absolute', pointerEvents: 'none',
+          left: `${(xAt(hover) / W) * 100}%`,
+          top: 0, transform: 'translate(-50%, -8px)',
+          background: 'var(--ink)', color: '#fff', fontSize: '0.72rem',
+          padding: '6px 10px', borderRadius: 6, whiteSpace: 'nowrap',
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: 2 }}>{series[hover].date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+          <div>Revenue: ₱{series[hover].revenue.toLocaleString()}</div>
+          {series[hover].refunds > 0 && <div style={{ color: '#f5b3b7' }}>Refunded: ₱{series[hover].refunds.toLocaleString()}</div>}
+          <div style={{ color: 'rgba(255,255,255,0.7)' }}>{series[hover].count} order{series[hover].count !== 1 ? 's' : ''}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Status donut ─── */
+function StatusDonut({ rows, total }) {
+  const SIZE = 140, R = 60, CX = SIZE / 2, CY = SIZE / 2, STROKE = 22;
+  let start = -Math.PI / 2;
+  const segs = rows.map(([s, c]) => {
+    const frac = c / total;
+    const end = start + frac * 2 * Math.PI;
+    const seg = { s, c, start, end, color: statusStyle(s).color };
+    start = end;
+    return seg;
+  });
+  const arc = (a0, a1) => {
+    const x0 = CX + R * Math.cos(a0), y0 = CY + R * Math.sin(a0);
+    const x1 = CX + R * Math.cos(a1), y1 = CY + R * Math.sin(a1);
+    const large = a1 - a0 > Math.PI ? 1 : 0;
+    return `M ${x0} ${y0} A ${R} ${R} 0 ${large} 1 ${x1} ${y1}`;
+  };
+  return (
+    <svg width={SIZE} height={SIZE}>
+      <circle cx={CX} cy={CY} r={R} fill="none" stroke="var(--border-subtle)" strokeWidth={STROKE} />
+      {segs.map((seg, i) => (
+        <path key={i} d={arc(seg.start, seg.end)} stroke={seg.color} strokeWidth={STROKE} fill="none" strokeLinecap="butt" />
+      ))}
+      <text x={CX} y={CY - 2} textAnchor="middle" fontFamily="'DM Serif Display', serif" fontSize="22" fill="var(--ink)">{total}</text>
+      <text x={CX} y={CY + 14} textAnchor="middle" fontSize="9" fill="var(--ink-muted)" letterSpacing="0.1em">ORDERS</text>
+    </svg>
+  );
+}
+
+function StatTile({ label, value, sub, subColor }) {
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '20px 22px' }}>
+      <p style={{ fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 8 }}>{label}</p>
+      <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.7rem', letterSpacing: '-0.02em' }}>{value}</p>
+      {sub && <p style={{ fontSize: '0.78rem', color: subColor || 'var(--ink-muted)', marginTop: 4 }}>{sub}</p>}
     </div>
   );
 }
 
 function OrderRow({ order, fetchOrders }) {
+  const [expanded, setExpanded] = useState(false);
   const [updating, setUpdating] = useState(false);
   const statuses = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
   const updateStatus = async (newStatus) => {
@@ -1282,29 +1667,134 @@ function OrderRow({ order, fetchOrders }) {
   const customer = order.userId;
   const name = typeof customer === 'object' ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim() : 'Unknown';
   const email = typeof customer === 'object' ? customer.email : '';
+  const orderNum = order._id.slice(-8).toUpperCase();
+  const ship = order.shippingAddress;
+  const bill = order.billingAddress;
+  const billSameAsShip = !bill || !ship || (
+    bill.fullName === ship.fullName && bill.phone === ship.phone &&
+    bill.street === ship.street && bill.city === ship.city && bill.province === ship.province
+  );
+  const subtotal = (order.productsOrdered || []).reduce((n, p) => n + (p.subtotal || 0), 0);
+
   return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '22px 24px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px', marginBottom: '14px' }}>
-        <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-          <div><p style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '2px' }}>Order</p><p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem' }}>{order._id.slice(-8).toUpperCase()}</p></div>
-          <div><p style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '2px' }}>Customer</p><p style={{ fontSize: '0.88rem', fontWeight: 500 }}>{name}</p>{email && <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)' }}>{email}</p>}</div>
-          <div><p style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '2px' }}>Date</p><p style={{ fontSize: '0.88rem' }}>{new Date(order.createdAt).toLocaleDateString()}</p></div>
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+      <button
+        type="button"
+        onClick={() => setExpanded(e => !e)}
+        style={{
+          width: '100%', display: 'grid', gridTemplateColumns: 'auto 1fr 1fr 1fr auto auto',
+          gap: '20px', alignItems: 'center',
+          padding: '16px 22px', background: 'transparent', border: 'none',
+          cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: 'var(--ink)',
+        }}
+        className="admin-order-header"
+      >
+        <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
+          style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', color: 'var(--ink-muted)' }}>
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+        <div>
+          <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Order</p>
+          <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem', marginTop: 2 }}>{orderNum}</p>
         </div>
-        <select value={order.status} onChange={e => updateStatus(e.target.value)} disabled={updating} className="form-input" style={{ fontSize: '0.8rem', padding: '6px 10px', width: 'auto', borderRadius: 'var(--radius-pill)', cursor: 'pointer' }}>
-          {statuses.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-      </div>
-      <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '10px' }}>
-        {order.productsOrdered.map((item, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '0.84rem' }}>
-            <span>{item.productName} <span style={{ color: 'var(--ink-muted)' }}>x{item.quantity}</span></span>
-            <span style={{ fontWeight: 600 }}>₱{item.subtotal?.toLocaleString()}</span>
+        <div>
+          <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Customer</p>
+          <p style={{ fontSize: '0.88rem', fontWeight: 500, marginTop: 2 }}>{name || '—'}</p>
+        </div>
+        <div>
+          <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Date</p>
+          <p style={{ fontSize: '0.88rem', marginTop: 2 }}>{new Date(order.createdAt).toLocaleDateString()}</p>
+        </div>
+        <StatusBadge status={order.status} />
+        <span style={{ fontWeight: 600, fontSize: '0.95rem', whiteSpace: 'nowrap' }}>₱{order.totalPrice?.toLocaleString()}</span>
+      </button>
+
+      {expanded && (
+        <div style={{ borderTop: '1px solid var(--border-subtle)', padding: '20px 24px', background: 'var(--bg-secondary)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '18px', marginBottom: '18px' }}>
+            <Detail label="Email" value={email || '—'} />
+            <Detail label="Order ID" value={order._id} mono />
+            <Detail label="Payment status" value={order.paymentStatus || 'n/a'} />
+            <Detail label="Placed" value={new Date(order.createdAt).toLocaleString()} />
           </div>
-        ))}
-      </div>
-      <div style={{ borderTop: '1px solid var(--border-subtle)', marginTop: '8px', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
-        <span>Total</span><span>₱{order.totalPrice?.toLocaleString()}</span>
-      </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px', marginBottom: '18px' }} className="admin-order-addresses">
+            <AddressBlock title="Shipping Address" addr={ship} />
+            <AddressBlock title="Billing Address" addr={billSameAsShip ? null : bill} sameAsShipping={billSameAsShip} />
+          </div>
+
+          <div>
+            <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '8px' }}>Products</p>
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px 16px' }}>
+              {(order.productsOrdered || []).map((item, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: '0.86rem', borderBottom: i < order.productsOrdered.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
+                  <span>{item.productName} <span style={{ color: 'var(--ink-muted)' }}>× {item.quantity}</span></span>
+                  <span style={{ fontWeight: 500 }}>₱{item.subtotal?.toLocaleString()}</span>
+                </div>
+              ))}
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.86rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--ink-muted)' }}>Subtotal</span>
+                  <span>₱{subtotal.toLocaleString()}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--ink-muted)' }}>Shipping ({order.shippingRegion || '—'})</span>
+                  <span>₱{(order.shippingFee || 0).toLocaleString()}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '0.95rem', paddingTop: 6, borderTop: '1px solid var(--border-subtle)' }}>
+                  <span>Total</span>
+                  <span>₱{order.totalPrice?.toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '18px' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>Update status:</span>
+            <select value={order.status} onChange={e => updateStatus(e.target.value)} disabled={updating} className="form-input" style={{ fontSize: '0.8rem', padding: '6px 10px', width: 'auto', borderRadius: 'var(--radius-pill)', cursor: 'pointer' }}>
+              {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
+      <style>{`
+        .admin-order-header:hover { background: var(--bg-secondary) !important; }
+        @media (max-width: 820px) {
+          .admin-order-header { grid-template-columns: auto 1fr !important; row-gap: 8px !important; }
+          .admin-order-addresses { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function Detail({ label, value, mono }) {
+  return (
+    <div>
+      <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 2 }}>{label}</p>
+      <p style={{ fontSize: '0.86rem', fontFamily: mono ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>{value || '—'}</p>
+    </div>
+  );
+}
+
+function AddressBlock({ title, addr, sameAsShipping }) {
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '14px 16px' }}>
+      <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 8 }}>{title}</p>
+      {sameAsShipping ? (
+        <p style={{ fontSize: '0.84rem', color: 'var(--ink-muted)', fontStyle: 'italic' }}>Same as shipping address</p>
+      ) : addr ? (
+        <>
+          <p style={{ fontSize: '0.9rem', fontWeight: 500 }}>{addr.fullName || '—'}</p>
+          <p style={{ fontSize: '0.82rem', color: 'var(--ink-muted)' }}>{addr.phone || '—'}</p>
+          <p style={{ fontSize: '0.84rem', marginTop: 6, lineHeight: 1.5 }}>
+            {addr.street || '—'}<br />
+            {[addr.city, addr.province, addr.postalCode].filter(Boolean).join(', ') || '—'}
+          </p>
+        </>
+      ) : (
+        <p style={{ fontSize: '0.84rem', color: 'var(--ink-muted)', fontStyle: 'italic' }}>No address recorded</p>
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import Home from './pages/Home';
 import Products from './pages/Products';
 import ProductView from './pages/ProductView';
 import CartView from './pages/CartView';
+import Checkout from './pages/Checkout';
 import Login from './pages/Login';
 import Logout from './pages/Logout';
 import Profile from './pages/Profile';
@@ -45,6 +46,7 @@ export default function App() {
               <Route path="/products" element={<Products />} />
               <Route path="/products/:productId" element={<ProductView />} />
               <Route path="/cart" element={<CartView />} />
+              <Route path="/checkout" element={<Checkout />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Navigate to="/login" />} />
               <Route path="/logout" element={<Logout />} />

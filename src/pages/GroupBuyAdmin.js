@@ -2,6 +2,7 @@ import { useState, useEffect, useContext } from 'react';
 import { Navigate } from 'react-router-dom';
 import UserContext from '../context/UserContext';
 import { apiFetch } from '../utils/api';
+import { statusPaletteKey, StatusBadge } from '../utils/statusColors';
 import toast from 'react-hot-toast';
 import { RichText } from '../components/AdminView';
 
@@ -112,7 +113,8 @@ function GBCard({ gb, fetchGbs, isExpanded, panel, onTogglePanel }) {
             {!gb.isActive && <span style={{ color: '#c0392b' }}>Archived</span>}
           </div>
         </div>
-        <select value={gb.status} onChange={e => updateStatus(e.target.value)} className="form-input" style={{ width: 'auto', fontSize: '0.78rem', padding: '5px 10px', borderRadius: 'var(--radius-pill)', cursor: 'pointer' }}>
+        <select value={gb.status} onChange={e => updateStatus(e.target.value)}
+          className={`status-select status-${statusPaletteKey(gb.status)}`}>
           {STATUSES.map(s => <option key={s} value={s}>{SL[s]}</option>)}
         </select>
         <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
@@ -614,7 +616,12 @@ function OrdersPanel({ groupBuyId, configs }) {
               {cn.map(c => <td key={c} style={{ padding: '8px 10px' }}>{o.configurations?.find(x => x.name === c)?.selected || '—'}</td>)}
               <td style={{ padding: '8px 10px', textAlign: 'center' }}>{o.quantity}</td>
               <td style={{ padding: '8px 10px', fontWeight: 600 }}>₱{o.totalPrice?.toLocaleString()}</td>
-              <td style={{ padding: '8px 10px' }}><select value={o.status} onChange={e => update(o._id, e.target.value)} className="form-input" style={{ fontSize: '0.7rem', padding: '3px 6px', width: 'auto', borderRadius: 'var(--radius-pill)' }}>{statuses.map(s => <option key={s} value={s}>{s}</option>)}</select></td>
+              <td style={{ padding: '8px 10px' }}>
+                <select value={o.status} onChange={e => update(o._id, e.target.value)}
+                  className={`status-select status-select-sm status-${statusPaletteKey(o.status)}`}>
+                  {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </td>
             </tr>
           );
         })}</tbody>

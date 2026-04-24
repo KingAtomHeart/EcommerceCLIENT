@@ -34,7 +34,7 @@ export default function Login() {
       localStorage.setItem('token', data.access);
       const profile = await apiFetch('/users/details');
       const u = profile.user;
-      const userData = { id: u._id, isAdmin: u.isAdmin, firstName: u.firstName, lastName: u.lastName, email: u.email, mobileNo: u.mobileNo };
+      const userData = { id: u._id, isAdmin: u.isAdmin, firstName: u.firstName, lastName: u.lastName, email: u.email, mobileNo: u.mobileNo, profilePicture: u.profilePicture || "" };
       localStorage.setItem('user', JSON.stringify(userData));
       if (!u.mobileNo) {
         setNeedsMobile(true);
@@ -57,7 +57,7 @@ export default function Login() {
         method: 'PATCH', body: JSON.stringify({ mobileNo }),
       });
       const u = data.user;
-      const userData = { id: u._id, isAdmin: u.isAdmin, firstName: u.firstName, lastName: u.lastName, email: u.email, mobileNo: u.mobileNo };
+      const userData = { id: u._id, isAdmin: u.isAdmin, firstName: u.firstName, lastName: u.lastName, email: u.email, mobileNo: u.mobileNo, profilePicture: u.profilePicture || "" };
       localStorage.setItem('user', JSON.stringify(userData));
       setUser(userData);
       toast.success('All set!');
@@ -110,7 +110,7 @@ export default function Login() {
       localStorage.setItem('token', data.access);
       const profile = await apiFetch('/users/details');
       const u = profile.user;
-      const userData = { id: u._id, isAdmin: u.isAdmin, firstName: u.firstName, lastName: u.lastName, email: u.email, mobileNo: u.mobileNo };
+      const userData = { id: u._id, isAdmin: u.isAdmin, firstName: u.firstName, lastName: u.lastName, email: u.email, mobileNo: u.mobileNo, profilePicture: u.profilePicture || "" };
       localStorage.setItem('user', JSON.stringify(userData));
       setUser(userData);
       toast.success('Welcome back!');

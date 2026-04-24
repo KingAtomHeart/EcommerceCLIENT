@@ -1,15 +1,24 @@
 import { useState, useEffect, useContext, useCallback } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import UserContext from '../context/UserContext';
 import { apiFetch } from '../utils/api';
+import AddressForm, { emptyAddress } from '../components/AddressForm';
+import OrderCard from '../components/OrderCard';
 import toast from 'react-hot-toast';
 
 export default function Profile() {
   const { user, setUser, logout } = useContext(UserContext);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [details, setDetails] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('account');
+  const initialTab = searchParams.get('tab') === 'orders' ? 'orders'
+    : searchParams.get('tab') === 'security' ? 'security' : 'account';
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const changeTab = (t) => {
+    setActiveTab(t);
+    setSearchParams(t === 'account' ? {} : { tab: t }, { replace: true });
+  };
 
   // Orders state
   const [orders, setOrders] = useState([]);
@@ -20,13 +29,100 @@ export default function Profile() {
   const [pw, setPw] = useState({ current: '', new: '', confirm: '' });
   const [pwLoading, setPwLoading] = useState(false);
 
+  // Avatar upload state
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  const uploadAvatar = async (file) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5 MB.'); return; }
+    setUploadingAvatar(true);
+    try {
+      const fd = new FormData();
+      fd.append('image', file);
+      const token = localStorage.getItem('token');
+      const base = process.env.REACT_APP_API_BASE_URL || '';
+      const upRes = await fetch(`${base}/upload/single`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const upData = await upRes.json();
+      if (!upRes.ok) throw new Error(upData.error || 'Upload failed');
+
+      const res = await apiFetch('/users/update-profile-picture', {
+        method: 'PATCH', body: JSON.stringify({ url: upData.url }),
+      });
+      setDetails(res.user);
+      setUser(prev => ({ ...prev, profilePicture: res.user.profilePicture }));
+      toast.success('Profile picture updated');
+    } catch (err) { toast.error(err.message); }
+    finally { setUploadingAvatar(false); }
+  };
+
+  const removeAvatar = async () => {
+    if (!window.confirm('Remove your profile picture?')) return;
+    setUploadingAvatar(true);
+    try {
+      const res = await apiFetch('/users/update-profile-picture', {
+        method: 'PATCH', body: JSON.stringify({ url: '' }),
+      });
+      setDetails(res.user);
+      setUser(prev => ({ ...prev, profilePicture: '' }));
+      toast.success('Profile picture removed');
+    } catch (err) { toast.error(err.message); }
+    finally { setUploadingAvatar(false); }
+  };
+
+  // Addresses state
+  const [addresses, setAddresses] = useState([]);
+  const [editingId, setEditingId] = useState(null); // id | 'new' | null
+  const [draft, setDraft] = useState(emptyAddress());
+  const [addrSaving, setAddrSaving] = useState(false);
+
+  const startAdd = () => { setDraft(emptyAddress()); setEditingId('new'); };
+  const startEdit = (a) => { setDraft({ ...a, isDefault: !!a.isDefault }); setEditingId(a._id); };
+  const cancelEdit = () => { setEditingId(null); setDraft(emptyAddress()); };
+
+  const saveAddress = async () => {
+    for (const k of ['fullName', 'phone', 'street', 'city', 'province']) {
+      if (!draft[k]) { toast.error('Please complete the address.'); return; }
+    }
+    setAddrSaving(true);
+    try {
+      const res = editingId === 'new'
+        ? await apiFetch('/users/addresses', { method: 'POST', body: JSON.stringify({ address: draft }) })
+        : await apiFetch(`/users/addresses/${editingId}`, { method: 'PATCH', body: JSON.stringify({ address: draft }) });
+      setAddresses(res.addresses || []);
+      cancelEdit();
+      toast.success(editingId === 'new' ? 'Address added' : 'Address updated');
+    } catch (err) { toast.error(err.message); }
+    finally { setAddrSaving(false); }
+  };
+
+  const removeAddress = async (id) => {
+    if (!window.confirm('Remove this address?')) return;
+    try {
+      const res = await apiFetch(`/users/addresses/${id}`, { method: 'DELETE' });
+      setAddresses(res.addresses || []);
+      toast.success('Address removed');
+    } catch (err) { toast.error(err.message); }
+  };
+
+  const makeDefault = async (id) => {
+    try {
+      const res = await apiFetch(`/users/addresses/${id}/default`, { method: 'PATCH' });
+      setAddresses(res.addresses || []);
+    } catch (err) { toast.error(err.message); }
+  };
+
   // FIX: Wrap in useCallback and add setUser to dep array
   const loadProfile = useCallback(() => {
     apiFetch('/users/details')
       .then(data => {
         setDetails(data.user);
         const u = data.user;
-        setUser(prev => ({ ...prev, firstName: u.firstName, lastName: u.lastName, email: u.email, mobileNo: u.mobileNo }));
+        setAddresses(u.addresses || []);
+        setUser(prev => ({ ...prev, firstName: u.firstName, lastName: u.lastName, email: u.email, mobileNo: u.mobileNo, profilePicture: u.profilePicture || '' }));
       })
       .catch(() => toast.error('Failed to load profile'))
       .finally(() => setLoading(false));
@@ -108,12 +204,37 @@ export default function Profile() {
       <div className="profile-layout">
         {/* ── Sidebar ── */}
         <aside className="profile-sidebar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '32px' }}>
-            <div className="profile-avatar">{initials}</div>
-            <div>
-              <p style={{ fontWeight: 500, fontSize: '0.95rem' }}>{details?.firstName} {details?.lastName}</p>
-              <p style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>{details?.email}</p>
-            </div>
+          <div className="profile-identity">
+            <label className="avatar-uploader" title="Change photo">
+              <div className="avatar-uploader-inner">
+                {details?.profilePicture ? (
+                  <img src={details.profilePicture} alt="" />
+                ) : (
+                  <span className="avatar-initials">{initials}</span>
+                )}
+                <div className={`avatar-overlay ${uploadingAvatar ? 'uploading' : ''}`}>
+                  {uploadingAvatar ? (
+                    <span className="avatar-spinner" />
+                  ) : (
+                    <>
+                      <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                        <circle cx="12" cy="13" r="4"/>
+                      </svg>
+                      <span>Change</span>
+                    </>
+                  )}
+                </div>
+              </div>
+              <input type="file" accept="image/*" onChange={e => uploadAvatar(e.target.files?.[0])} disabled={uploadingAvatar} />
+            </label>
+            <p className="profile-identity-name">{details?.firstName} {details?.lastName}</p>
+            <p className="profile-identity-email">{details?.email}</p>
+            {details?.profilePicture && (
+              <button onClick={removeAvatar} disabled={uploadingAvatar} className="profile-identity-remove">
+                Remove photo
+              </button>
+            )}
           </div>
 
           <nav className="profile-nav">
@@ -121,7 +242,7 @@ export default function Profile() {
               <button
                 key={t.id}
                 className={`profile-nav-item ${activeTab === t.id ? 'active' : ''}`}
-                onClick={() => setActiveTab(t.id)}
+                onClick={() => changeTab(t.id)}
               >
                 {t.icon}
                 <span>{t.label}</span>
@@ -153,6 +274,68 @@ export default function Profile() {
                 <InfoBlock label="Mobile Number" value={details?.mobileNo} />
                 <InfoBlock label="Account Type" value={details?.isAdmin ? 'Administrator' : 'Customer'} />
                 <InfoBlock label="Member Since" value={details?.createdAt ? new Date(details.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long' }) : '—'} />
+              </div>
+
+              {/* ── Saved Addresses ── */}
+              <div style={{ marginTop: '44px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px', flexWrap: 'wrap', gap: '10px' }}>
+                  <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.3rem' }}>Saved Addresses</h3>
+                  {editingId === null && (
+                    <button onClick={startAdd} className="btn-light" style={{ padding: '8px 18px', fontSize: '0.84rem' }}>
+                      <span>+ Add Address</span>
+                    </button>
+                  )}
+                </div>
+                <p style={{ color: 'var(--ink-muted)', fontSize: '0.88rem', marginBottom: '22px' }}>
+                  Saved addresses are available for instant checkout.
+                </p>
+
+                {editingId !== null && (
+                  <div style={{ padding: '22px', border: '1px solid var(--border)', borderRadius: '12px', background: 'var(--bg-secondary)', marginBottom: '20px' }}>
+                    <p style={{ fontSize: '0.82rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '14px' }}>
+                      {editingId === 'new' ? 'New Address' : 'Edit Address'}
+                    </p>
+                    <AddressForm value={draft} onChange={setDraft} showDefaultToggle={addresses.length > 0 || editingId === 'new'} />
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+                      <button onClick={saveAddress} className="btn-dark" disabled={addrSaving} style={{ padding: '10px 22px' }}>
+                        <span>{addrSaving ? 'Saving…' : 'Save'}</span>
+                      </button>
+                      <button onClick={cancelEdit} className="btn-light" style={{ padding: '10px 22px' }}>
+                        <span>Cancel</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {addresses.length === 0 && editingId === null ? (
+                  <div style={{ textAlign: 'center', padding: '32px 20px', color: 'var(--ink-muted)', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', fontSize: '0.88rem' }}>
+                    No saved addresses yet.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {addresses.map(a => (
+                      <div key={a._id} style={{ padding: '16px 18px', border: `1px solid ${a.isDefault ? 'var(--ink)' : 'var(--border)'}`, borderRadius: '12px', display: 'grid', gridTemplateColumns: '1fr auto', gap: '14px', alignItems: 'start' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                            <p style={{ fontSize: '0.94rem', fontWeight: 500 }}>{a.fullName}</p>
+                            {a.isDefault && (
+                              <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', background: 'var(--ink)', color: '#fff', padding: '2px 8px', borderRadius: '6px' }}>Default</span>
+                            )}
+                          </div>
+                          <p style={{ fontSize: '0.82rem', color: 'var(--ink-muted)', margin: 0 }}>{a.phone}</p>
+                          <p style={{ fontSize: '0.85rem', color: 'var(--ink-muted)', marginTop: '4px', lineHeight: 1.4 }}>
+                            {a.street}, {a.city}, {a.province}{a.postalCode ? `, ${a.postalCode}` : ''}
+                          </p>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
+                          <button onClick={() => startEdit(a)} className="profile-addr-btn">Edit</button>
+                          {!a.isDefault && <button onClick={() => makeDefault(a._id)} className="profile-addr-btn">Set default</button>}
+                          <button onClick={() => removeAddress(a._id)} className="profile-addr-btn" style={{ color: '#c0392b' }}>Remove</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -217,7 +400,28 @@ export default function Profile() {
       <style>{`
         .profile-layout { display: grid; grid-template-columns: 280px 1fr; gap: 48px; max-width: 1000px; margin: 0 auto; align-items: start; }
         .profile-sidebar { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 28px 24px; position: sticky; top: calc(var(--nav-h) + 20px); display: flex; flex-direction: column; min-height: 360px; box-shadow: var(--shadow-card); }
-        .profile-avatar { width: 48px; height: 48px; border-radius: 50%; background: var(--accent-light); color: var(--accent); font-family: 'DM Serif Display', serif; font-size: 1rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .profile-identity { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 28px; }
+        .avatar-uploader { position: relative; cursor: pointer; display: block; margin-bottom: 14px; }
+        .avatar-uploader input { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
+        .avatar-uploader-inner { position: relative; width: 88px; height: 88px; border-radius: 50%; overflow: hidden; background: var(--accent-light); box-shadow: 0 2px 10px rgba(0,0,0,0.06); transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .avatar-uploader:hover .avatar-uploader-inner { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0,0,0,0.12); }
+        .avatar-uploader-inner img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .avatar-initials { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--accent); font-family: 'DM Serif Display', serif; font-size: 1.6rem; letter-spacing: -0.02em; }
+        .avatar-overlay {
+          position: absolute; inset: 0;
+          background: rgba(10, 10, 8, 0.55); color: #fff;
+          display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+          opacity: 0; transition: opacity 0.2s ease;
+          font-size: 0.68rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+        }
+        .avatar-uploader:hover .avatar-overlay { opacity: 1; }
+        .avatar-overlay.uploading { opacity: 1; }
+        .avatar-spinner { width: 22px; height: 22px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .profile-identity-name { font-weight: 500; font-size: 1rem; margin-bottom: 2px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .profile-identity-email { font-size: 0.78rem; color: var(--ink-muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .profile-identity-remove { margin-top: 10px; background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 0.74rem; color: var(--ink-muted); padding: 4px 10px; border-radius: var(--radius-pill); transition: background 0.2s ease, color 0.2s ease; }
+        .profile-identity-remove:hover { background: var(--bg-secondary); color: var(--ink); }
         .profile-nav { display: flex; flex-direction: column; gap: 4px; }
         .profile-nav-item { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: var(--radius-sm); font-family: 'DM Sans', sans-serif; font-size: 0.88rem; color: var(--ink-muted); background: none; border: none; cursor: pointer; transition: all var(--transition); text-align: left; width: 100%; }
         .profile-nav-item:hover { background: var(--bg-secondary); color: var(--ink); }
@@ -228,6 +432,8 @@ export default function Profile() {
         .profile-info-block:nth-last-child(-n+2) { border-bottom: none; }
         .profile-info-label { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 6px; }
         .profile-info-value { font-size: 0.92rem; font-weight: 500; }
+        .profile-addr-btn { background: none; border: none; cursor: pointer; font-family: 'DM Sans', sans-serif; font-size: 0.78rem; font-weight: 500; color: var(--ink-muted); padding: 2px 4px; text-decoration: underline; text-underline-offset: 3px; }
+        .profile-addr-btn:hover { color: var(--ink); }
         @media (max-width: 768px) {
           .profile-layout { grid-template-columns: 1fr; gap: 20px; }
           .profile-sidebar { position: static; min-height: auto; }
@@ -248,102 +454,3 @@ function InfoBlock({ label, value }) {
   );
 }
 
-function OrderCard({ order }) {
-  const statusColors = {
-    Pending:         { bg: 'var(--accent-light)', color: 'var(--accent)' },
-    Processing:      { bg: '#fef3cd', color: '#856404' },
-    Shipped:         { bg: '#d1ecf1', color: '#0c5460' },
-    Delivered:       { bg: '#d4edda', color: '#155724' },
-    Cancelled:       { bg: '#f8d7da', color: '#721c24' },
-    Confirmed:       { bg: 'var(--accent-light)', color: 'var(--accent)' },
-    'In Production': { bg: '#fef3cd', color: '#856404' },
-  };
-  const sc = statusColors[order.status] || statusColors.Pending;
-
-  return (
-    <div style={{
-      background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)',
-      padding: '20px 24px', border: '1px solid var(--border-subtle)',
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          {order.isGroupBuy && (
-            <div style={{ width: 48, height: 48, borderRadius: '8px', overflow: 'hidden', background: 'var(--accent-light)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {order.groupBuyImage
-                ? <img src={order.groupBuyImage} alt={order.groupBuyName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                : <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.2rem', color: 'var(--accent)' }}>{order.groupBuyName?.[0]}</span>
-              }
-            </div>
-          )}
-          <div>
-            <p style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '2px' }}>
-              {order.isGroupBuy ? 'Group Buy Order' : 'Order'}
-            </p>
-            <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem' }}>
-              {order.isGroupBuy ? (order.groupBuyName || 'Group Buy') : order._id.slice(-8).toUpperCase()}
-            </p>
-            {order.isGroupBuy && order.orderCode && (
-              <p style={{ fontSize: '0.68rem', color: 'var(--ink-faint)', fontFamily: 'monospace', marginTop: '2px' }}>{order.orderCode}</p>
-            )}
-            {order.isGroupBuy && (
-              <div style={{ display: 'flex', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: '8px', background: 'var(--accent-light)', color: 'var(--accent)' }}>Group Buy</span>
-                {order.groupBuyStatus && (
-                  <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: '8px', background: 'var(--bg-secondary)', color: 'var(--ink-muted)', border: '1px solid var(--border)' }}>
-                    GB: {order.groupBuyStatus}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-          <div>
-            <p style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '2px' }}>Date</p>
-            <p style={{ fontSize: '0.88rem' }}>{new Date(order.createdAt).toLocaleDateString()}</p>
-          </div>
-        </div>
-        <span style={{
-          background: sc.bg, color: sc.color,
-          fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase',
-          padding: '4px 12px', borderRadius: '20px', whiteSpace: 'nowrap',
-        }}>
-          {order.status}
-        </span>
-      </div>
-
-      <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '10px' }}>
-        {/* Regular order items */}
-        {!order.isGroupBuy && (order.productsOrdered || []).map((item, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '0.84rem' }}>
-            <span>{item.productName} <span style={{ color: 'var(--ink-muted)' }}>×{item.quantity}</span></span>
-            <span style={{ fontWeight: 600 }}>₱{item.subtotal?.toLocaleString()}</span>
-          </div>
-        ))}
-        {/* GB: selected option */}
-        {order.isGroupBuy && order.selectedOption?.value && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '0.84rem' }}>
-            <span>{order.selectedOption.groupName}: {order.selectedOption.value} <span style={{ color: 'var(--ink-muted)' }}>×{order.quantity}</span></span>
-            <span style={{ fontWeight: 600 }}>₱{(order.selectedOption.price * order.quantity)?.toLocaleString()}</span>
-          </div>
-        )}
-        {/* GB: kits */}
-        {order.isGroupBuy && order.kits?.length > 0 && order.kits.map((kit, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '0.84rem' }}>
-            <span>{kit.name} <span style={{ color: 'var(--ink-muted)' }}>×{kit.quantity}</span></span>
-            <span style={{ fontWeight: 600 }}>₱{(kit.price * kit.quantity)?.toLocaleString()}</span>
-          </div>
-        ))}
-        {/* GB: configurations */}
-        {order.isGroupBuy && order.configurations?.length > 0 && (
-          <p style={{ fontSize: '0.78rem', color: 'var(--ink-muted)', padding: '4px 0' }}>
-            {order.configurations.map((c, i) => `${c.name}: ${c.selected}`).join(' | ')}
-          </p>
-        )}
-      </div>
-
-      <div style={{ borderTop: '1px solid var(--border-subtle)', marginTop: '8px', paddingTop: '8px', display: 'flex', justifyContent: 'space-between', fontSize: '0.95rem', fontWeight: 600 }}>
-        <span>Total</span>
-        <span>₱{order.totalPrice?.toLocaleString()}</span>
-      </div>
-    </div>
-  );
-}

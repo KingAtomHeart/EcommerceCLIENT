@@ -1,7 +1,7 @@
 import { useState, useEffect, useContext, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import UserContext from '../context/UserContext';
-import ProductCard from '../components/ProductCard';
+import ProductCard, { computeStockSummary } from '../components/ProductCard';
 import AdminView from '../components/AdminView';
 import { apiFetch } from '../utils/api';
 
@@ -61,7 +61,7 @@ export default function Products() {
   // Filter and sort
   let filtered = products;
   if (hideOutOfStock) {
-    filtered = filtered.filter(p => p.stocks === undefined || p.stocks === null || p.stocks > 0);
+    filtered = filtered.filter(p => !computeStockSummary(p).outOfStock);
   }
   if (category !== 'all') {
     filtered = filtered.filter(p => p.category?.toLowerCase().replace(/\s+/g, '-') === category);
@@ -128,7 +128,7 @@ export default function Products() {
 
       <p style={{ fontSize: '0.84rem', color: 'var(--ink-muted)', padding: '16px var(--page-pad) 0' }}>
         {filtered.length} product{filtered.length !== 1 ? 's' : ''}
-        {hideOutOfStock && products.some(p => p.stocks !== undefined && p.stocks <= 0) && (
+        {hideOutOfStock && products.some(p => computeStockSummary(p).outOfStock) && (
           <span style={{ color: 'var(--ink-faint)' }}> (out-of-stock items hidden)</span>
         )}
       </p>

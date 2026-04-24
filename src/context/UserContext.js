@@ -33,7 +33,7 @@ export const UserProvider = ({ children }) => {
       })
       .then(data => {
         const u = data.user;
-        const userData = { id: u._id, isAdmin: u.isAdmin, firstName: u.firstName, lastName: u.lastName, email: u.email, mobileNo: u.mobileNo };
+        const userData = { id: u._id, isAdmin: u.isAdmin, firstName: u.firstName, lastName: u.lastName, email: u.email, mobileNo: u.mobileNo, profilePicture: u.profilePicture || "" };
         setUser(userData);
         localStorage.setItem('user', JSON.stringify(userData));
       })

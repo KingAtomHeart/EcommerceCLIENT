@@ -239,11 +239,20 @@ function HeroCarousel({ images, fallbackImage, eyebrow, title, subtitle, primary
     }, 5000);
   }, [displayImages.length]);
 
+  const firstImgRef = useRef(null);
   useEffect(() => {
-    // Defer adding .active by a frame so the first slide's scale/opacity transition runs on mount.
-    const id = requestAnimationFrame(() => setMounted(true));
+    // Fade in only after the first image has actually loaded, otherwise the transition
+    // runs while the <img> is still fetching and the user sees a pop when it decodes.
+    const img = firstImgRef.current;
+    if (img && img.complete && img.naturalHeight > 0) {
+      // Cached: flip on the next frame so the browser paints opacity:0 first.
+      const id = requestAnimationFrame(() => setMounted(true));
+      startTimer();
+      return () => { cancelAnimationFrame(id); if (timerRef.current) clearInterval(timerRef.current); };
+    }
+    const fallback = setTimeout(() => setMounted(true), 3000);
     startTimer();
-    return () => { cancelAnimationFrame(id); if (timerRef.current) clearInterval(timerRef.current); };
+    return () => { clearTimeout(fallback); if (timerRef.current) clearInterval(timerRef.current); };
   }, [startTimer]);
 
   useEffect(() => {
@@ -260,19 +269,19 @@ function HeroCarousel({ images, fallbackImage, eyebrow, title, subtitle, primary
   return (
     <>
       <div className="hero-bg">
-        {hasImages ? (
-          displayImages.map((src, i) => (
-            <img
-              key={i}
-              src={src}
-              alt={`Hero ${i + 1}`}
-              loading={i === 0 ? 'eager' : 'lazy'}
-              className={`hero-slide ${mounted && i === current ? 'active' : ''}`}
-            />
-          ))
-        ) : (
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, var(--ink) 0%, var(--accent) 100%)' }} />
-        )}
+        {hasImages && displayImages.map((src, i) => (
+          <img
+            key={i}
+            ref={i === 0 ? firstImgRef : null}
+            src={src}
+            alt={`Hero ${i + 1}`}
+            loading={i === 0 ? 'eager' : 'lazy'}
+            decoding={i === 0 ? 'sync' : 'async'}
+            fetchpriority={i === 0 ? 'high' : 'auto'}
+            onLoad={i === 0 ? () => requestAnimationFrame(() => setMounted(true)) : undefined}
+            className={`hero-slide ${mounted && i === current ? 'active' : ''}`}
+          />
+        ))}
         <div className="hero-slide-fallback" />
       </div>
 

@@ -20,20 +20,26 @@ export default function CartView() {
 
   useEffect(() => { if (user) fetchCart(); else setLoading(false); }, [user]);
 
-  const updateQty = async (productId, quantity, kitId, optionValueId) => {
+  const updateQty = async (productId, quantity, kitId, optionValueId, variantId) => {
     if (quantity < 1) return;
     try {
       await apiFetch('/cart/update-cart-quantity', {
         method: 'PATCH',
-        body: JSON.stringify({ productId, quantity, kitId: kitId || undefined, optionValueId: optionValueId || undefined }),
+        body: JSON.stringify({
+          productId, quantity,
+          kitId: kitId || undefined,
+          optionValueId: optionValueId || undefined,
+          variantId: variantId || undefined,
+        }),
       });
       fetchCart();
     } catch (err) { toast.error(err.message); }
   };
 
-  const removeItem = async (productId, kitId, optionValueId) => {
+  const removeItem = async (productId, kitId, optionValueId, variantId) => {
     try {
       const params = new URLSearchParams();
+      if (variantId) params.set('variantId', variantId);
       if (kitId) params.set('kitId', kitId);
       if (optionValueId) params.set('optionValueId', optionValueId);
       const qs = params.toString();
@@ -54,23 +60,22 @@ export default function CartView() {
 
   const [checkingOut, setCheckingOut] = useState(false);
 
-  const checkout = async () => {
+  const goToCheckout = async () => {
     if (checkingOut) return;
-    setCheckingOut(true);
-    try {
-      const isGroupBuy = items.some(item => item.groupBuyId);
-      if (isGroupBuy) {
+    const isGroupBuy = items.some(item => item.groupBuyId);
+    if (isGroupBuy) {
+      setCheckingOut(true);
+      try {
         await apiFetch('/orders/checkout-group-buy', { method: 'POST' });
         toast.success('Order placed successfully!');
-        navigate('/order-history');
-        return;
+        navigate('/profile?tab=orders');
+      } catch (err) {
+        toast.error(err.message);
+        setCheckingOut(false);
       }
-      const data = await apiFetch('/orders/create-payment', { method: 'POST' });
-      window.location.href = data.checkoutUrl;
-    } catch (err) {
-      toast.error(err.message);
-      setCheckingOut(false);
+      return;
     }
+    navigate('/checkout');
   };
 
   if (!user) {
@@ -88,9 +93,7 @@ export default function CartView() {
   const items = cart?.cartItems || [];
   const total = cart?.totalPrice || 0;
   const isEmpty = items.length === 0;
-  const freeShipThreshold = 5000;
-  const shippingPct = Math.min((total / freeShipThreshold) * 100, 100);
-  const freeShip = total >= freeShipThreshold;
+  const isGroupBuyCart = items.some(i => i.groupBuyId);
 
   return (
     <div className="page-body" style={{ padding: '56px var(--page-pad) 80px' }}>
@@ -120,6 +123,7 @@ export default function CartView() {
                 : (prod && typeof prod === 'object' ? prod._id : prod);
               const kitId = item.kitId || null;
               const optValId = item.selectedOption?.valueId || null;
+              const variantId = item.variantId || null;
 
               let displayName = prodName;
               if (item.kitName) displayName = `${prodName} — ${item.kitName}`;
@@ -156,12 +160,12 @@ export default function CartView() {
                     {configStr && <p className="cart-item-variant">{configStr}</p>}
                   </div>
                   <div className="cart-qty">
-                    <button className="qty-btn" onClick={() => updateQty(itemId, item.quantity - 1, kitId, optValId)} disabled={item.quantity <= 1}>−</button>
+                    <button className="qty-btn" onClick={() => updateQty(itemId, item.quantity - 1, kitId, optValId, variantId)} disabled={item.quantity <= 1}>−</button>
                     <span style={{ fontSize: '0.95rem', fontWeight: 600, minWidth: 24, textAlign: 'center' }}>{item.quantity}</span>
-                    <button className="qty-btn" onClick={() => updateQty(itemId, item.quantity + 1, kitId, optValId)}>+</button>
+                    <button className="qty-btn" onClick={() => updateQty(itemId, item.quantity + 1, kitId, optValId, variantId)}>+</button>
                   </div>
                   <p className="cart-item-price">₱{item.subtotal?.toLocaleString()}</p>
-                  <button className="cart-remove" onClick={() => removeItem(itemId, kitId, optValId)}>
+                  <button className="cart-remove" onClick={() => removeItem(itemId, kitId, optValId, variantId)}>
                     <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   </button>
                 </div>
@@ -173,28 +177,22 @@ export default function CartView() {
           <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '20px', padding: '28px', position: 'sticky', top: '84px', boxShadow: 'var(--shadow-card)' }}>
             <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.35rem', marginBottom: '28px' }}>Order Summary</h2>
 
-            <div className="shipping-progress-wrap">
-              <p className="shipping-msg">
-                {freeShip ? '✓ You qualify for free shipping!' : `Add ₱${(freeShipThreshold - total).toLocaleString()} more for free shipping`}
-              </p>
-              <div className="shipping-bar"><div className="shipping-fill" style={{ width: `${shippingPct}%` }} /></div>
-            </div>
-
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '12px' }}>
               <span style={{ color: 'var(--ink-muted)' }}>Subtotal ({items.length} item{items.length !== 1 ? 's' : ''})</span>
               <span>₱{total.toLocaleString()}</span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '12px' }}>
-              <span style={{ color: 'var(--ink-muted)' }}>Shipping</span>
-              <span>{freeShip ? 'Free' : '₱150'}</span>
-            </div>
+            {!isGroupBuyCart && (
+              <p style={{ fontSize: '0.78rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
+                Shipping calculated at checkout.
+              </p>
+            )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem', fontWeight: 600, borderTop: '1px solid var(--border)', paddingTop: '16px', marginTop: '4px' }}>
-              <span>Total</span>
-              <span>₱{(freeShip ? total : total + 150).toLocaleString()}</span>
+              <span>{isGroupBuyCart ? 'Total' : 'Subtotal'}</span>
+              <span>₱{total.toLocaleString()}</span>
             </div>
 
-            <button onClick={checkout} className="btn-dark" style={{ width: '100%', marginTop: '20px', justifyContent: 'center' }} disabled={checkingOut}>
-              <span>{checkingOut ? 'Redirecting to payment…' : 'Proceed to Checkout →'}</span>
+            <button onClick={goToCheckout} className="btn-dark" style={{ width: '100%', marginTop: '20px', justifyContent: 'center' }} disabled={checkingOut}>
+              <span>{checkingOut ? 'Placing order…' : (isGroupBuyCart ? 'Place Order →' : 'Proceed to Checkout →')}</span>
             </button>
             <button onClick={clearCart} style={{ display: 'block', width: '100%', textAlign: 'center', marginTop: '14px', fontSize: '0.84rem', color: 'var(--ink-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
               Clear Cart

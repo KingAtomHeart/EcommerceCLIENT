@@ -45,7 +45,7 @@ export default function PaymentSuccess() {
             <div style={{ fontSize: '3rem', marginBottom: '16px' }}>✓</div>
             <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2rem', marginBottom: '12px' }}>Payment Successful!</h1>
             <p style={{ color: 'var(--ink-muted)', marginBottom: '32px' }}>Your order has been confirmed. We'll process it shortly.</p>
-            <Link to="/order-history" className="btn-dark"><span>View My Orders</span></Link>
+            <Link to="/profile?tab=orders" className="btn-dark"><span>View My Orders</span></Link>
           </>
         )}
 
@@ -54,7 +54,7 @@ export default function PaymentSuccess() {
             <div style={{ fontSize: '3rem', marginBottom: '16px' }}>⏳</div>
             <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2rem', marginBottom: '12px' }}>Payment Received</h1>
             <p style={{ color: 'var(--ink-muted)', marginBottom: '32px' }}>Your payment is being verified. Your order will appear in order history shortly.</p>
-            <Link to="/order-history" className="btn-dark"><span>View My Orders</span></Link>
+            <Link to="/profile?tab=orders" className="btn-dark"><span>View My Orders</span></Link>
           </>
         )}
 
@@ -64,7 +64,7 @@ export default function PaymentSuccess() {
             <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2rem', marginBottom: '12px' }}>Something went wrong</h1>
             <p style={{ color: 'var(--ink-muted)', marginBottom: '32px' }}>If you completed payment, check your order history. Otherwise, try again.</p>
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-              <Link to="/order-history" className="btn-dark"><span>My Orders</span></Link>
+              <Link to="/profile?tab=orders" className="btn-dark"><span>My Orders</span></Link>
               <Link to="/cart" style={{ color: 'var(--ink-muted)', alignSelf: 'center', fontSize: '0.9rem' }}>Back to Cart</Link>
             </div>
           </>
