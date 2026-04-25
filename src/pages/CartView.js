@@ -20,30 +20,31 @@ export default function CartView() {
 
   useEffect(() => { if (user) fetchCart(); else setLoading(false); }, [user]);
 
-  const updateQty = async (productId, quantity, kitId, optionValueId, variantId) => {
+  const updateQty = async (productId, quantity, item) => {
     if (quantity < 1) return;
     try {
       await apiFetch('/cart/update-cart-quantity', {
         method: 'PATCH',
         body: JSON.stringify({
           productId, quantity,
-          kitId: kitId || undefined,
-          optionValueId: optionValueId || undefined,
-          variantId: variantId || undefined,
+          itemId: item._id,
+          kitId: item.kitId || undefined,
+          optionValueId: item.selectedOption?.valueId || undefined,
+          variantId: item.variantId || undefined,
         }),
       });
       fetchCart();
     } catch (err) { toast.error(err.message); }
   };
 
-  const removeItem = async (productId, kitId, optionValueId, variantId) => {
+  const removeItem = async (productId, item) => {
     try {
       const params = new URLSearchParams();
-      if (variantId) params.set('variantId', variantId);
-      if (kitId) params.set('kitId', kitId);
-      if (optionValueId) params.set('optionValueId', optionValueId);
-      const qs = params.toString();
-      const url = `/cart/${productId}/remove-from-cart${qs ? `?${qs}` : ''}`;
+      if (item._id) params.set('itemId', item._id);
+      if (item.variantId) params.set('variantId', item.variantId);
+      if (item.kitId) params.set('kitId', item.kitId);
+      if (item.selectedOption?.valueId) params.set('optionValueId', item.selectedOption.valueId);
+      const url = `/cart/${productId}/remove-from-cart?${params.toString()}`;
       await apiFetch(url, { method: 'PATCH' });
       toast.success('Item removed');
       fetchCart();
@@ -160,12 +161,12 @@ export default function CartView() {
                     {configStr && <p className="cart-item-variant">{configStr}</p>}
                   </div>
                   <div className="cart-qty">
-                    <button className="qty-btn" onClick={() => updateQty(itemId, item.quantity - 1, kitId, optValId, variantId)} disabled={item.quantity <= 1}>−</button>
+                    <button className="qty-btn" onClick={() => updateQty(itemId, item.quantity - 1, item)} disabled={item.quantity <= 1}>−</button>
                     <span style={{ fontSize: '0.95rem', fontWeight: 600, minWidth: 24, textAlign: 'center' }}>{item.quantity}</span>
-                    <button className="qty-btn" onClick={() => updateQty(itemId, item.quantity + 1, kitId, optValId, variantId)}>+</button>
+                    <button className="qty-btn" onClick={() => updateQty(itemId, item.quantity + 1, item)}>+</button>
                   </div>
                   <p className="cart-item-price">₱{item.subtotal?.toLocaleString()}</p>
-                  <button className="cart-remove" onClick={() => removeItem(itemId, kitId, optValId, variantId)}>
+                  <button className="cart-remove" onClick={() => removeItem(itemId, item)}>
                     <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   </button>
                 </div>
