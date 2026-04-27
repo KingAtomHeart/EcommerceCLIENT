@@ -35,7 +35,8 @@ export default function GroupBuyAdmin() {
   const updateGbLocal = (id, patch) => setGbs(prev => prev.map(g => g._id === id ? { ...g, ...patch } : g));
 
   const filtered = (() => {
-    let list = showArchived ? gbs : gbs.filter(g => g.isActive);
+    // Hide add-ons from the main list — they're managed inside the parent's "Add-ons" panel
+    let list = (showArchived ? gbs : gbs.filter(g => g.isActive)).filter(g => !g.parentGroupBuyId);
     const q = searchQuery.trim().toLowerCase();
     if (q) {
       list = list.filter(g =>
@@ -93,7 +94,7 @@ export default function GroupBuyAdmin() {
         </div>
       </div>
 
-      {showCreate && <CreateGBModal onClose={() => setShowCreate(false)} onCreated={() => { fetchGbs(); setShowCreate(false); }} />}
+      {showCreate && <CreateGBModal gbs={gbs} onClose={() => setShowCreate(false)} onCreated={() => { fetchGbs(); setShowCreate(false); }} />}
 
       {loading ? <div className="loading-center"><div className="spinner" /></div> : filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--ink-muted)', background: 'var(--surface)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
@@ -102,7 +103,7 @@ export default function GroupBuyAdmin() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {filtered.map(gb => (
-            <GBCard key={gb._id} gb={gb} fetchGbs={fetchGbs}
+            <GBCard key={gb._id} gb={gb} gbs={gbs} fetchGbs={fetchGbs}
               updateGbLocal={updateGbLocal}
               isExpanded={expandedId === gb._id} panel={expandedId === gb._id ? expandedPanel : null}
               onTogglePanel={(p) => {
@@ -121,7 +122,7 @@ function Pill({ children, onClick, active }) {
   return <button onClick={onClick} style={{ padding: '8px 16px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: active ? 'var(--accent)' : 'none', color: active ? '#fff' : 'var(--ink-muted)', cursor: 'pointer', fontSize: '0.78rem', fontFamily: "'DM Sans', sans-serif", fontWeight: 500, transition: 'var(--transition)' }}>{children}</button>;
 }
 
-function GBCard({ gb, fetchGbs, updateGbLocal, isExpanded, panel, onTogglePanel }) {
+function GBCard({ gb, gbs, fetchGbs, updateGbLocal, isExpanded, panel, onTogglePanel }) {
   const [editing, setEditing] = useState(false);
   const updateStatus = async (s) => {
     const prev = gb.status;
@@ -140,7 +141,9 @@ function GBCard({ gb, fetchGbs, updateGbLocal, isExpanded, panel, onTogglePanel 
     try {
       const token = localStorage.getItem('token');
       const API = process.env.REACT_APP_API_BASE_URL;
-      const url = type === 'interest' ? `/group-buys/${gb._id}/interest/export-csv` : `/group-buys/${gb._id}/export-csv`;
+      const url = type === 'interest' ? `/group-buys/${gb._id}/interest/export-csv`
+        : type === 'addons' ? `/group-buys/${gb._id}/export-csv?scope=addons`
+        : `/group-buys/${gb._id}/export-csv`;
       const res = await fetch(`${API}${url}`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Export failed'); }
       const blob = await res.blob();
@@ -150,13 +153,14 @@ function GBCard({ gb, fetchGbs, updateGbLocal, isExpanded, panel, onTogglePanel 
     } catch (err) { toast.error(err.message); }
   };
 
-  if (editing) return <EditGBCard gb={gb} fetchGbs={fetchGbs} onClose={() => setEditing(false)} />;
+  if (editing) return <EditGBCard gb={gb} gbs={gbs} fetchGbs={fetchGbs} onClose={() => setEditing(false)} />;
 
   const icCount = gb.interestChecks?.length || 0;
   const hasOptions = (gb.options?.length || 0) > 0;
   const displayPrice = hasOptions
     ? `From ₱${Math.min(...gb.options.flatMap(g => g.values.map(v => v.price))).toLocaleString()}`
     : `₱${gb.basePrice?.toLocaleString()}`;
+  const parentGb = gb.parentGroupBuyId ? (gbs || []).find(g => g._id === (gb.parentGroupBuyId?._id || gb.parentGroupBuyId)) : null;
 
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', boxShadow: 'var(--shadow-card)', opacity: gb.isActive ? 1 : 0.6, transition: 'opacity 0.2s' }}>
@@ -165,7 +169,14 @@ function GBCard({ gb, fetchGbs, updateGbLocal, isExpanded, panel, onTogglePanel 
           {gb.images?.[0]?.url ? <img src={gb.images[0].url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Serif Display', serif", color: 'var(--accent)' }}>{gb.name[0]}</div>}
         </div>
         <div style={{ flex: 1, minWidth: 160 }}>
-          <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.08rem', marginBottom: '3px' }}>{gb.name}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '3px' }}>
+            <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.08rem', margin: 0 }}>{gb.name}</p>
+            {parentGb && (
+              <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: '10px', background: 'rgba(120,80,200,0.1)', color: 'rgb(120,80,200)', whiteSpace: 'nowrap' }}>
+                Add-on of {parentGb.name}
+              </span>
+            )}
+          </div>
           <div style={{ display: 'flex', gap: '10px', fontSize: '0.78rem', color: 'var(--ink-muted)', flexWrap: 'wrap' }}>
             <span>{displayPrice}</span><span>{gb.orderCount} orders</span>
             {icCount > 0 && <span>{icCount} interested</span>}
@@ -182,8 +193,10 @@ function GBCard({ gb, fetchGbs, updateGbLocal, isExpanded, panel, onTogglePanel 
           <Pill onClick={() => onTogglePanel('options')} active={panel === 'options'}>Options ({gb.options?.length || 0})</Pill>
           <Pill onClick={() => onTogglePanel('configs')} active={panel === 'configs'}>Configs ({gb.configurations?.length || 0})</Pill>
           {gb.status === 'interest-check' && <Pill onClick={() => onTogglePanel('interest')} active={panel === 'interest'}>IC ({icCount})</Pill>}
-          <Pill onClick={() => onTogglePanel('orders')} active={panel === 'orders'}>Orders ({gb.orderCount})</Pill>
-          <Pill onClick={() => exportCSV('orders')}>CSV</Pill>
+          {!parentGb && <Pill onClick={() => onTogglePanel('orders')} active={panel === 'orders'}>Orders ({gb.orderCount})</Pill>}
+          {!parentGb && (gb.addOns?.length > 0 || true) && <Pill onClick={() => onTogglePanel('addons')} active={panel === 'addons'}>Add-ons ({gb.addOns?.length || 0})</Pill>}
+          {!parentGb && <Pill onClick={() => exportCSV('orders')}>CSV</Pill>}
+          {!parentGb && (gb.addOns?.length > 0) && <Pill onClick={() => exportCSV('addons')}>Add-ons CSV</Pill>}
           <Pill onClick={toggleActive}>{gb.isActive ? 'Archive' : 'Activate'}</Pill>
         </div>
       </div>
@@ -192,6 +205,7 @@ function GBCard({ gb, fetchGbs, updateGbLocal, isExpanded, panel, onTogglePanel 
       {panel === 'configs' && <GBConfigManager gb={gb} fetchGbs={fetchGbs} />}
       {panel === 'interest' && <InterestPanel gb={gb} exportCSV={() => exportCSV('interest')} />}
       {panel === 'orders' && <OrdersPanel groupBuyId={gb._id} />}
+      {panel === 'addons' && <AddonsPanel parentGb={gb} gbs={gbs} fetchGbs={fetchGbs} />}
     </div>
   );
 }
@@ -200,7 +214,7 @@ function GBCard({ gb, fetchGbs, updateGbLocal, isExpanded, panel, onTogglePanel 
 /* ═══════════════════════════════════════════════
    EDIT GROUP BUY
 ═══════════════════════════════════════════════ */
-function EditGBCard({ gb, fetchGbs, onClose }) {
+function EditGBCard({ gb, gbs, fetchGbs, onClose }) {
   const [form, setForm] = useState({
     name: gb.name,
     description: gb.description || '',
@@ -209,8 +223,10 @@ function EditGBCard({ gb, fetchGbs, onClose }) {
     maxOrders: gb.maxOrders || 0,
     category: gb.category || '',
     startDate: gb.startDate ? gb.startDate.slice(0, 10) : '',
-    endDate: gb.endDate ? gb.endDate.slice(0, 10) : ''
+    endDate: gb.endDate ? gb.endDate.slice(0, 10) : '',
+    parentGroupBuyId: gb.parentGroupBuyId?._id || gb.parentGroupBuyId || '',
   });
+  const eligibleParents = (gbs || []).filter(g => g._id !== gb._id && !g.parentGroupBuyId);
   const [saving, setSaving] = useState(false);
   const [descPreview, setDescPreview] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
@@ -220,7 +236,7 @@ function EditGBCard({ gb, fetchGbs, onClose }) {
     try {
       await apiFetch(`/group-buys/${gb._id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ ...form, basePrice: Number(form.basePrice), moq: Number(form.moq), maxOrders: Number(form.maxOrders) })
+        body: JSON.stringify({ ...form, basePrice: Number(form.basePrice), moq: Number(form.moq), maxOrders: Number(form.maxOrders), parentGroupBuyId: form.parentGroupBuyId || null })
       });
       toast.success('Updated'); onClose(); fetchGbs();
     } catch (err) { toast.error(err.message); } finally { setSaving(false); }
@@ -233,6 +249,15 @@ function EditGBCard({ gb, fetchGbs, onClose }) {
         <div className="form-group"><label className="form-label">Name</label><input className="form-input" value={form.name} onChange={set('name')} /></div>
         <div className="form-group"><label className="form-label">Base Price (₱) — used if no options</label><input type="number" className="form-input" value={form.basePrice} onChange={set('basePrice')} /></div>
       </div>
+      {eligibleParents.length > 0 && (
+        <div className="form-group">
+          <label className="form-label">Parent Group Buy (make this an add-on)</label>
+          <select className="form-input" value={form.parentGroupBuyId} onChange={set('parentGroupBuyId')}>
+            <option value="">— None (standalone) —</option>
+            {eligibleParents.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
+          </select>
+        </div>
+      )}
 
       {/* Rich text description */}
       <div className="form-group">
@@ -646,115 +671,285 @@ function InterestPanel({ gb, exportCSV }) {
 
 
 /* ═══════════════════════════════════════════════
+   ADD-ONS PANEL — shows child add-on GBs as full GBCards inside parent
+═══════════════════════════════════════════════ */
+function AddonsPanel({ parentGb, gbs, fetchGbs }) {
+  const [showCreate, setShowCreate] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
+  const [expandedSubPanel, setExpandedSubPanel] = useState(null);
+  const updateGbLocal = () => fetchGbs();
+  const addons = (gbs || []).filter(g => (g.parentGroupBuyId === parentGb._id) || (g.parentGroupBuyId?._id === parentGb._id));
+
+  return (
+    <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <p style={{ fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Add-ons of {parentGb.name}</p>
+        <button onClick={() => setShowCreate(true)} className="btn-dark" style={{ padding: '6px 14px', fontSize: '0.78rem' }}><span>+ New Add-on</span></button>
+      </div>
+      {showCreate && (
+        <CreateGBModal gbs={gbs} forcedParentId={parentGb._id} onClose={() => setShowCreate(false)} onCreated={() => { fetchGbs(); setShowCreate(false); }} />
+      )}
+      {addons.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '32px 20px', color: 'var(--ink-muted)', background: 'var(--surface)', borderRadius: 'var(--radius-sm)', fontSize: '0.84rem' }}>
+          No add-ons yet. Create one to offer optional extras for this group buy.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {addons.map(ao => (
+            <GBCard key={ao._id} gb={ao} gbs={gbs} fetchGbs={fetchGbs} updateGbLocal={updateGbLocal}
+              isExpanded={expandedId === ao._id} panel={expandedId === ao._id ? expandedSubPanel : null}
+              onTogglePanel={(p) => {
+                if (expandedId === ao._id && expandedSubPanel === p) { setExpandedId(null); setExpandedSubPanel(null); }
+                else { setExpandedId(ao._id); setExpandedSubPanel(p); }
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════
    ORDERS PANEL
 ═══════════════════════════════════════════════ */
 function OrdersPanel({ groupBuyId }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { apiFetch(`/group-buys/${groupBuyId}/orders`).then(d => setOrders(d.orders || [])).catch(() => setOrders([])).finally(() => setLoading(false)); }, [groupBuyId]);
+  const fetchOrders = () => {
+    setLoading(true);
+    apiFetch(`/group-buys/${groupBuyId}/orders`).then(d => setOrders(d.orders || [])).catch(() => setOrders([])).finally(() => setLoading(false));
+  };
+  useEffect(() => { fetchOrders(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [groupBuyId]);
   const updateOrderLocal = (id, patch) => setOrders(prev => prev.map(o => o._id === id ? { ...o, ...patch } : o));
   if (loading) return <div style={{ padding: '24px', textAlign: 'center' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>;
   if (!orders.length) return <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border)', color: 'var(--ink-muted)', fontSize: '0.82rem' }}>No orders.</div>;
+
+  // Group by cartCheckoutId; solo orders (no cartCheckoutId) become single-item groups
+  const groups = [];
+  const groupMap = new Map();
+  for (const o of orders) {
+    if (!o.cartCheckoutId) { groups.push({ key: o._id, items: [o] }); continue; }
+    if (!groupMap.has(o.cartCheckoutId)) {
+      const g = { key: o.cartCheckoutId, items: [] };
+      groupMap.set(o.cartCheckoutId, g);
+      groups.push(g);
+    }
+    groupMap.get(o.cartCheckoutId).items.push(o);
+  }
+
   return (
-    <div style={{ borderTop: '1px solid var(--border)', padding: '16px 20px', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      {orders.map(o => <GBOrderRow key={o._id} order={o} updateOrderLocal={updateOrderLocal} />)}
+    <div style={{ borderTop: '1px solid var(--border)', padding: '16px 20px', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      {groups.map(g => <UnifiedGBOrderCard key={g.key} items={g.items} updateOrderLocal={updateOrderLocal} parentGbId={groupBuyId} fetchOrders={fetchOrders} />)}
     </div>
   );
 }
 
-function GBOrderRow({ order, updateOrderLocal }) {
+function UnifiedGBOrderCard({ items, updateOrderLocal, parentGbId, fetchOrders }) {
   const [expanded, setExpanded] = useState(false);
-  const [updating, setUpdating] = useState(false);
+  const [updatingId, setUpdatingId] = useState(null);
+  const [showAddItem, setShowAddItem] = useState(false);
   const statuses = ['Confirmed', 'In Production', 'Shipped', 'Delivered', 'Cancelled'];
-  const updateStatus = async (newStatus) => {
-    const prev = order.status;
-    setUpdating(true);
-    updateOrderLocal(order._id, { status: newStatus });
-    try { await apiFetch(`/group-buys/orders/${order._id}/status`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) }); toast.success(`Status updated to ${newStatus}`); }
-    catch (err) { updateOrderLocal(order._id, { status: prev }); toast.error(err.message); }
-    finally { setUpdating(false); }
-  };
 
-  const u = order.userId;
-  const name = typeof u === 'object' ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '—';
+  // Sort items: parent first, then add-ons
+  const sorted = [...items].sort((a, b) => {
+    const aIsAddon = !!a.groupBuyId?.parentGroupBuyId;
+    const bIsAddon = !!b.groupBuyId?.parentGroupBuyId;
+    return Number(aIsAddon) - Number(bIsAddon);
+  });
+  const primary = sorted[0];
+  const u = primary.userId;
+  const customerName = typeof u === 'object' ? `${u.firstName || ''} ${u.lastName || ''}`.trim() : '—';
   const email = typeof u === 'object' ? u.email : '';
   const phone = typeof u === 'object' ? u.mobileNo : '';
-  const ship = order.shippingAddress || {};
-  const kits = order.kits || [];
-  const configs = order.configurations || [];
+  const ship = primary.shippingAddress || {};
+  const cartCode = primary.cartOrderCode || primary.orderCode;
+  const activeItems = sorted.filter(i => i.status !== 'Cancelled');
+  const cancelledItems = sorted.filter(i => i.status === 'Cancelled');
+  const activeTotal = activeItems.reduce((s, i) => s + (i.totalPrice || 0), 0);
+  const cancelledTotal = cancelledItems.reduce((s, i) => s + (i.totalPrice || 0), 0);
+  const originalTotal = sorted.reduce((s, i) => s + (i.totalPrice || 0), 0);
+  const primaryName = primary.groupBuyId?.name || 'Group Buy';
+  const addonCount = sorted.filter(i => i.groupBuyId?.parentGroupBuyId).length;
+  // Header summary status: most common active status, or "Cancelled" if all cancelled
+  const headerStatus = activeItems.length === 0 ? 'Cancelled' : (() => {
+    const counts = {};
+    activeItems.forEach(i => { counts[i.status] = (counts[i.status] || 0) + 1; });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+  })();
+
+  const updateItemStatus = async (orderId, newStatus) => {
+    const item = sorted.find(i => i._id === orderId);
+    if (!item) return;
+    const prev = item.status;
+    setUpdatingId(orderId);
+    updateOrderLocal(orderId, { status: newStatus });
+    try {
+      await apiFetch(`/group-buys/orders/${orderId}/status`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) });
+      toast.success(newStatus === 'Cancelled' ? 'Item cancelled — stock restored' : `Status → ${newStatus}`);
+    }
+    catch (err) { updateOrderLocal(orderId, { status: prev }); toast.error(err.message); }
+    finally { setUpdatingId(null); }
+  };
 
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
       <button type="button" onClick={() => setExpanded(e => !e)}
-        style={{
-          width: '100%', display: 'grid', gridTemplateColumns: 'auto 1fr 1fr 1fr auto auto',
-          gap: '20px', alignItems: 'center', padding: '14px 20px', background: 'transparent',
-          border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: 'var(--ink)',
-        }}
-        className="gb-order-header"
-      >
+        style={{ width: '100%', display: 'grid', gridTemplateColumns: 'auto auto 1fr 1fr 1fr auto auto', gap: '16px', alignItems: 'center', padding: '14px 20px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: 'var(--ink)' }}
+        className="gb-order-header">
         <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
           style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', color: 'var(--ink-muted)' }}>
           <polyline points="9 18 15 12 9 6"/>
         </svg>
+        <div style={{ width: 56, height: 56, borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: 'var(--accent-light)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {primary.groupBuyId?.images?.[0]?.url
+            ? <img src={primary.groupBuyId.images[0].url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.4rem', color: 'var(--accent)' }}>{primaryName?.[0]}</span>}
+        </div>
         <div>
           <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Order</p>
-          <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.9rem', marginTop: 2 }}>{order.orderCode}</p>
+          <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem', marginTop: 2 }}>{cartCode}</p>
+          <p style={{ fontSize: '0.76rem', color: 'var(--ink-muted)', marginTop: 2 }}>
+            {primaryName}{addonCount > 0 && <span style={{ color: 'rgb(120,80,200)' }}> + {addonCount} add-on{addonCount > 1 ? 's' : ''}</span>}
+          </p>
         </div>
         <div>
           <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Customer</p>
-          <p style={{ fontSize: '0.86rem', fontWeight: 500, marginTop: 2 }}>{name || '—'}</p>
+          <p style={{ fontSize: '0.86rem', fontWeight: 500, marginTop: 2 }}>{customerName || '—'}</p>
         </div>
         <div>
           <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Date</p>
-          <p style={{ fontSize: '0.86rem', marginTop: 2 }}>{new Date(order.createdAt).toLocaleDateString()}</p>
+          <p style={{ fontSize: '0.86rem', marginTop: 2 }}>{new Date(primary.createdAt).toLocaleDateString()}</p>
         </div>
-        <StatusBadge status={order.status} />
-        <span style={{ fontWeight: 600, fontSize: '0.92rem', whiteSpace: 'nowrap' }}>₱{order.totalPrice?.toLocaleString()}</span>
+        <StatusBadge status={headerStatus} />
+        <span style={{ fontWeight: 600, fontSize: '0.92rem', whiteSpace: 'nowrap' }}>
+          ₱{activeTotal.toLocaleString()}
+          {cancelledTotal > 0 && <span style={{ display: 'block', fontSize: '0.7rem', fontWeight: 400, color: 'var(--ink-faint)', textAlign: 'right' }}>−₱{cancelledTotal.toLocaleString()} cancelled</span>}
+        </span>
       </button>
 
       {expanded && (
         <div style={{ borderTop: '1px solid var(--border-subtle)', padding: '18px 22px', background: 'var(--bg-secondary)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '18px' }}>
             <DetailItem label="Email" value={email || '—'} />
             <DetailItem label="Phone" value={phone || ship.phone || '—'} />
-            <DetailItem label="Order ID" value={order._id} mono />
-            <DetailItem label="Placed" value={new Date(order.createdAt).toLocaleString()} />
-            <DetailItem label="Quantity" value={order.quantity ?? 1} />
-            {order.selectedOption?.value && (
-              <DetailItem label={order.selectedOption.groupName || 'Option'} value={`${order.selectedOption.value}${order.selectedOption.price ? ` — ₱${order.selectedOption.price.toLocaleString()}` : ''}`} />
+            <DetailItem label="Cart Order Code" value={cartCode} />
+            <DetailItem label="Placed" value={new Date(primary.createdAt).toLocaleString()} />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
+            <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Items ({sorted.length})</p>
+            {parentGbId && (
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button type="button" onClick={async () => {
+                  try {
+                    const res = await apiFetch('/orders/admin/add-link', { method: 'POST', body: JSON.stringify({ type: 'gb-cart', cartOrderCode: cartCode, cartCheckoutId: primary.cartCheckoutId }) });
+                    try { await navigator.clipboard.writeText(res.url); toast.success('Add-link copied to clipboard'); }
+                    catch { window.prompt('Copy the add-to-order link:', res.url); }
+                  } catch (err) { toast.error(err.message); }
+                }}
+                  style={{ fontSize: '0.7rem', padding: '4px 10px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                  Send Add-Link to Customer
+                </button>
+                <button type="button" onClick={() => setShowAddItem(true)}
+                  style={{ fontSize: '0.7rem', padding: '4px 10px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                  + Add Item Directly
+                </button>
+              </div>
             )}
           </div>
 
-          {configs.length > 0 && (
-            <div style={{ marginBottom: '16px' }}>
-              <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 8 }}>Configurations</p>
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '10px 14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px 16px' }}>
-                {configs.map((c, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem' }}>
-                    <span style={{ color: 'var(--ink-muted)' }}>{c.name}</span>
-                    <span style={{ fontWeight: 500 }}>{c.selected}</span>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', marginBottom: '18px' }}>
+            {sorted.map((item, idx) => {
+              const isAddon = !!item.groupBuyId?.parentGroupBuyId;
+              const itemConfigs = item.configurations || [];
+              const itemKits = item.kits || [];
+              const isCancelled = item.status === 'Cancelled';
+              const thumbUrl = !isAddon ? item.groupBuyId?.images?.[0]?.url : null;
+              return (
+                <div key={item._id} style={{ padding: '14px 16px', borderTop: idx > 0 ? '1px solid var(--border-subtle)' : 'none', opacity: isCancelled ? 0.55 : 1, background: isCancelled ? 'repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(0,0,0,0.02) 8px, rgba(0,0,0,0.02) 16px)' : 'transparent' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: !isAddon ? 'auto 1fr auto auto' : '1fr auto auto', gap: '12px', alignItems: 'center' }}>
+                    {!isAddon && (
+                      <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: 'var(--accent-light)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {thumbUrl
+                          ? <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1rem', color: 'var(--accent)' }}>{item.groupBuyId?.name?.[0]}</span>}
+                      </div>
+                    )}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: 3 }}>
+                        {isAddon && (
+                          <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: '8px', background: 'rgba(120,80,200,0.12)', color: 'rgb(120,80,200)' }}>Add-on</span>
+                        )}
+                        {item.addedAfterPurchase && (
+                          <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: '8px', background: '#d4edda', color: '#155724' }}>Added</span>
+                        )}
+                        <span style={{ fontSize: '0.9rem', fontWeight: 500, textDecoration: isCancelled ? 'line-through' : 'none' }}>{item.groupBuyId?.name || 'Group Buy'}</span>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>× {item.quantity}</span>
+                      </div>
+                      {item.selectedOption?.value && (
+                        <p style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>
+                          {item.selectedOption.groupName}: {item.selectedOption.value}
+                          {item.selectedOption.price ? ` — ₱${item.selectedOption.price.toLocaleString()}` : ''}
+                        </p>
+                      )}
+                      {itemConfigs.length > 0 && (
+                        <p style={{ fontSize: '0.74rem', color: 'var(--ink-faint)', marginTop: 2 }}>
+                          {itemConfigs.map(c => `${c.name}: ${c.selected}`).join(' · ')}
+                        </p>
+                      )}
+                      {itemKits.length > 0 && (
+                        <p style={{ fontSize: '0.74rem', color: 'var(--ink-faint)', marginTop: 2 }}>
+                          Kits: {itemKits.map(k => `${k.name} × ${k.quantity}`).join(' · ')}
+                        </p>
+                      )}
+                      <p style={{ fontSize: '0.66rem', color: 'var(--ink-faint)', marginTop: 4 }}>{item.orderCode}</p>
+                    </div>
+                    <select value={item.status} onChange={e => updateItemStatus(item._id, e.target.value)}
+                      disabled={updatingId === item._id}
+                      className={`status-select status-${statusPaletteKey(item.status)}`}
+                      style={{ fontSize: '0.74rem' }}>
+                      {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <span style={{ fontWeight: 600, fontSize: '0.88rem', whiteSpace: 'nowrap', textDecoration: isCancelled ? 'line-through' : 'none' }}>₱{item.totalPrice?.toLocaleString()}</span>
                   </div>
-                ))}
+                </div>
+              );
+            })}
+            <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {cancelledTotal > 0 && (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', color: 'var(--ink-muted)' }}>
+                    <span>Original total</span>
+                    <span style={{ textDecoration: 'line-through' }}>₱{originalTotal.toLocaleString()}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', color: 'var(--ink-muted)' }}>
+                    <span>Cancelled</span>
+                    <span>−₱{cancelledTotal.toLocaleString()}</span>
+                  </div>
+                </>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '0.95rem', borderTop: cancelledTotal > 0 ? '1px solid var(--border-subtle)' : 'none', paddingTop: cancelledTotal > 0 ? 6 : 0 }}>
+                <span>Subtotal</span>
+                <span>₱{activeTotal.toLocaleString()}</span>
               </div>
             </div>
+          </div>
+
+          {showAddItem && parentGbId && (
+            <AddItemToOrder
+              parentGbId={parentGbId}
+              cartOrderCode={cartCode}
+              cartCheckoutId={primary.cartCheckoutId}
+              shippingAddress={ship}
+              userId={typeof u === 'object' ? u._id : u}
+              onClose={() => setShowAddItem(false)}
+              onAdded={() => { setShowAddItem(false); fetchOrders?.(); }}
+            />
           )}
 
-          {kits.length > 0 && (
-            <div style={{ marginBottom: '16px' }}>
-              <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 8 }}>Kits</p>
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '10px 14px' }}>
-                {kits.map((k, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: '0.84rem', borderBottom: i < kits.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
-                    <span>{k.name} <span style={{ color: 'var(--ink-muted)' }}>× {k.quantity}</span></span>
-                    <span style={{ fontWeight: 500 }}>₱{((k.price || 0) * (k.quantity || 1)).toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div style={{ marginBottom: '16px' }}>
+          <div style={{ marginBottom: '14px' }}>
             <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 8 }}>Shipping Address</p>
             <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '14px 16px' }}>
               {ship.fullName || ship.street || ship.city ? (
@@ -772,25 +967,16 @@ function GBOrderRow({ order, updateOrderLocal }) {
             </div>
           </div>
 
-          {order.notes && (
-            <div style={{ marginBottom: '16px' }}>
+          {sorted.some(i => i.notes?.trim()) && (
+            <div>
               <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 8 }}>Notes</p>
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '10px 14px', fontSize: '0.85rem', color: 'var(--ink-muted)', whiteSpace: 'pre-wrap' }}>{order.notes}</div>
+              {sorted.filter(i => i.notes?.trim()).map(i => (
+                <div key={i._id} style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '10px 14px', fontSize: '0.84rem', color: 'var(--ink-muted)', marginBottom: 6 }}>
+                  <strong style={{ color: 'var(--ink)' }}>{i.groupBuyId?.name}:</strong> {i.notes}
+                </div>
+              ))}
             </div>
           )}
-
-          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px 16px', fontSize: '0.88rem', display: 'flex', justifyContent: 'space-between', fontWeight: 600, marginBottom: '16px' }}>
-            <span>Total</span>
-            <span>₱{order.totalPrice?.toLocaleString()}</span>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>Update status:</span>
-            <select value={order.status} onChange={e => updateStatus(e.target.value)} disabled={updating}
-              className={`status-select status-${statusPaletteKey(order.status)}`}>
-              {statuses.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
         </div>
       )}
       <style>{`
@@ -799,6 +985,130 @@ function GBOrderRow({ order, updateOrderLocal }) {
           .gb-order-header { grid-template-columns: auto 1fr !important; row-gap: 8px !important; }
         }
       `}</style>
+    </div>
+  );
+}
+
+function AddItemToOrder({ parentGbId, cartOrderCode, cartCheckoutId, shippingAddress, userId, onClose, onAdded }) {
+  const [familyGbs, setFamilyGbs] = useState([]); // parent + addons
+  const [loading, setLoading] = useState(true);
+  const [selectedGbId, setSelectedGbId] = useState('');
+  const [selectedOption, setSelectedOption] = useState(null); // {groupId, valueId, groupName, value, price}
+  const [configs, setConfigs] = useState({}); // {configName: value}
+  const [quantity, setQuantity] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      apiFetch(`/group-buys/${parentGbId}`),
+      apiFetch(`/group-buys/active?includeAddOns=true`).catch(() => []),
+    ]).then(([parent, all]) => {
+      const family = [parent, ...(Array.isArray(all) ? all : []).filter(g => g.parentGroupBuyId === parentGbId || g.parentGroupBuyId?._id === parentGbId)];
+      // de-dupe
+      const seen = new Set();
+      const unique = family.filter(g => { if (seen.has(g._id)) return false; seen.add(g._id); return true; });
+      setFamilyGbs(unique);
+      if (unique[0]) setSelectedGbId(unique[0]._id);
+    }).finally(() => setLoading(false));
+  }, [parentGbId]);
+
+  const selectedGb = familyGbs.find(g => g._id === selectedGbId);
+
+  // Reset option/configs when GB changes
+  useEffect(() => {
+    if (!selectedGb) return;
+    if (selectedGb.options?.length > 0) {
+      const grp = selectedGb.options[0];
+      const val = grp.values?.find(v => v.available !== false);
+      if (val) setSelectedOption({ groupId: grp._id, groupName: grp.name, valueId: val._id, value: val.value, price: val.price });
+      else setSelectedOption(null);
+    } else { setSelectedOption(null); }
+    const initial = {};
+    (selectedGb.configurations || []).forEach(c => {
+      const first = c.options?.find(o => o.available !== false);
+      if (first) initial[c.name] = first.value;
+    });
+    setConfigs(initial);
+  }, [selectedGbId, selectedGb]);
+
+  const submit = async () => {
+    if (!selectedGb || submitting) return;
+    if ((selectedGb.options?.length > 0) && !selectedOption) { toast.error('Pick an option'); return; }
+    setSubmitting(true);
+    try {
+      const configurations = Object.entries(configs).map(([name, selected]) => ({ name, selected }));
+      await apiFetch('/group-buys/orders/add-to-cart-order', {
+        method: 'POST',
+        body: JSON.stringify({
+          groupBuyId: selectedGbId,
+          userId,
+          cartOrderCode, cartCheckoutId,
+          shippingAddress,
+          quantity: Math.max(1, Number(quantity) || 1),
+          configurations,
+          ...(selectedOption ? { optionGroupId: selectedOption.groupId, optionValueId: selectedOption.valueId } : {})
+        })
+      });
+      toast.success('Item added to order');
+      onAdded?.();
+    } catch (err) { toast.error(err.message); }
+    finally { setSubmitting(false); }
+  };
+
+  if (loading) return <div style={{ padding: 16, background: 'var(--surface)', border: '1px solid var(--accent)', borderRadius: 'var(--radius-sm)', textAlign: 'center' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>;
+
+  return (
+    <div style={{ background: 'var(--surface)', border: '2px solid var(--accent)', borderRadius: 'var(--radius-sm)', padding: 18, marginBottom: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <p style={{ fontSize: '0.84rem', fontWeight: 600 }}>Add Item to {cartOrderCode}</p>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--ink-muted)', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Group Buy</label>
+        <select className="form-input" value={selectedGbId} onChange={e => setSelectedGbId(e.target.value)}>
+          {familyGbs.map(g => <option key={g._id} value={g._id}>{g.parentGroupBuyId ? '↳ ' : ''}{g.name}</option>)}
+        </select>
+      </div>
+
+      {selectedGb?.options?.length > 0 && (
+        <div className="form-group">
+          <label className="form-label">Option</label>
+          <select className="form-input" value={selectedOption?.valueId || ''} onChange={e => {
+            for (const grp of (selectedGb.options || [])) {
+              const val = grp.values?.find(v => v._id === e.target.value);
+              if (val) { setSelectedOption({ groupId: grp._id, groupName: grp.name, valueId: val._id, value: val.value, price: val.price }); break; }
+            }
+          }}>
+            {(selectedGb.options || []).flatMap(grp => (grp.values || []).filter(v => v.available !== false).map(v => (
+              <option key={v._id} value={v._id}>{grp.name}: {v.value} — ₱{v.price?.toLocaleString()}</option>
+            )))}
+          </select>
+        </div>
+      )}
+
+      {(selectedGb?.configurations || []).map(cfg => (
+        <div key={cfg.name} className="form-group">
+          <label className="form-label">{cfg.name}</label>
+          <select className="form-input" value={configs[cfg.name] || ''} onChange={e => setConfigs(c => ({ ...c, [cfg.name]: e.target.value }))}>
+            {(cfg.options || []).filter(o => o.available !== false).map(o => (
+              <option key={o.value} value={o.value}>{o.value}{o.priceModifier > 0 ? ` (+₱${o.priceModifier})` : ''}</option>
+            ))}
+          </select>
+        </div>
+      ))}
+
+      <div className="form-group">
+        <label className="form-label">Quantity</label>
+        <input type="number" min="1" className="form-input" value={quantity} onChange={e => setQuantity(e.target.value)} />
+      </div>
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={submit} disabled={submitting} className="btn-dark" style={{ padding: '8px 18px', fontSize: '0.82rem' }}>
+          <span>{submitting ? 'Adding…' : 'Add to Order'}</span>
+        </button>
+        <button onClick={onClose} className="btn-outline" style={{ padding: '8px 18px', fontSize: '0.82rem' }}>Cancel</button>
+      </div>
     </div>
   );
 }
@@ -816,8 +1126,10 @@ function DetailItem({ label, value, mono }) {
 /* ═══════════════════════════════════════════════
    CREATE GROUP BUY MODAL
 ═══════════════════════════════════════════════ */
-function CreateGBModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({ name: '', description: '', basePrice: '', moq: '', maxOrders: '', category: 'keyboards', startDate: '', endDate: '', status: 'interest-check' });
+function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
+  const [form, setForm] = useState({ name: '', description: '', basePrice: '', moq: '', maxOrders: '', category: 'keyboards', startDate: '', endDate: '', status: 'interest-check', parentGroupBuyId: forcedParentId || '' });
+  const eligibleParents = (gbs || []).filter(g => g.isActive && !g.parentGroupBuyId);
+  const forcedParent = forcedParentId ? eligibleParents.find(g => g._id === forcedParentId) : null;
   const [optionGroups, setOptionGroups] = useState([]);
   const [configs, setConfigs] = useState([]);
   const [newOptGroup, setNewOptGroup] = useState({ name: '' });
@@ -892,6 +1204,7 @@ function CreateGBModal({ onClose, onCreated }) {
           category: form.category, status: form.status,
           startDate: form.startDate || null, endDate: form.endDate || null,
           options: optionGroups, configurations: configs,
+          parentGroupBuyId: form.parentGroupBuyId || null,
         })
       });
       if (images.length > 0) {
@@ -960,6 +1273,22 @@ function CreateGBModal({ onClose, onCreated }) {
             <div className="form-group"><label className="form-label">Start Date</label><input type="date" className="form-input" value={form.startDate} onChange={set('startDate')} /></div>
             <div className="form-group"><label className="form-label">End Date</label><input type="date" className="form-input" value={form.endDate} onChange={set('endDate')} /></div>
           </div>
+
+          {forcedParent ? (
+            <div className="form-group">
+              <label className="form-label">Parent Group Buy</label>
+              <input className="form-input" value={forcedParent.name} disabled />
+              <p style={{ fontSize: '0.7rem', color: 'var(--ink-faint)', marginTop: 4 }}>This add-on will be tied to {forcedParent.name}.</p>
+            </div>
+          ) : eligibleParents.length > 0 && (
+            <div className="form-group">
+              <label className="form-label">Parent Group Buy (make this an add-on)</label>
+              <select className="form-input" value={form.parentGroupBuyId} onChange={set('parentGroupBuyId')}>
+                <option value="">— None (standalone) —</option>
+                {eligibleParents.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
+              </select>
+            </div>
+          )}
 
           {/* Images */}
           <div className="modal-section">

@@ -59,23 +59,7 @@ export default function CartView() {
     } catch (err) { toast.error(err.message); }
   };
 
-  const [checkingOut, setCheckingOut] = useState(false);
-
-  const goToCheckout = async () => {
-    if (checkingOut) return;
-    const isGroupBuy = items.some(item => item.groupBuyId);
-    if (isGroupBuy) {
-      setCheckingOut(true);
-      try {
-        await apiFetch('/orders/checkout-group-buy', { method: 'POST' });
-        toast.success('Order placed successfully!');
-        navigate('/profile?tab=orders');
-      } catch (err) {
-        toast.error(err.message);
-        setCheckingOut(false);
-      }
-      return;
-    }
+  const goToCheckout = () => {
     navigate('/checkout');
   };
 
@@ -192,8 +176,8 @@ export default function CartView() {
               <span>₱{total.toLocaleString()}</span>
             </div>
 
-            <button onClick={goToCheckout} className="btn-dark" style={{ width: '100%', marginTop: '20px', justifyContent: 'center' }} disabled={checkingOut}>
-              <span>{checkingOut ? 'Placing order…' : (isGroupBuyCart ? 'Place Order →' : 'Proceed to Checkout →')}</span>
+            <button onClick={goToCheckout} className="btn-dark" style={{ width: '100%', marginTop: '20px', justifyContent: 'center' }}>
+              <span>Proceed to Checkout →</span>
             </button>
             <button onClick={clearCart} style={{ display: 'block', width: '100%', textAlign: 'center', marginTop: '14px', fontSize: '0.84rem', color: 'var(--ink-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
               Clear Cart

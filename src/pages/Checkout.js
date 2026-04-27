@@ -1,6 +1,7 @@
 import { useState, useEffect, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import UserContext from '../context/UserContext';
+import AddToOrderContext from '../context/AddToOrderContext';
 import { apiFetch } from '../utils/api';
 import { computeShippingFromProvince } from '../utils/shipping';
 import AddressForm, { emptyAddress } from '../components/AddressForm';
@@ -10,6 +11,7 @@ const NEW = '__new__';
 
 export default function Checkout() {
   const { user } = useContext(UserContext);
+  const { token: addToken, info: addInfo, clear: clearAddToken } = useContext(AddToOrderContext);
   const navigate = useNavigate();
   const [cart, setCart] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -53,7 +55,6 @@ export default function Checkout() {
   const subtotal = cart?.totalPrice || 0;
   const isGroupBuy = items.some(i => i.groupBuyId);
 
-  if (isGroupBuy) { navigate('/cart', { replace: true }); return null; }
   if (items.length === 0) {
     return (
       <div className="page-body" style={{ padding: '64px var(--page-pad) 80px', textAlign: 'center' }}>
@@ -63,8 +64,9 @@ export default function Checkout() {
     );
   }
 
+  const isAddMode = !!addToken;
   const activeAddress = selectedId === NEW ? newAddress : savedAddresses.find(a => a._id === selectedId) || newAddress;
-  const ship = activeAddress?.province ? computeShippingFromProvince(activeAddress.province) : null;
+  const ship = (!isGroupBuy && !isAddMode && activeAddress?.province) ? computeShippingFromProvince(activeAddress.province) : null;
   const shippingFee = ship?.fee ?? 0;
   const grandTotal = subtotal + shippingFee;
 
@@ -77,11 +79,13 @@ export default function Checkout() {
 
   const placeOrder = async () => {
     if (submitting) return;
-    if (!validate(activeAddress)) { toast.error('Please complete the shipping address.'); return; }
-    if (!billingSame && !validate(billing)) { toast.error('Please complete the billing address.'); return; }
+    if (!isAddMode) {
+      if (!validate(activeAddress)) { toast.error('Please complete the shipping address.'); return; }
+      if (!billingSame && !validate(billing)) { toast.error('Please complete the billing address.'); return; }
+    }
     setSubmitting(true);
     try {
-      if (selectedId === NEW && saveNew) {
+      if (!isAddMode && selectedId === NEW && saveNew) {
         try {
           const res = await apiFetch('/users/addresses', {
             method: 'POST',
@@ -90,14 +94,15 @@ export default function Checkout() {
           setSavedAddresses(res.addresses || []);
         } catch { /* non-blocking */ }
       }
+      const body = isAddMode
+        ? { addToOrderToken: addToken }
+        : { shippingAddress: activeAddress, billingAddress: billingSame ? null : billing };
       await apiFetch('/orders/checkout', {
         method: 'POST',
-        body: JSON.stringify({
-          shippingAddress: activeAddress,
-          billingAddress: billingSame ? null : billing,
-        }),
+        body: JSON.stringify(body),
       });
-      toast.success('Order placed!');
+      if (isAddMode) clearAddToken();
+      toast.success(isAddMode ? 'Items added to your order!' : 'Order placed!');
       navigate('/profile?tab=orders');
     } catch (e) {
       toast.error(e.message);
@@ -115,9 +120,25 @@ export default function Checkout() {
 
       <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(2rem, 3vw, 2.6rem)', letterSpacing: '-0.025em', marginBottom: '36px' }}>Checkout</h1>
 
+      {isAddMode && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '14px 18px', borderRadius: '10px', background: 'var(--accent-light)', border: '1px solid var(--accent)', marginBottom: '20px', fontSize: '0.88rem', color: 'var(--accent)' }}>
+          <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>
+            Adding to <strong>{addInfo?.targetLabel || 'your existing order'}</strong>. Shipping is free — using the original order's address.
+          </span>
+        </div>
+      )}
+      {isGroupBuy && !isAddMode && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '14px 18px', borderRadius: '10px', background: 'var(--accent-light)', border: '1px solid var(--accent)', marginBottom: '28px', fontSize: '0.88rem', color: 'var(--accent)' }}>
+          <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span><strong>Group Buy Order</strong> — fulfillment will follow the group buy timeline.</span>
+        </div>
+      )}
+
       <div className="checkout-grid">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '36px' }}>
 
+          {!isAddMode && <>
           <section>
             <h2 className="checkout-section-title">Shipping Address</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -164,6 +185,7 @@ export default function Checkout() {
               </div>
             )}
           </section>
+          </>}
         </div>
 
         <div className="checkout-summary">

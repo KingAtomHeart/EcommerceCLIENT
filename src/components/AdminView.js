@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../utils/api';
-import { StatusBadge, statusStyle } from '../utils/statusColors';
+import { StatusBadge, statusStyle, statusPaletteKey } from '../utils/statusColors';
 import { useTheme } from '../context/ThemeContext';
 import toast from 'react-hot-toast';
 import AdminHomepageEditor from './AdminHomepageEditor';
@@ -1324,27 +1324,115 @@ function TableRow({ product, fetchData }) {
 ═══════════════════════════════════════════════ */
 function OrdersPanel({ orders, loading, fetchOrders, updateOrderLocal }) {
   const [view, setView] = useState('list');
+  const [productFilter, setProductFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState(null); // { orders: [], gbOrders: [] } | null
+  const [searching, setSearching] = useState(false);
+
+  const productNames = Array.from(
+    new Set(orders.flatMap(o => (o.productsOrdered || []).map(p => p.productName).filter(Boolean)))
+  ).sort();
+
+  const filtered = productFilter
+    ? orders.filter(o => (o.productsOrdered || []).some(p => p.productName === productFilter))
+    : orders;
+
+  const runSearch = async (q) => {
+    if (!q.trim()) { setSearchResults(null); return; }
+    setSearching(true);
+    try {
+      const data = await apiFetch(`/orders/admin/search?q=${encodeURIComponent(q.trim())}`);
+      setSearchResults(data);
+    } catch (err) { toast.error(err.message); setSearchResults({ orders: [], gbOrders: [] }); }
+    finally { setSearching(false); }
+  };
+
   if (loading) return <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}><div className="spinner" /></div>;
   return (
     <div>
-      <div style={{ display: 'flex', gap: '6px', marginBottom: '18px' }}>
-        <button className={`admin-toggle ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')} style={view === 'list' ? { background: 'var(--ink)', color: '#fff', borderColor: 'var(--ink)' } : {}}>
-          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-          <span>List</span>
-        </button>
-        <button className={`admin-toggle ${view === 'calendar' ? 'active' : ''}`} onClick={() => setView('calendar')} style={view === 'calendar' ? { background: 'var(--ink)', color: '#fff', borderColor: 'var(--ink)' } : {}}>
-          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          <span>Calendar</span>
-        </button>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: 'var(--surface)', minWidth: 280, flex: '1 1 280px' }}>
+          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" style={{ color: 'var(--ink-faint)' }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') runSearch(searchQuery); }}
+            placeholder="Search by order ID or order code (across in-stock + group buy)"
+            style={{ flex: 1, border: 'none', outline: 'none', background: 'none', fontFamily: "'DM Sans', sans-serif", fontSize: '0.82rem', color: 'var(--ink)', minWidth: 0 }} />
+          {(searchQuery || searchResults) && <button onClick={() => { setSearchQuery(''); setSearchResults(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-faint)', fontSize: '1rem', lineHeight: 1, padding: '0 2px' }}>×</button>}
+          <button onClick={() => runSearch(searchQuery)} disabled={searching || !searchQuery.trim()}
+            style={{ padding: '4px 10px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.74rem', fontFamily: "'DM Sans', sans-serif", opacity: !searchQuery.trim() ? 0.5 : 1 }}>
+            {searching ? 'Searching…' : 'Search'}
+          </button>
+        </div>
       </div>
-      {orders.length === 0 ? (
+
+      {searchResults && (
+        <div style={{ marginBottom: 18, padding: 14, background: 'var(--surface)', border: '1px solid var(--accent)', borderRadius: 'var(--radius-sm)' }}>
+          <p style={{ fontSize: '0.74rem', color: 'var(--ink-muted)', marginBottom: 10 }}>
+            Search results: {searchResults.orders?.length || 0} in-stock · {searchResults.gbOrders?.length || 0} group buy
+          </p>
+          {(searchResults.orders?.length || 0) === 0 && (searchResults.gbOrders?.length || 0) === 0 ? (
+            <p style={{ fontSize: '0.84rem', color: 'var(--ink-muted)', textAlign: 'center', padding: '20px 0' }}>No orders match.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {(searchResults.orders || []).map(o => (
+                <OrderRow key={o._id} order={o} fetchOrders={() => runSearch(searchQuery)} updateOrderLocal={null} />
+              ))}
+              {(searchResults.gbOrders || []).length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {(searchResults.gbOrders || []).map(o => (
+                    <div key={o._id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px 16px', display: 'grid', gridTemplateColumns: 'auto 1fr 1fr auto auto', gap: 14, alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '3px 8px', borderRadius: '8px', background: '#f5d6d8', color: '#8b2a31' }}>Group Buy</span>
+                      <div>
+                        <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.9rem' }}>{o.cartOrderCode || o.orderCode}</p>
+                        <p style={{ fontSize: '0.74rem', color: 'var(--ink-muted)' }}>
+                          {o.groupBuyId?.parentGroupBuyId ? '↳ ' : ''}{o.groupBuyId?.name || 'Group Buy'}
+                        </p>
+                      </div>
+                      <p style={{ fontSize: '0.84rem' }}>{typeof o.userId === 'object' ? `${o.userId.firstName || ''} ${o.userId.lastName || ''}`.trim() : '—'}</p>
+                      <StatusBadge status={o.status} />
+                      <span style={{ fontWeight: 600, fontSize: '0.88rem' }}>₱{o.totalPrice?.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '18px', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button className={`admin-toggle ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')} style={view === 'list' ? { background: 'var(--ink)', color: '#fff', borderColor: 'var(--ink)' } : {}}>
+            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            <span>List</span>
+          </button>
+          <button className={`admin-toggle ${view === 'calendar' ? 'active' : ''}`} onClick={() => setView('calendar')} style={view === 'calendar' ? { background: 'var(--ink)', color: '#fff', borderColor: 'var(--ink)' } : {}}>
+            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span>Calendar</span>
+          </button>
+        </div>
+        {productNames.length > 0 && (
+          <select value={productFilter} onChange={e => setProductFilter(e.target.value)}
+            style={{ padding: '7px 12px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: 'var(--surface)', fontFamily: "'DM Sans', sans-serif", fontSize: '0.78rem', color: productFilter ? 'var(--ink)' : 'var(--ink-muted)', cursor: 'pointer' }}>
+            <option value="">All products</option>
+            {productNames.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        )}
+        {productFilter && (
+          <span style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>
+            Showing {filtered.length} of {orders.length} order{orders.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+      {filtered.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--ink-muted)' }}>No orders yet.</div>
       ) : view === 'list' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          {orders.map(order => <OrderRow key={order._id} order={order} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />)}
+          {filtered.map(order => <OrderRow key={order._id} order={order} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />)}
         </div>
       ) : (
-        <OrdersCalendar orders={orders} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />
+        <OrdersCalendar orders={filtered} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />
       )}
     </div>
   );
@@ -1774,6 +1862,8 @@ function StatTile({ label, value, sub, subColor, accent }) {
 function OrderRow({ order, fetchOrders, updateOrderLocal }) {
   const [expanded, setExpanded] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [updatingItemId, setUpdatingItemId] = useState(null);
+  const [showAddItem, setShowAddItem] = useState(false);
   const statuses = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
   const updateStatus = async (newStatus) => {
     const prev = order.status;
@@ -1787,6 +1877,24 @@ function OrderRow({ order, fetchOrders, updateOrderLocal }) {
     }
     finally { setUpdating(false); }
   };
+  const generateAddLink = async (payload) => {
+    try {
+      const res = await apiFetch('/orders/admin/add-link', { method: 'POST', body: JSON.stringify(payload) });
+      try { await navigator.clipboard.writeText(res.url); toast.success('Add-link copied to clipboard'); }
+      catch { window.prompt('Copy the add-to-order link:', res.url); }
+    } catch (err) { toast.error(err.message); }
+  };
+  const updateItemStatus = async (itemId, newStatus) => {
+    setUpdatingItemId(itemId);
+    try {
+      const res = await apiFetch(`/orders/${order._id}/items/${itemId}/status`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) });
+      // Server recalculates total + item statuses; sync the whole order locally
+      if (res.order && updateOrderLocal) updateOrderLocal(order._id, res.order);
+      else fetchOrders?.();
+      toast.success(newStatus === 'Cancelled' ? 'Item cancelled — stock restored' : `Item → ${newStatus}`);
+    } catch (err) { toast.error(err.message); fetchOrders?.(); }
+    finally { setUpdatingItemId(null); }
+  };
   const customer = order.userId;
   const name = typeof customer === 'object' ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim() : 'Unknown';
   const email = typeof customer === 'object' ? customer.email : '';
@@ -1797,7 +1905,12 @@ function OrderRow({ order, fetchOrders, updateOrderLocal }) {
     bill.fullName === ship.fullName && bill.phone === ship.phone &&
     bill.street === ship.street && bill.city === ship.city && bill.province === ship.province
   );
-  const subtotal = (order.productsOrdered || []).reduce((n, p) => n + (p.subtotal || 0), 0);
+  const items = order.productsOrdered || [];
+  const activeItems = items.filter(p => p.status !== 'Cancelled');
+  const cancelledItems = items.filter(p => p.status === 'Cancelled');
+  const subtotal = activeItems.reduce((n, p) => n + (p.subtotal || 0), 0);
+  const cancelledTotal = cancelledItems.reduce((n, p) => n + (p.subtotal || 0), 0);
+  const originalSubtotal = items.reduce((n, p) => n + (p.subtotal || 0), 0);
 
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
@@ -1847,15 +1960,58 @@ function OrderRow({ order, fetchOrders, updateOrderLocal }) {
           </div>
 
           <div>
-            <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '8px' }}>Products</p>
-            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px 16px' }}>
-              {(order.productsOrdered || []).map((item, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: '0.86rem', borderBottom: i < order.productsOrdered.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
-                  <span>{item.productName} <span style={{ color: 'var(--ink-muted)' }}>× {item.quantity}</span></span>
-                  <span style={{ fontWeight: 500 }}>₱{item.subtotal?.toLocaleString()}</span>
-                </div>
-              ))}
-              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.86rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: 8 }}>
+              <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Products ({items.length})</p>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button type="button" onClick={() => generateAddLink({ type: 'order', orderId: order._id })}
+                  style={{ fontSize: '0.7rem', padding: '4px 10px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                  Send Add-Link to Customer
+                </button>
+                <button type="button" onClick={() => setShowAddItem(true)}
+                  style={{ fontSize: '0.7rem', padding: '4px 10px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                  + Add Item Directly
+                </button>
+              </div>
+            </div>
+            {showAddItem && (
+              <AddProductToOrder orderId={order._id} onClose={() => setShowAddItem(false)} onAdded={(updated) => { setShowAddItem(false); if (updated && updateOrderLocal) updateOrderLocal(order._id, updated); else fetchOrders?.(); }} />
+            )}
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+              {items.map((item, i) => {
+                const cancelled = item.status === 'Cancelled';
+                return (
+                  <div key={item._id || i} style={{ padding: '10px 14px', borderTop: i > 0 ? '1px solid var(--border-subtle)' : 'none', opacity: cancelled ? 0.55 : 1, background: cancelled ? 'repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(0,0,0,0.02) 8px, rgba(0,0,0,0.02) 16px)' : 'transparent' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.86rem', minWidth: 0, textDecoration: cancelled ? 'line-through' : 'none' }}>
+                        {item.addedAfterPurchase && (
+                          <span style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: '8px', background: '#d4edda', color: '#155724', marginRight: 8 }}>Added</span>
+                        )}
+                        {item.productName} <span style={{ color: 'var(--ink-muted)' }}>× {item.quantity}</span>
+                      </span>
+                      <select value={item.status || 'Pending'} onChange={e => updateItemStatus(item._id, e.target.value)}
+                        disabled={updatingItemId === item._id || !item._id}
+                        className={`status-select status-${statusPaletteKey(item.status || 'Pending')}`}
+                        style={{ fontSize: '0.74rem' }}>
+                        {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                      <span style={{ fontWeight: 500, textDecoration: cancelled ? 'line-through' : 'none', whiteSpace: 'nowrap' }}>₱{item.subtotal?.toLocaleString()}</span>
+                    </div>
+                  </div>
+                );
+              })}
+              <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.86rem' }}>
+                {cancelledTotal > 0 && (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--ink-muted)' }}>
+                      <span>Original subtotal</span>
+                      <span style={{ textDecoration: 'line-through' }}>₱{originalSubtotal.toLocaleString()}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--ink-muted)' }}>
+                      <span>Cancelled</span>
+                      <span>−₱{cancelledTotal.toLocaleString()}</span>
+                    </div>
+                  </>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: 'var(--ink-muted)' }}>Subtotal</span>
                   <span>₱{subtotal.toLocaleString()}</span>
@@ -1873,7 +2029,7 @@ function OrderRow({ order, fetchOrders, updateOrderLocal }) {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '18px' }}>
-            <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>Update status:</span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>Order status:</span>
             <select value={order.status} onChange={e => updateStatus(e.target.value)} disabled={updating} className="form-input" style={{ fontSize: '0.8rem', padding: '6px 10px', width: 'auto', borderRadius: 'var(--radius-pill)', cursor: 'pointer' }}>
               {statuses.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
@@ -1887,6 +2043,141 @@ function OrderRow({ order, fetchOrders, updateOrderLocal }) {
           .admin-order-addresses { grid-template-columns: 1fr !important; }
         }
       `}</style>
+    </div>
+  );
+}
+
+function AddProductToOrder({ orderId, onClose, onAdded }) {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [pickedId, setPickedId] = useState('');
+  const [selectedOption, setSelectedOption] = useState(null);
+  const [variantId, setVariantId] = useState('');
+  const [configs, setConfigs] = useState({});
+  const [quantity, setQuantity] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    apiFetch('/products/active').then(d => setProducts(Array.isArray(d) ? d : (d.products || []))).catch(() => setProducts([])).finally(() => setLoading(false));
+  }, []);
+
+  const filteredProducts = search
+    ? products.filter(p => (p.name || '').toLowerCase().includes(search.toLowerCase()))
+    : products;
+
+  const picked = products.find(p => p._id === pickedId);
+
+  useEffect(() => {
+    if (!picked) { setSelectedOption(null); setVariantId(''); setConfigs({}); return; }
+    if (picked.useVariants && picked.variants?.length > 0) {
+      const v = picked.variants.find(x => x.available !== false);
+      setVariantId(v?._id || '');
+    } else if (picked.options?.length > 0) {
+      const grp = picked.options[0];
+      const val = grp.values?.find(v => v.available !== false);
+      if (val) setSelectedOption({ groupId: grp._id, groupName: grp.name, valueId: val._id, value: val.value, price: val.price });
+    }
+    const initialCfg = {};
+    (picked.configurations || []).forEach(c => {
+      const first = c.options?.find(o => o.available !== false);
+      if (first) initialCfg[c.name] = first.value;
+    });
+    setConfigs(initialCfg);
+  }, [pickedId, picked]);
+
+  const submit = async () => {
+    if (!picked || submitting) return;
+    setSubmitting(true);
+    try {
+      const configurations = Object.entries(configs).map(([name, selected]) => ({ name, selected }));
+      const body = {
+        productId: pickedId,
+        quantity: Math.max(1, Number(quantity) || 1),
+        configurations,
+      };
+      if (picked.useVariants && variantId) body.variantId = variantId;
+      if (selectedOption?.groupId) body.selectedOption = selectedOption;
+      const res = await apiFetch(`/orders/${orderId}/items`, { method: 'POST', body: JSON.stringify(body) });
+      toast.success('Item added to order');
+      onAdded?.(res.order);
+    } catch (err) { toast.error(err.message); }
+    finally { setSubmitting(false); }
+  };
+
+  return (
+    <div style={{ background: 'var(--surface)', border: '2px solid var(--accent)', borderRadius: 'var(--radius-sm)', padding: 16, marginBottom: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <p style={{ fontSize: '0.86rem', fontWeight: 600 }}>Add Product to Order</p>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--ink-muted)', cursor: 'pointer', fontSize: '1rem' }}>✕</button>
+      </div>
+
+      <input type="text" placeholder="Search products..." value={search} onChange={e => setSearch(e.target.value)}
+        className="form-input" style={{ marginBottom: 10 }} />
+
+      {loading ? <div style={{ textAlign: 'center', padding: 20 }}><div className="spinner" style={{ margin: '0 auto' }} /></div> : (
+        <div className="form-group">
+          <label className="form-label">Product</label>
+          <select className="form-input" value={pickedId} onChange={e => setPickedId(e.target.value)}>
+            <option value="">— Pick a product —</option>
+            {filteredProducts.map(p => <option key={p._id} value={p._id}>{p.name} {p.useVariants ? '(variants)' : p.options?.length > 0 ? '(options)' : ''}</option>)}
+          </select>
+        </div>
+      )}
+
+      {picked?.useVariants && picked.variants?.length > 0 && (
+        <div className="form-group">
+          <label className="form-label">Variant</label>
+          <select className="form-input" value={variantId} onChange={e => setVariantId(e.target.value)}>
+            {picked.variants.filter(v => v.available !== false).map(v => {
+              const attrs = v.attributes instanceof Map ? Object.fromEntries(v.attributes) : (v.attributes || {});
+              const label = Object.entries(attrs).map(([k, vv]) => `${k}: ${vv}`).join(', ');
+              return <option key={v._id} value={v._id}>{label} — ₱{(v.price ?? picked.price)?.toLocaleString()}</option>;
+            })}
+          </select>
+        </div>
+      )}
+
+      {picked && !picked.useVariants && picked.options?.length > 0 && (
+        <div className="form-group">
+          <label className="form-label">Option</label>
+          <select className="form-input" value={selectedOption?.valueId || ''} onChange={e => {
+            for (const grp of picked.options) {
+              const val = grp.values?.find(v => v._id === e.target.value);
+              if (val) { setSelectedOption({ groupId: grp._id, groupName: grp.name, valueId: val._id, value: val.value, price: val.price }); break; }
+            }
+          }}>
+            {picked.options.flatMap(grp => (grp.values || []).filter(v => v.available !== false).map(v => (
+              <option key={v._id} value={v._id}>{grp.name}: {v.value} — ₱{v.price?.toLocaleString()}</option>
+            )))}
+          </select>
+        </div>
+      )}
+
+      {(picked?.configurations || []).map(cfg => (
+        <div key={cfg.name} className="form-group">
+          <label className="form-label">{cfg.name}</label>
+          <select className="form-input" value={configs[cfg.name] || ''} onChange={e => setConfigs(c => ({ ...c, [cfg.name]: e.target.value }))}>
+            {(cfg.options || []).filter(o => o.available !== false).map(o => (
+              <option key={o.value} value={o.value}>{o.value}{o.priceModifier > 0 ? ` (+₱${o.priceModifier})` : ''}</option>
+            ))}
+          </select>
+        </div>
+      ))}
+
+      {picked && (
+        <div className="form-group">
+          <label className="form-label">Quantity</label>
+          <input type="number" min="1" className="form-input" value={quantity} onChange={e => setQuantity(e.target.value)} />
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button onClick={submit} disabled={!pickedId || submitting} className="btn-dark" style={{ padding: '8px 18px', fontSize: '0.82rem' }}>
+          <span>{submitting ? 'Adding…' : 'Add to Order'}</span>
+        </button>
+        <button onClick={onClose} className="btn-outline" style={{ padding: '8px 18px', fontSize: '0.82rem' }}>Cancel</button>
+      </div>
     </div>
   );
 }

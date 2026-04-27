@@ -2,6 +2,7 @@ import { useState, useEffect, useContext, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import UserContext from '../context/UserContext';
 import { RichText } from '../components/AdminView';
+import GroupBuyCard from '../components/GroupBuyCard';
 import { apiFetch } from '../utils/api';
 import toast from 'react-hot-toast';
 
@@ -146,7 +147,6 @@ export default function GroupBuyView() {
         }),
       });
       toast.success('Added to cart!');
-      navigate('/cart');
     } catch (err) { toast.error(err.message); }
     finally { setSubmitting(false); }
   };
@@ -230,7 +230,7 @@ export default function GroupBuyView() {
         {/* ── Details ── */}
         <div>
           {/* Status badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', flexWrap: 'wrap' }}>
             <span style={{
               fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase',
               padding: '4px 12px', borderRadius: '20px',
@@ -238,6 +238,11 @@ export default function GroupBuyView() {
               color: isOpen ? 'var(--accent)' : isIC ? '#856404' : '#721c24',
             }}>{statusLabel[gb.status]}</span>
             {gb.orderCount > 0 && <span style={{ fontSize: '0.82rem', color: 'var(--ink-muted)' }}>{gb.orderCount} joined</span>}
+            {gb.parent && (
+              <Link to={`/group-buys/${gb.parent._id}`} style={{ fontSize: '0.78rem', color: 'var(--ink-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                ← Part of <strong style={{ color: 'var(--ink)' }}>{gb.parent.name}</strong>
+              </Link>
+            )}
           </div>
 
           <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(2rem, 3.5vw, 2.8rem)', letterSpacing: '-0.025em', lineHeight: 1.05, marginBottom: '18px' }}>{gb.name}</h1>
@@ -399,6 +404,18 @@ export default function GroupBuyView() {
       </div>
 
       <style>{`@media (max-width: 960px) { .product-layout { grid-template-columns: 1fr !important; gap: 40px !important; } }`}</style>
+
+      {gb.addOns?.length > 0 && (
+        <div style={{ marginTop: '64px' }}>
+          <h2 className="section-title" style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(1.5rem, 2.4vw, 1.9rem)', letterSpacing: '-0.02em', marginBottom: '8px' }}>Add-ons</h2>
+          <p style={{ color: 'var(--ink-muted)', fontSize: '0.92rem', marginBottom: '28px' }}>
+            Optional extras for this group buy. Only available alongside {gb.name}.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
+            {gb.addOns.map(ao => <GroupBuyCard key={ao._id} gb={ao} />)}
+          </div>
+        </div>
+      )}
 
       {lightboxOpen && displayedImage && (
         <div onClick={() => setLightboxOpen(false)}

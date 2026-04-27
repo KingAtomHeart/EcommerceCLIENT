@@ -12,7 +12,7 @@ export default function Profile() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [details, setDetails] = useState(null);
   const [loading, setLoading] = useState(true);
-  const initialTab = searchParams.get('tab') === 'orders' ? 'orders'
+  const initialTab = !user?.isAdmin && searchParams.get('tab') === 'orders' ? 'orders'
     : searchParams.get('tab') === 'security' ? 'security' : 'account';
   const [activeTab, setActiveTab] = useState(initialTab);
   const changeTab = (t) => {
@@ -151,6 +151,10 @@ export default function Profile() {
           totalPrice: o.totalPrice,
           isGroupBuy: true,
           orderCode: o.orderCode,
+          cartOrderCode: o.cartOrderCode || null,
+          cartCheckoutId: o.cartCheckoutId || null,
+          isAddon: !!o.groupBuyId?.parentGroupBuyId,
+          addedAfterPurchase: !!o.addedAfterPurchase,
           groupBuyName: o.groupBuyId?.name || 'Group Buy',
           groupBuyStatus: o.groupBuyId?.status || '',
           groupBuyImage: o.groupBuyId?.images?.[0]?.url || null,
@@ -159,8 +163,46 @@ export default function Profile() {
           configurations: o.configurations || [],
           kits: o.kits || [],
           quantity: o.quantity,
+          shippingAddress: o.shippingAddress,
+          notes: o.notes,
         }));
-        const merged = [...regular.map(o => ({ ...o, isGroupBuy: false })), ...normalizedGb]
+
+        // Group GB orders by cartCheckoutId — multiple items in one cart = one order in history
+        const groups = new Map();
+        const soloGb = [];
+        for (const o of normalizedGb) {
+          if (!o.cartCheckoutId) { soloGb.push(o); continue; }
+          if (!groups.has(o.cartCheckoutId)) groups.set(o.cartCheckoutId, []);
+          groups.get(o.cartCheckoutId).push(o);
+        }
+        const groupedGb = [];
+        for (const [cid, items] of groups) {
+          if (items.length === 1) { groupedGb.push(items[0]); continue; }
+          // Sort items so parent (non-addon) comes first
+          const sortedItems = [...items].sort((a, b) => Number(!!a.isAddon) - Number(!!b.isAddon));
+          const parentItem = sortedItems.find(i => !i.isAddon) || sortedItems[0];
+          const addonCount = sortedItems.filter(i => i.isAddon).length;
+          const allSameStatus = sortedItems.every(i => i.status === sortedItems[0].status);
+          const total = sortedItems.reduce((s, i) => s + (i.totalPrice || 0), 0);
+          groupedGb.push({
+            _id: cid,
+            cartCheckoutId: cid,
+            cartOrderCode: parentItem.cartOrderCode,
+            createdAt: parentItem.createdAt,
+            status: allSameStatus ? sortedItems[0].status : 'Mixed',
+            totalPrice: total,
+            isGroupBuy: true,
+            isGrouped: true,
+            orderCode: parentItem.cartOrderCode || sortedItems.map(i => i.orderCode).join(' / '),
+            groupBuyName: addonCount > 0 ? `${parentItem.groupBuyName} + ${addonCount} add-on${addonCount > 1 ? 's' : ''}` : parentItem.groupBuyName,
+            groupBuyStatus: parentItem.groupBuyStatus || '',
+            groupBuyImage: parentItem.groupBuyImage,
+            shippingAddress: parentItem.shippingAddress,
+            lineItems: sortedItems,
+          });
+        }
+
+        const merged = [...regular.map(o => ({ ...o, isGroupBuy: false })), ...soloGb, ...groupedGb]
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         setOrders(merged);
         setOrdersLoaded(true);
@@ -199,7 +241,7 @@ export default function Profile() {
 
   const tabs = [
     { id: 'account', label: 'Account Details', icon: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg> },
-    { id: 'orders', label: 'Order History', icon: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg> },
+    ...(!user?.isAdmin ? [{ id: 'orders', label: 'Order History', icon: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg> }] : []),
     { id: 'security', label: 'Password & Security', icon: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> },
   ];
 
@@ -280,8 +322,8 @@ export default function Profile() {
                 <InfoBlock label="Member Since" value={details?.createdAt ? new Date(details.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long' }) : '—'} />
               </div>
 
-              {/* ── Saved Addresses ── */}
-              <div style={{ marginTop: '44px' }}>
+              {/* ── Saved Addresses — hidden for admin ── */}
+              {!user?.isAdmin && <div style={{ marginTop: '44px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '8px', flexWrap: 'wrap', gap: '10px' }}>
                   <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.3rem' }}>Saved Addresses</h3>
                   {editingId === null && (
@@ -340,12 +382,12 @@ export default function Profile() {
                     ))}
                   </div>
                 )}
-              </div>
+              </div>}
             </div>
           )}
 
-          {/* Order History — full inline */}
-          {activeTab === 'orders' && (
+          {/* Order History — hidden for admin */}
+          {activeTab === 'orders' && !user?.isAdmin && (
             <div style={{ animation: 'fadeIn 0.25s ease' }}>
               <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.6rem', marginBottom: '8px' }}>Order History</h2>
               <p style={{ color: 'var(--ink-muted)', fontSize: '0.88rem', marginBottom: '28px' }}>
