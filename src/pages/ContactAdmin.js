@@ -110,14 +110,14 @@ export default function ContactAdmin() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
 
-  if (!user?.isAdmin) return <Navigate to="/products" />;
-
   useEffect(() => {
     apiFetch('/contact')
       .then(d => setMessages(Array.isArray(d) ? d : []))
       .catch(() => setMessages([]))
       .finally(() => setLoading(false));
   }, []);
+
+  if (!user?.isAdmin) return <Navigate to="/products" />;
 
   const handleStatusChange = (updated) => {
     setMessages(prev => prev.map(m => m._id === updated._id ? updated : m));

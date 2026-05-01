@@ -27,10 +27,10 @@ export default function GroupBuyAdmin() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('newest');
 
-  if (!user?.isAdmin) return <Navigate to="/products" />;
-
   const fetchGbs = () => { setLoading(true); apiFetch('/group-buys/all').then(d => setGbs(Array.isArray(d) ? d : [])).catch(() => setGbs([])).finally(() => setLoading(false)); };
-  useEffect(() => { fetchGbs(); }, []);
+  useEffect(() => { fetchGbs(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!user?.isAdmin) return <Navigate to="/products" />;
 
   const updateGbLocal = (id, patch) => setGbs(prev => prev.map(g => g._id === id ? { ...g, ...patch } : g));
 
