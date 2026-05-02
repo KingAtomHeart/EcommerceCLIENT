@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
 import { StatusBadge, statusStyle, statusPaletteKey } from '../utils/statusColors';
 import { useTheme } from '../context/ThemeContext';
 import toast from 'react-hot-toast';
 import AdminHomepageEditor from './AdminHomepageEditor';
+
+const VALID_TABS = ['products', 'orders', 'stats', 'homepage'];
 
 async function uploadOptionImage(file) {
   const fd = new FormData();
@@ -13,8 +16,14 @@ async function uploadOptionImage(file) {
 }
 
 export default function AdminView({ products, fetchData, loading }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = VALID_TABS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'products';
+  const [tab, setTabState] = useState(initialTab);
+  const setTab = (t) => {
+    setTabState(t);
+    setSearchParams(t === 'products' ? {} : { tab: t }, { replace: true });
+  };
   const [showCreate, setShowCreate] = useState(false);
-  const [tab, setTab] = useState('products');
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -1464,7 +1473,7 @@ function TableRow({ product, fetchData }) {
       <td style={{ padding: '10px 14px', color: 'var(--ink-muted)' }}>{product.category}</td>
       <td style={{ padding: '10px 14px' }}>{displayPrice}</td>
       <td style={{ padding: '10px 14px' }}>{product.stocks}</td>
-      <td style={{ padding: '10px 14px' }}><span style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '3px 10px', borderRadius: '20px', background: product.isActive ? 'var(--accent-light)' : '#f8d7da', color: product.isActive ? 'var(--accent)' : '#721c24' }}>{product.isActive ? 'Active' : 'Archived'}</span></td>
+      <td style={{ padding: '10px 14px' }}><span className={`status-badge ${product.isActive ? 'status-green' : 'status-red'}`}>{product.isActive ? 'Active' : 'Archived'}</span></td>
       <td style={{ padding: '10px 14px' }}><button className="admin-card-btn" onClick={toggleActive} style={{ fontSize: '0.72rem' }}>{product.isActive ? 'Archive' : 'Activate'}</button></td>
     </tr>
   );
@@ -1534,7 +1543,7 @@ function OrdersPanel({ orders, loading, fetchOrders, updateOrderLocal }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {(searchResults.gbOrders || []).map(o => (
                     <div key={o._id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px 16px', display: 'grid', gridTemplateColumns: 'auto 1fr 1fr auto auto', gap: 14, alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '3px 8px', borderRadius: '8px', background: '#f5d6d8', color: '#8b2a31' }}>Group Buy</span>
+                      <span className="status-badge status-red" style={{ fontSize: '0.6rem', padding: '3px 8px' }}>Group Buy</span>
                       <div>
                         <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.9rem' }}>{o.cartOrderCode || o.orderCode}</p>
                         <p style={{ fontSize: '0.74rem', color: 'var(--ink-muted)' }}>
@@ -1555,11 +1564,11 @@ function OrdersPanel({ orders, loading, fetchOrders, updateOrderLocal }) {
 
       <div style={{ display: 'flex', gap: '8px', marginBottom: '18px', flexWrap: 'wrap', alignItems: 'center' }}>
         <div style={{ display: 'flex', gap: '6px' }}>
-          <button className={`admin-toggle ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')} style={view === 'list' ? { background: 'var(--ink)', color: '#fff', borderColor: 'var(--ink)' } : {}}>
+          <button className={`admin-toggle ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')} style={view === 'list' ? { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' } : {}}>
             <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
             <span>List</span>
           </button>
-          <button className={`admin-toggle ${view === 'calendar' ? 'active' : ''}`} onClick={() => setView('calendar')} style={view === 'calendar' ? { background: 'var(--ink)', color: '#fff', borderColor: 'var(--ink)' } : {}}>
+          <button className={`admin-toggle ${view === 'calendar' ? 'active' : ''}`} onClick={() => setView('calendar')} style={view === 'calendar' ? { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' } : {}}>
             <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             <span>Calendar</span>
           </button>
@@ -2136,7 +2145,7 @@ function OrderRow({ order, fetchOrders, updateOrderLocal }) {
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center' }}>
                       <span style={{ fontSize: '0.86rem', minWidth: 0, textDecoration: cancelled ? 'line-through' : 'none' }}>
                         {item.addedAfterPurchase && (
-                          <span style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: '8px', background: '#d4edda', color: '#155724', marginRight: 8 }}>Added</span>
+                          <span className="status-badge status-green" style={{ fontSize: '0.58rem', padding: '2px 7px', marginRight: 8 }}>Added</span>
                         )}
                         {item.productName} <span style={{ color: 'var(--ink-muted)' }}>× {item.quantity}</span>
                       </span>

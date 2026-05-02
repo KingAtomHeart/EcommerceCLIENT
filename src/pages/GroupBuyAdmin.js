@@ -984,7 +984,7 @@ function UnifiedGBOrderCard({ items, updateOrderLocal, parentGbId, fetchOrders }
                           <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: '8px', background: 'rgba(120,80,200,0.12)', color: 'rgb(120,80,200)' }}>Add-on</span>
                         )}
                         {item.addedAfterPurchase && (
-                          <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: '8px', background: '#d4edda', color: '#155724' }}>Added</span>
+                          <span className="status-badge status-green" style={{ fontSize: '0.6rem', padding: '2px 7px' }}>Added</span>
                         )}
                         <span style={{ fontSize: '0.9rem', fontWeight: 500, textDecoration: isCancelled ? 'line-through' : 'none' }}>{item.groupBuyId?.name || 'Group Buy'}</span>
                         <span style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>× {item.quantity}</span>

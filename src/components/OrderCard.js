@@ -13,13 +13,10 @@ function Thumbnail({ url, name, size = 48 }) {
 }
 
 function TypeTag({ isGroupBuy }) {
-  if (isGroupBuy) {
-    return (
-      <span style={{ fontSize: '0.64rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '3px 10px', borderRadius: '10px', background: '#f5d6d8', color: '#8b2a31' }}>Group Buy</span>
-    );
-  }
   return (
-    <span style={{ fontSize: '0.64rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '3px 10px', borderRadius: '10px', background: '#fdf0d5', color: '#8a6d1a' }}>In Stock</span>
+    <span className={`status-badge ${isGroupBuy ? 'status-red' : 'status-amber'}`}>
+      {isGroupBuy ? 'Group Buy' : 'In Stock'}
+    </span>
   );
 }
 
@@ -157,7 +154,7 @@ export default function OrderCard({ order }) {
                           <span style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 6px', borderRadius: '6px', background: 'rgba(120,80,200,0.12)', color: 'rgb(120,80,200)' }}>Add-on</span>
                         )}
                         {li.addedAfterPurchase && (
-                          <span style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 6px', borderRadius: '6px', background: '#d4edda', color: '#155724' }}>Added</span>
+                          <span className="status-badge status-green" style={{ fontSize: '0.58rem', padding: '2px 6px' }}>Added</span>
                         )}
                         <span style={{ fontWeight: 500, textDecoration: cancelled ? 'line-through' : 'none' }}>{li.groupBuyName}</span>
                         <span style={{ color: 'var(--ink-muted)' }}>× {li.quantity}</span>
@@ -181,7 +178,7 @@ export default function OrderCard({ order }) {
                   <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 0', fontSize: '0.88rem', borderBottom: i < order.productsOrdered.length - 1 ? '1px solid var(--border-subtle)' : 'none', opacity: item.status === 'Cancelled' ? 0.55 : 1 }}>
                     <span style={{ flex: 1, minWidth: 0 }}>
                       {item.addedAfterPurchase && (
-                        <span style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 6px', borderRadius: '6px', background: '#d4edda', color: '#155724', marginRight: 8 }}>Added</span>
+                        <span className="status-badge status-green" style={{ fontSize: '0.58rem', padding: '2px 6px', marginRight: 8 }}>Added</span>
                       )}
                       <span style={{ fontWeight: 500, textDecoration: item.status === 'Cancelled' ? 'line-through' : 'none' }}>{item.productName}</span>
                       <span style={{ color: 'var(--ink-muted)' }}> × {item.quantity}</span>

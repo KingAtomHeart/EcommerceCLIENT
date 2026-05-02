@@ -9,17 +9,17 @@ const statusLabel = {
   'completed': 'Completed',
 };
 
-const statusColor = {
-  'interest-check': { bg: '#fef3cd', color: '#856404' },
-  'open': { bg: 'var(--accent-light)', color: 'var(--accent)' },
-  'closing-soon': { bg: '#fde8e0', color: '#c0392b' },
-  'closed': { bg: '#f8d7da', color: '#721c24' },
-  'production': { bg: '#d1ecf1', color: '#0c5460' },
-  'completed': { bg: '#d4edda', color: '#155724' },
+const statusColorClass = {
+  'interest-check': 'gray',
+  'open': 'blue',
+  'closing-soon': 'amber',
+  'closed': 'gray',
+  'production': 'purple',
+  'completed': 'green',
 };
 
 export default function GroupBuyCard({ gb }) {
-  const sc = statusColor[gb.status] || statusColor['open'];
+  const colorKey = statusColorClass[gb.status] || 'blue';
   const imgUrl = gb.images?.[0]?.url;
   const endDate = gb.endDate ? new Date(gb.endDate) : null;
   const daysLeft = endDate ? Math.max(0, Math.ceil((endDate - new Date()) / 86400000)) : null;
@@ -27,12 +27,7 @@ export default function GroupBuyCard({ gb }) {
   return (
     <Link to={`/group-buys/${gb._id}`} className="product-card" style={{ textDecoration: 'none' }}>
       <div className="card-img">
-        <span style={{
-          position: 'absolute', top: 14, left: 14, zIndex: 3,
-          background: sc.bg, color: sc.color,
-          fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase',
-          padding: '5px 12px', borderRadius: '20px',
-        }}>
+        <span className={`status-badge status-${colorKey}`} style={{ position: 'absolute', top: 14, left: 14, zIndex: 3 }}>
           {statusLabel[gb.status]}
         </span>
         {imgUrl ? (
