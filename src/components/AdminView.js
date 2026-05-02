@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '../utils/api';
 import { StatusBadge, statusStyle, statusPaletteKey } from '../utils/statusColors';
 import { useTheme } from '../context/ThemeContext';
@@ -22,6 +22,8 @@ export default function AdminView({ products, fetchData, loading }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('newest');
   const [ordersLoaded, setOrdersLoaded] = useState(false);
+  const [expandedProductId, setExpandedProductId] = useState(null);
+  const [expandedProductPanel, setExpandedProductPanel] = useState(null);
 
   const fetchOrders = () => {
     setOrdersLoading(true);
@@ -136,8 +138,22 @@ export default function AdminView({ products, fetchData, loading }) {
           </p>
           {viewMode === 'grid' ? (
             <div className="admin-grid">
-              {filtered.map(p => <ProductCard key={p._id} product={p} fetchData={fetchData} />)}
-              {filtered.length === 0 && <p style={{ gridColumn: '1/-1', textAlign: 'center', padding: '60px 20px', color: 'var(--ink-muted)' }}>No products to show.</p>}
+              {filtered.map(p => (
+                <ProductCard
+                  key={p._id}
+                  product={p}
+                  fetchData={fetchData}
+                  panel={expandedProductId === p._id ? expandedProductPanel : null}
+                  onTogglePanel={(pn) => {
+                    if (pn === null || (expandedProductId === p._id && expandedProductPanel === pn)) {
+                      setExpandedProductId(null); setExpandedProductPanel(null);
+                    } else {
+                      setExpandedProductId(p._id); setExpandedProductPanel(pn);
+                    }
+                  }}
+                />
+              ))}
+              {filtered.length === 0 && <p style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--ink-muted)' }}>No products to show.</p>}
             </div>
           ) : (
             <ProductsTable products={filtered} fetchData={fetchData} />
@@ -172,12 +188,9 @@ export default function AdminView({ products, fetchData, loading }) {
         .admin-search button:hover { color: var(--ink); }
         .admin-sort { padding: 8px 14px; border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--surface); font-family: 'DM Sans', sans-serif; font-size: 0.78rem; color: var(--ink-muted); cursor: pointer; transition: all var(--transition); }
         .admin-sort:hover { border-color: var(--ink-muted); color: var(--ink); }
-        .admin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; }
-        .admin-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: box-shadow var(--transition); }
-        .admin-card:hover { box-shadow: var(--shadow-md); }
-        .admin-card.expanded { grid-column: 1 / -1; display: flex; flex-direction: row; align-items: stretch; }
-        .admin-card-sidebar { width: 260px; flex-shrink: 0; border-right: 1px solid var(--border-subtle); display: flex; flex-direction: column; }
-        .admin-card-panel { flex: 1; min-width: 0; padding: 16px 20px; overflow: auto; }
+        .admin-grid { display: flex; flex-direction: column; gap: 16px; }
+        .admin-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; transition: box-shadow 0.2s, border-color 0.2s, opacity 0.2s; box-shadow: var(--shadow-card); }
+        .admin-card.expanded { border-color: var(--accent); box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 0 0 3px var(--accent-light); }
         .admin-card-img { aspect-ratio: 16/10; background: var(--accent-light); position: relative; overflow: hidden; }
         .admin-card-img img { width: 100%; height: 100%; object-fit: cover; }
         .admin-card-body { padding: 18px 20px; }
@@ -203,7 +216,6 @@ export default function AdminView({ products, fetchData, loading }) {
         .cfg-opt-row { display: grid; grid-template-columns: 1fr 60px 1fr 26px; gap: 4px; align-items: center; margin-bottom: 4px; }
         @media (max-width: 768px) {
           .admin-stats { grid-template-columns: repeat(2, 1fr); }
-          .admin-grid { grid-template-columns: 1fr; }
           .admin-toolbar { flex-direction: column; align-items: stretch; }
           .admin-actions { justify-content: flex-start; }
         }
@@ -214,15 +226,70 @@ export default function AdminView({ products, fetchData, loading }) {
 
 
 /* ═══════════════════════════════════════════════
+   SHARED CARD HELPERS
+═══════════════════════════════════════════════ */
+function Pill({ children, onClick, active }) {
+  return <button onClick={onClick} style={{ padding: '8px 16px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: active ? 'var(--accent)' : 'none', color: active ? '#fff' : 'var(--ink-muted)', cursor: 'pointer', fontSize: '0.78rem', fontFamily: "'DM Sans', sans-serif", fontWeight: 500, transition: 'var(--transition)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>{children}</button>;
+}
+
+function Caret({ open }) {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" style={{ transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+      <path d="M2 4 L5 7 L8 4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PanelHeader({ title, onClose }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+      {onClose && (
+        <button onClick={onClose} aria-label="Close" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--ink-muted)', cursor: 'pointer', fontSize: '0.72rem', fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>
+          ✕ Close
+        </button>
+      )}
+      <span style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>{title}</span>
+    </div>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════
    PRODUCT CARD (Admin Grid View)
 ═══════════════════════════════════════════════ */
-function ProductCard({ product, fetchData }) {
-  const [showImages, setShowImages] = useState(false);
-  const [showOptions, setShowOptions] = useState(false);
-  const [showConfigs, setShowConfigs] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const imgUrl = product.images?.[0]?.url;
-  const hasOptions = (product.options?.length || 0) > 0;
+function ProductCard({ product, fetchData, panel, onTogglePanel }) {
+  const [editMenuOpen, setEditMenuOpen] = useState(false);
+  const [editMenuPos, setEditMenuPos] = useState({ top: 0, left: 0 });
+  const [hoveredMenuKey, setHoveredMenuKey] = useState(null);
+  const editMenuRef = useRef(null);
+  const editBtnRef = useRef(null);
+
+  const togglePanel = (p) => { setEditMenuOpen(false); onTogglePanel(p); };
+  const closePanel = () => onTogglePanel(null);
+  const toggleEditMenu = () => {
+    if (!editMenuOpen && editBtnRef.current) {
+      const r = editBtnRef.current.getBoundingClientRect();
+      setEditMenuPos({ top: r.bottom + 4, left: r.left });
+    }
+    setEditMenuOpen(o => !o);
+  };
+
+  useEffect(() => {
+    if (!editMenuOpen) return;
+    const onDocClick = (e) => {
+      if (editMenuRef.current && !editMenuRef.current.contains(e.target) &&
+          editBtnRef.current && !editBtnRef.current.contains(e.target)) setEditMenuOpen(false);
+    };
+    const onScroll = () => setEditMenuOpen(false);
+    document.addEventListener('mousedown', onDocClick);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [editMenuOpen]);
 
   const toggleActive = async () => {
     const action = product.isActive ? 'archive' : 'activate';
@@ -233,61 +300,121 @@ function ProductCard({ product, fetchData }) {
     } catch (err) { toast.error(err.message); }
   };
 
-  const closeAll = () => { setShowImages(false); setShowOptions(false); setShowConfigs(false); };
+  const imgUrl = product.images?.[0]?.url;
+  const hasOptions = (product.options?.length || 0) > 0;
+  const useVariants = !!product.useVariants;
+  const variantCount = product.variants?.length || 0;
+  const displayPrice = hasOptions
+    ? `From ₱${Math.min(...product.options.flatMap(g => g.values.map(v => v.price))).toLocaleString()}`
+    : `₱${product.price?.toLocaleString()}`;
+  const totalStock = hasOptions
+    ? product.options.flatMap(g => g.values).reduce((s, v) => {
+        const n = v.stocks ?? -1;
+        return n === -1 ? s : s + n;
+      }, 0)
+    : useVariants
+      ? (product.variants || []).reduce((s, v) => {
+          const n = v.stock ?? -1;
+          return n === -1 ? s : s + n;
+        }, 0)
+      : (product.stocks ?? 0);
+  const stockText = useVariants
+    ? `${variantCount} variant${variantCount === 1 ? '' : 's'}`
+    : `${totalStock} in stock`;
 
-  if (editing) return <EditProductCard product={product} fetchData={fetchData} onClose={() => setEditing(false)} />;
-
-  const expanded = showImages || showOptions || showConfigs;
+  const editKeys = ['details', 'images', 'options', 'variants-config'];
+  const isOpen = !!panel;
+  const exportCSV = () => { toast('CSV export coming soon'); };
 
   return (
-    <div className={`admin-card ${!product.isActive ? 'is-archived' : ''} ${expanded ? 'expanded' : ''}`}>
-      <div className={expanded ? 'admin-card-sidebar' : ''}>
-        <div className="admin-card-img">
-          {imgUrl ? <img src={imgUrl} alt={product.name} /> : (
-            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Serif Display', serif", fontSize: '2rem', color: 'var(--accent)' }}>{product.name?.[0]}</div>
+    <div style={{
+      background: 'var(--surface)',
+      border: isOpen ? '1px solid var(--accent)' : '1px solid var(--border)',
+      borderRadius: 'var(--radius)',
+      overflow: 'hidden',
+      boxShadow: isOpen ? '0 8px 24px rgba(0,0,0,0.12), 0 0 0 3px var(--accent-light)' : 'var(--shadow-card)',
+      opacity: product.isActive ? 1 : 0.6,
+      transition: 'box-shadow 0.2s, border-color 0.2s, opacity 0.2s'
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '20px 24px', flexWrap: 'wrap' }}>
+        <div style={{ width: 56, height: 56, borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: 'var(--accent-light)', flexShrink: 0 }}>
+          {imgUrl ? (
+            <img src={imgUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Serif Display', serif", color: 'var(--accent)' }}>{product.name?.[0]}</div>
           )}
-          <span className={`admin-badge ${product.isActive ? 'active' : 'archived'}`}>{product.isActive ? 'Active' : 'Archived'}</span>
         </div>
-        <div className="admin-card-body">
-          <p className="admin-card-name">{product.name}</p>
-          <p className="admin-card-meta">{product.category || 'Uncategorized'}</p>
-          <div className="admin-card-row">
-            <span className="admin-card-price">
-              {hasOptions
-                ? `From ₱${Math.min(...product.options.flatMap(g => g.values.map(v => v.price))).toLocaleString()}`
-                : `₱${product.price?.toLocaleString()}`}
-            </span>
-            <span className="admin-card-stock">{hasOptions
-              ? product.options.flatMap(g => g.values).map(v => {
-                  const s = v.stocks ?? -1;
-                  return s === -1 ? `${v.value}: ∞` : `${v.value}: ${s}`;
-                }).join(', ')
-              : (product.stocks > 0 ? `${product.stocks} in stock` : 'Out of stock')}</span>
+        <div style={{ flex: 1, minWidth: 160 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '3px' }}>
+            <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.08rem', margin: 0 }}>{product.name}</p>
+            {useVariants && (
+              <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: '10px', background: 'rgba(120,80,200,0.1)', color: 'rgb(120,80,200)', whiteSpace: 'nowrap' }}>
+                Variants
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: '10px', fontSize: '0.78rem', color: 'var(--ink-muted)', flexWrap: 'wrap' }}>
+            <span>{displayPrice}</span><span>{stockText}</span>
+            {!product.isActive && <span style={{ color: '#c0392b' }}>Archived</span>}
           </div>
         </div>
-        <div className="admin-card-actions">
-          <button className="admin-card-btn" onClick={() => setEditing(true)}>Edit</button>
-          <button className="admin-card-btn" onClick={() => { closeAll(); setShowImages(!showImages); }}>
-            Images ({product.images?.length || 0})
-          </button>
-          <button className="admin-card-btn" onClick={() => { closeAll(); setShowOptions(!showOptions); }}>
-            Options ({product.options?.length || 0})
-          </button>
-          <button className="admin-card-btn" onClick={() => { closeAll(); setShowConfigs(!showConfigs); }}>
-            Configs ({product.configurations?.length || 0})
-          </button>
-          {product.isActive ? (
-            <button className="admin-card-btn danger" onClick={toggleActive}>Archive</button>
-          ) : (
-            <button className="admin-card-btn success" onClick={toggleActive}>Activate</button>
+        <span className={`status-select status-${product.isActive ? 'green' : 'red'}`} style={{ cursor: 'default' }}>
+          {product.isActive ? 'Active' : 'Archived'}
+        </span>
+        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+          <div ref={editBtnRef} style={{ display: 'inline-block' }}>
+            <Pill onClick={toggleEditMenu} active={editMenuOpen || editKeys.includes(panel)}>
+              Edit <Caret open={editMenuOpen} />
+            </Pill>
+          </div>
+          {editMenuOpen && (
+            <div ref={editMenuRef} style={{ position: 'fixed', top: editMenuPos.top, left: editMenuPos.left, zIndex: 1000, background: 'var(--surface)', border: '1px solid var(--ink-faint)', borderRadius: 'var(--radius-sm)', boxShadow: '0 14px 36px rgba(0,0,0,0.22), 0 3px 8px rgba(0,0,0,0.10)', minWidth: 180, overflow: 'hidden', padding: '4px' }}>
+              <p style={{ margin: 0, padding: '4px 10px 6px', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-faint)', borderBottom: '1px solid var(--border-subtle)', marginBottom: '4px' }}>Edit</p>
+              {[
+                { key: 'details', label: 'Details' },
+                { key: 'images', label: 'Images' },
+                { key: 'options', label: 'Options' },
+                { key: 'variants-config', label: 'Variants / Config' },
+              ].map(item => {
+                const isActive = panel === item.key;
+                const isHovered = hoveredMenuKey === item.key;
+                const bg = isActive ? 'var(--accent)' : (isHovered ? 'var(--accent-light)' : 'transparent');
+                const color = isActive ? '#fff' : (isHovered ? 'var(--accent)' : 'var(--ink)');
+                return (
+                  <button key={item.key} onClick={() => togglePanel(item.key)}
+                    onMouseEnter={() => setHoveredMenuKey(item.key)}
+                    onMouseLeave={() => setHoveredMenuKey(null)}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: bg, border: 'none', cursor: 'pointer', fontSize: '0.78rem', fontFamily: "'DM Sans', sans-serif", color, fontWeight: 500, borderRadius: '6px', transition: 'background 0.12s, color 0.12s' }}>
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
           )}
+          <Pill onClick={() => togglePanel('orders')} active={panel === 'orders'}>
+            Orders <Caret open={panel === 'orders'} />
+          </Pill>
+          <Pill onClick={() => togglePanel('addons')} active={panel === 'addons'}>
+            Add-ons <Caret open={panel === 'addons'} />
+          </Pill>
+          <Pill onClick={exportCSV}>CSV</Pill>
+          <Pill onClick={toggleActive}>{product.isActive ? 'Archive' : 'Activate'}</Pill>
         </div>
       </div>
-      {expanded && (
-        <div className="admin-card-panel">
-          {showImages && <ImageManager product={product} fetchData={fetchData} />}
-          {showOptions && <OptionsManager product={product} fetchData={fetchData} />}
-          {showConfigs && <ProductConfigManager product={product} fetchData={fetchData} />}
+      {panel === 'details' && <EditProductCard product={product} fetchData={fetchData} onClose={closePanel} inline />}
+      {panel === 'images' && <ImageManager product={product} fetchData={fetchData} onClose={closePanel} />}
+      {panel === 'options' && <OptionsManager product={product} fetchData={fetchData} onClose={closePanel} />}
+      {panel === 'variants-config' && <ProductConfigManager product={product} fetchData={fetchData} onClose={closePanel} />}
+      {panel === 'orders' && (
+        <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border-subtle)' }}>
+          <PanelHeader title="Orders" onClose={closePanel} />
+          <p style={{ fontSize: '0.82rem', color: 'var(--ink-faint)' }}>Per-product orders panel coming soon.</p>
+        </div>
+      )}
+      {panel === 'addons' && (
+        <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border-subtle)' }}>
+          <PanelHeader title="Add-ons" onClose={closePanel} />
+          <p style={{ fontSize: '0.82rem', color: 'var(--ink-faint)' }}>Add-ons panel coming soon.</p>
         </div>
       )}
     </div>
@@ -298,7 +425,7 @@ function ProductCard({ product, fetchData }) {
 /* ═══════════════════════════════════════════════
    EDIT PRODUCT
 ═══════════════════════════════════════════════ */
-function EditProductCard({ product, fetchData, onClose }) {
+function EditProductCard({ product, fetchData, onClose, inline }) {
   const [form, setForm] = useState({
     name: product.name,
     description: product.description,
@@ -321,10 +448,14 @@ function EditProductCard({ product, fetchData, onClose }) {
     } catch (err) { toast.error(err.message); } finally { setSaving(false); }
   };
 
+  const wrapperStyle = inline
+    ? { padding: '16px 24px 20px', borderTop: '1px solid var(--border-subtle)' }
+    : { padding: '20px', border: '2px solid var(--accent)', background: 'var(--surface)', borderRadius: 'var(--radius)' };
+
   return (
-    <div className="admin-card" style={{ border: '2px solid var(--accent)' }}>
-      <div style={{ padding: '20px' }}>
-        <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.05rem', marginBottom: '16px' }}>Edit Product</p>
+    <div style={wrapperStyle}>
+      <div>
+        <PanelHeader title={inline ? 'Edit Details' : 'Edit Product'} onClose={onClose} />
         <div className="form-group"><label className="form-label">Name</label>
           <input className="form-input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
         </div>
@@ -402,7 +533,7 @@ function EditProductCard({ product, fetchData, onClose }) {
 /* ═══════════════════════════════════════════════
    IMAGE MANAGER
 ═══════════════════════════════════════════════ */
-function ImageManager({ product, fetchData }) {
+function ImageManager({ product, fetchData, onClose }) {
   const [uploading, setUploading] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [addingUrl, setAddingUrl] = useState(false);
@@ -456,9 +587,9 @@ function ImageManager({ product, fetchData }) {
   };
 
   return (
-    <div style={{ paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
+    <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-subtle)' }}>
+      <PanelHeader title="Images" onClose={onClose} />
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ink-faint)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Images</span>
         <label className="admin-card-btn" style={{ cursor: 'pointer', opacity: uploading ? 0.5 : 1 }}>
           {uploading ? 'Uploading...' : '+ Upload'}
           <input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={handleUpload} style={{ display: 'none' }} disabled={uploading} />
@@ -502,7 +633,7 @@ function ImageManager({ product, fetchData }) {
    Creates/manages option groups (e.g., Kit: Base Kit ₱7300, Novelties ₱2000)
    Each option value can have an image URL that replaces the product image when selected.
 ═══════════════════════════════════════════════ */
-function OptionsManager({ product, fetchData }) {
+function OptionsManager({ product, fetchData, onClose }) {
   const [groups, setGroups] = useState(
     (product.options || []).map(g => ({
       ...g,
@@ -569,10 +700,8 @@ function OptionsManager({ product, fetchData }) {
   const inputSm = { fontSize: '0.72rem', padding: '5px 7px' };
 
   return (
-    <div style={{ paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
-      <p style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '10px' }}>
-        Options — price-setting selectors (e.g., Kit: Base Kit / Novelties)
-      </p>
+    <div style={{ padding: '16px 24px 20px', borderTop: '1px solid var(--border-subtle)' }}>
+      <PanelHeader title="Options — price-setting selectors (e.g., Kit: Base Kit / Novelties)" onClose={onClose} />
 
       {groups.map((grp, gi) => (
         <div key={gi} style={{ marginBottom: '12px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
@@ -662,9 +791,14 @@ function OptionsManager({ product, fetchData }) {
         <button onClick={addGroup} className="admin-card-btn success" style={{ fontSize: '0.72rem', whiteSpace: 'nowrap' }}>+ Add Group</button>
       </div>
 
-      <button onClick={save} disabled={saving} className="btn-dark" style={{ padding: '7px 16px', fontSize: '0.78rem' }}>
-        <span>{saving ? 'Saving...' : 'Save Options'}</span>
-      </button>
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button onClick={save} disabled={saving} className="btn-dark" style={{ padding: '7px 16px', fontSize: '0.78rem' }}>
+          <span>{saving ? 'Saving...' : 'Save Options'}</span>
+        </button>
+        {onClose && (
+          <button onClick={onClose} className="btn-outline" style={{ padding: '7px 16px', fontSize: '0.78rem' }}>Cancel</button>
+        )}
+      </div>
     </div>
   );
 }
@@ -674,8 +808,8 @@ function OptionsManager({ product, fetchData }) {
    PRODUCT CONFIG MANAGER
    Config groups add to the base/option price. Each option can have an image.
 ═══════════════════════════════════════════════ */
-function ProductConfigManager({ product, fetchData }) {
-  const [useVariants, setUseVariants] = useState(!!product.useVariants);
+function ProductConfigManager({ product, fetchData, onClose }) {
+  const [useVariants, setUseVariants] = useState(product.useVariants || !(product.configurations?.length > 0));
   const [togglingVariants, setTogglingVariants] = useState(false);
 
   const handleVariantToggle = async (val) => {
@@ -769,7 +903,8 @@ function ProductConfigManager({ product, fetchData }) {
   const inputSm = { fontSize: '0.72rem', padding: '5px 7px' };
 
   return (
-    <div style={{ paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
+    <div style={{ padding: '16px 24px 20px', borderTop: '1px solid var(--border-subtle)' }}>
+      <PanelHeader title="Configs" onClose={onClose} />
       {/* Variant system toggle */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', padding: '8px 12px', background: useVariants ? 'var(--accent-light)' : 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: `1px solid ${useVariants ? 'var(--accent)' : 'var(--border)'}` }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, color: useVariants ? 'var(--accent)' : 'var(--ink)' }}>
@@ -784,7 +919,7 @@ function ProductConfigManager({ product, fetchData }) {
       </div>
 
       {useVariants ? (
-        <VariantEditor product={product} fetchData={fetchData} />
+        <VariantEditor product={product} fetchData={fetchData} onClose={onClose} embedded />
       ) : (
       <>
       <p style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '10px' }}>
@@ -978,9 +1113,14 @@ function ProductConfigManager({ product, fetchData }) {
         </div>
       )}
 
-      <button onClick={save} disabled={saving} className="btn-dark" style={{ padding: '7px 16px', fontSize: '0.78rem', marginTop: '12px' }}>
-        <span>{saving ? 'Saving...' : 'Save Configs'}</span>
-      </button>
+      <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+        <button onClick={save} disabled={saving} className="btn-dark" style={{ padding: '7px 16px', fontSize: '0.78rem' }}>
+          <span>{saving ? 'Saving...' : 'Save Configs'}</span>
+        </button>
+        {onClose && (
+          <button onClick={onClose} className="btn-outline" style={{ padding: '7px 16px', fontSize: '0.78rem' }}>Cancel</button>
+        )}
+      </div>
       </>
       )}
     </div>
@@ -991,7 +1131,7 @@ function ProductConfigManager({ product, fetchData }) {
 /* ═══════════════════════════════════════════════
    VARIANT EDITOR
 ═══════════════════════════════════════════════ */
-function VariantEditor({ product, fetchData }) {
+function VariantEditor({ product, fetchData, onClose, embedded }) {
   const [dims, setDims] = useState((product.variantDimensions || []).map(d => ({ name: d.name, values: [...(d.values || [])] })));
   const [variants, setVariants] = useState((product.variants || []).map(v => ({ _id: v._id, attributes: { ...(v.attributes || {}) }, stock: v.stock ?? -1, price: v.price ?? '', sku: v.sku || '', available: v.available !== false })));
   const [vImages, setVImages] = useState((product.variantImages || []).map(i => ({ _id: i._id, url: i.url, publicId: i.publicId || '', appliesTo: { ...(i.appliesTo || {}) } })));
@@ -1069,11 +1209,18 @@ function VariantEditor({ product, fetchData }) {
     replace: true
   }, null, 2);
 
+  const wrapperStyle = embedded
+    ? { paddingTop: '12px' }
+    : { padding: '16px 24px 20px', borderTop: '1px solid var(--border-subtle)' };
+
   return (
-    <div style={{ paddingTop: '12px', borderTop: '1px solid var(--border-subtle)' }}>
-      <p style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '10px' }}>
-        Variant System — each row is one sellable SKU with its own stock
-      </p>
+    <div style={wrapperStyle}>
+      {!embedded && <PanelHeader title="Variants — each row is one sellable SKU with its own stock" onClose={onClose} />}
+      {embedded && (
+        <p style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '10px' }}>
+          Variant System — each row is one sellable SKU with its own stock
+        </p>
+      )}
 
       {product.configurations?.length > 0 && !product.useVariants && (
         <div style={{ marginBottom: '12px', padding: '8px 12px', background: 'var(--accent-light)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', color: 'var(--ink-muted)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1263,9 +1410,14 @@ function VariantEditor({ product, fetchData }) {
         </details>
       </div>
 
-      <button onClick={save} disabled={saving} className="btn-dark" style={{ padding: '7px 16px', fontSize: '0.78rem' }}>
-        <span>{saving ? 'Saving...' : 'Save Variants'}</span>
-      </button>
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button onClick={save} disabled={saving} className="btn-dark" style={{ padding: '7px 16px', fontSize: '0.78rem' }}>
+          <span>{saving ? 'Saving...' : 'Save Variants'}</span>
+        </button>
+        {!embedded && onClose && (
+          <button onClick={onClose} className="btn-outline" style={{ padding: '7px 16px', fontSize: '0.78rem' }}>Cancel</button>
+        )}
+      </div>
     </div>
   );
 }

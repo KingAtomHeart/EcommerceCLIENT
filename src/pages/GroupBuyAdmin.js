@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useContext, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
 import UserContext from '../context/UserContext';
 import { apiFetch } from '../utils/api';
@@ -107,7 +107,7 @@ export default function GroupBuyAdmin() {
               updateGbLocal={updateGbLocal}
               isExpanded={expandedId === gb._id} panel={expandedId === gb._id ? expandedPanel : null}
               onTogglePanel={(p) => {
-                if (expandedId === gb._id && expandedPanel === p) { setExpandedId(null); setExpandedPanel(null); }
+                if (p === null || (expandedId === gb._id && expandedPanel === p)) { setExpandedId(null); setExpandedPanel(null); }
                 else { setExpandedId(gb._id); setExpandedPanel(p); }
               }}
             />
@@ -119,11 +119,61 @@ export default function GroupBuyAdmin() {
 }
 
 function Pill({ children, onClick, active }) {
-  return <button onClick={onClick} style={{ padding: '8px 16px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: active ? 'var(--accent)' : 'none', color: active ? '#fff' : 'var(--ink-muted)', cursor: 'pointer', fontSize: '0.78rem', fontFamily: "'DM Sans', sans-serif", fontWeight: 500, transition: 'var(--transition)' }}>{children}</button>;
+  return <button onClick={onClick} style={{ padding: '8px 16px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: active ? 'var(--accent)' : 'none', color: active ? '#fff' : 'var(--ink-muted)', cursor: 'pointer', fontSize: '0.78rem', fontFamily: "'DM Sans', sans-serif", fontWeight: 500, transition: 'var(--transition)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>{children}</button>;
+}
+
+function Caret({ open }) {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" style={{ transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+      <path d="M2 4 L5 7 L8 4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PanelHeader({ title, onClose }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+      {onClose && (
+        <button onClick={onClose} aria-label="Close" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 10px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--ink-muted)', cursor: 'pointer', fontSize: '0.72rem', fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>
+          ✕ Close
+        </button>
+      )}
+      <span style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>{title}</span>
+    </div>
+  );
 }
 
 function GBCard({ gb, gbs, fetchGbs, updateGbLocal, isExpanded, panel, onTogglePanel }) {
-  const [editing, setEditing] = useState(false);
+  const [editMenuOpen, setEditMenuOpen] = useState(false);
+  const [editMenuPos, setEditMenuPos] = useState({ top: 0, left: 0 });
+  const [hoveredMenuKey, setHoveredMenuKey] = useState(null);
+  const editMenuRef = useRef(null);
+  const editBtnRef = useRef(null);
+  const togglePanel = (p) => { setEditMenuOpen(false); onTogglePanel(p); };
+  const closePanel = () => onTogglePanel(null);
+  const toggleEditMenu = () => {
+    if (!editMenuOpen && editBtnRef.current) {
+      const r = editBtnRef.current.getBoundingClientRect();
+      setEditMenuPos({ top: r.bottom + 4, left: r.left });
+    }
+    setEditMenuOpen(o => !o);
+  };
+  useEffect(() => {
+    if (!editMenuOpen) return;
+    const onDocClick = (e) => {
+      if (editMenuRef.current && !editMenuRef.current.contains(e.target) &&
+          editBtnRef.current && !editBtnRef.current.contains(e.target)) setEditMenuOpen(false);
+    };
+    const onScroll = () => setEditMenuOpen(false);
+    document.addEventListener('mousedown', onDocClick);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [editMenuOpen]);
   const updateStatus = async (s) => {
     const prev = gb.status;
     updateGbLocal(gb._id, { status: s });
@@ -153,8 +203,6 @@ function GBCard({ gb, gbs, fetchGbs, updateGbLocal, isExpanded, panel, onToggleP
     } catch (err) { toast.error(err.message); }
   };
 
-  if (editing) return <EditGBCard gb={gb} gbs={gbs} fetchGbs={fetchGbs} onClose={() => setEditing(false)} />;
-
   const icCount = gb.interestChecks?.length || 0;
   const hasOptions = (gb.options?.length || 0) > 0;
   const displayPrice = hasOptions
@@ -162,8 +210,17 @@ function GBCard({ gb, gbs, fetchGbs, updateGbLocal, isExpanded, panel, onToggleP
     : `₱${gb.basePrice?.toLocaleString()}`;
   const parentGb = gb.parentGroupBuyId ? (gbs || []).find(g => g._id === (gb.parentGroupBuyId?._id || gb.parentGroupBuyId)) : null;
 
+  const isOpen = !!panel;
   return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', boxShadow: 'var(--shadow-card)', opacity: gb.isActive ? 1 : 0.6, transition: 'opacity 0.2s' }}>
+    <div style={{
+      background: 'var(--surface)',
+      border: isOpen ? '1px solid var(--accent)' : '1px solid var(--border)',
+      borderRadius: 'var(--radius)',
+      overflow: 'hidden',
+      boxShadow: isOpen ? '0 8px 24px rgba(0,0,0,0.12), 0 0 0 3px var(--accent-light)' : 'var(--shadow-card)',
+      opacity: gb.isActive ? 1 : 0.6,
+      transition: 'box-shadow 0.2s, border-color 0.2s, opacity 0.2s'
+    }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '20px 24px', flexWrap: 'wrap' }}>
         <div style={{ width: 56, height: 56, borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: 'var(--accent-light)', flexShrink: 0 }}>
           {gb.images?.[0]?.url ? <img src={gb.images[0].url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Serif Display', serif", color: 'var(--accent)' }}>{gb.name[0]}</div>}
@@ -178,7 +235,7 @@ function GBCard({ gb, gbs, fetchGbs, updateGbLocal, isExpanded, panel, onToggleP
             )}
           </div>
           <div style={{ display: 'flex', gap: '10px', fontSize: '0.78rem', color: 'var(--ink-muted)', flexWrap: 'wrap' }}>
-            <span>{displayPrice}</span><span>{gb.orderCount} orders</span>
+            <span>{displayPrice}</span><span>{gb.uniqueOrderCount ?? gb.orderCount ?? 0} orders</span>
             {icCount > 0 && <span>{icCount} interested</span>}
             {!gb.isActive && <span style={{ color: '#c0392b' }}>Archived</span>}
           </div>
@@ -188,21 +245,55 @@ function GBCard({ gb, gbs, fetchGbs, updateGbLocal, isExpanded, panel, onToggleP
           {STATUSES.map(s => <option key={s} value={s}>{SL[s]}</option>)}
         </select>
         <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-          <Pill onClick={() => setEditing(true)}>Edit</Pill>
-          <Pill onClick={() => onTogglePanel('images')} active={panel === 'images'}>Images</Pill>
-          <Pill onClick={() => onTogglePanel('options')} active={panel === 'options'}>Options ({gb.options?.length || 0})</Pill>
-          <Pill onClick={() => onTogglePanel('configs')} active={panel === 'configs'}>Configs ({gb.configurations?.length || 0})</Pill>
-          {gb.status === 'interest-check' && <Pill onClick={() => onTogglePanel('interest')} active={panel === 'interest'}>IC ({icCount})</Pill>}
-          {!parentGb && <Pill onClick={() => onTogglePanel('orders')} active={panel === 'orders'}>Orders ({gb.orderCount})</Pill>}
-          {!parentGb && (gb.addOns?.length > 0 || true) && <Pill onClick={() => onTogglePanel('addons')} active={panel === 'addons'}>Add-ons ({gb.addOns?.length || 0})</Pill>}
+          <div ref={editBtnRef} style={{ display: 'inline-block' }}>
+            <Pill onClick={toggleEditMenu} active={editMenuOpen || ['details','images','options','configs'].includes(panel)}>
+              Edit <Caret open={editMenuOpen} />
+            </Pill>
+          </div>
+          {editMenuOpen && (
+            <div ref={editMenuRef} style={{ position: 'fixed', top: editMenuPos.top, left: editMenuPos.left, zIndex: 1000, background: 'var(--surface)', border: '1px solid var(--ink-faint)', borderRadius: 'var(--radius-sm)', boxShadow: '0 14px 36px rgba(0,0,0,0.22), 0 3px 8px rgba(0,0,0,0.10)', minWidth: 160, overflow: 'hidden', padding: '4px' }}>
+              <p style={{ margin: 0, padding: '4px 10px 6px', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-faint)', borderBottom: '1px solid var(--border-subtle)', marginBottom: '4px' }}>Edit</p>
+              {[
+                { key: 'details', label: 'Details' },
+                { key: 'images', label: 'Images' },
+                { key: 'options', label: 'Options' },
+                { key: 'configs', label: 'Configs' },
+              ].map(item => {
+                const isActive = panel === item.key;
+                const isHovered = hoveredMenuKey === item.key;
+                const bg = isActive ? 'var(--accent)' : (isHovered ? 'var(--accent-light)' : 'transparent');
+                const color = isActive ? '#fff' : (isHovered ? 'var(--accent)' : 'var(--ink)');
+                return (
+                  <button key={item.key} onClick={() => { togglePanel(item.key); }}
+                    onMouseEnter={() => setHoveredMenuKey(item.key)}
+                    onMouseLeave={() => setHoveredMenuKey(null)}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: bg, border: 'none', cursor: 'pointer', fontSize: '0.78rem', fontFamily: "'DM Sans', sans-serif", color, fontWeight: 500, borderRadius: '6px', transition: 'background 0.12s, color 0.12s' }}>
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {!parentGb && (
+            <Pill onClick={() => togglePanel('orders')} active={panel === 'orders'}>
+              Orders <Caret open={panel === 'orders'} />
+            </Pill>
+          )}
+          {!parentGb && (
+            <Pill onClick={() => togglePanel('addons')} active={panel === 'addons'}>
+              Add-ons <Caret open={panel === 'addons'} />
+            </Pill>
+          )}
           {!parentGb && <Pill onClick={() => exportCSV('orders')}>CSV</Pill>}
           {!parentGb && (gb.addOns?.length > 0) && <Pill onClick={() => exportCSV('addons')}>Add-ons CSV</Pill>}
+          {gb.status === 'interest-check' && <Pill onClick={() => togglePanel('interest')} active={panel === 'interest'}>IC ({icCount})</Pill>}
           <Pill onClick={toggleActive}>{gb.isActive ? 'Archive' : 'Activate'}</Pill>
         </div>
       </div>
-      {panel === 'images' && <ImagePanel gbId={gb._id} images={gb.images || []} fetchGbs={fetchGbs} />}
-      {panel === 'options' && <GBOptionsManager gb={gb} fetchGbs={fetchGbs} />}
-      {panel === 'configs' && <GBConfigManager gb={gb} fetchGbs={fetchGbs} />}
+      {panel === 'details' && <EditGBCard gb={gb} gbs={gbs} fetchGbs={fetchGbs} onClose={closePanel} inline />}
+      {panel === 'images' && <ImagePanel gbId={gb._id} images={gb.images || []} fetchGbs={fetchGbs} onClose={closePanel} />}
+      {panel === 'options' && <GBOptionsManager gb={gb} fetchGbs={fetchGbs} onClose={closePanel} />}
+      {panel === 'configs' && <GBConfigManager gb={gb} fetchGbs={fetchGbs} onClose={closePanel} />}
       {panel === 'interest' && <InterestPanel gb={gb} exportCSV={() => exportCSV('interest')} />}
       {panel === 'orders' && <OrdersPanel groupBuyId={gb._id} />}
       {panel === 'addons' && <AddonsPanel parentGb={gb} gbs={gbs} fetchGbs={fetchGbs} />}
@@ -214,7 +305,7 @@ function GBCard({ gb, gbs, fetchGbs, updateGbLocal, isExpanded, panel, onToggleP
 /* ═══════════════════════════════════════════════
    EDIT GROUP BUY
 ═══════════════════════════════════════════════ */
-function EditGBCard({ gb, gbs, fetchGbs, onClose }) {
+function EditGBCard({ gb, gbs, fetchGbs, onClose, inline }) {
   const [form, setForm] = useState({
     name: gb.name,
     description: gb.description || '',
@@ -242,9 +333,13 @@ function EditGBCard({ gb, gbs, fetchGbs, onClose }) {
     } catch (err) { toast.error(err.message); } finally { setSaving(false); }
   };
 
+  const wrapperStyle = inline
+    ? { padding: '16px 24px 20px', borderTop: '1px solid var(--border-subtle)' }
+    : { background: 'var(--surface)', border: '2px solid var(--accent)', borderRadius: 'var(--radius)', padding: '24px' };
+
   return (
-    <div style={{ background: 'var(--surface)', border: '2px solid var(--accent)', borderRadius: 'var(--radius)', padding: '24px' }}>
-      <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.05rem', marginBottom: '16px' }}>Edit: {gb.name}</p>
+    <div style={wrapperStyle}>
+      <PanelHeader title={inline ? 'Edit Details' : `Edit: ${gb.name}`} onClose={onClose} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         <div className="form-group"><label className="form-label">Name</label><input className="form-input" value={form.name} onChange={set('name')} /></div>
         <div className="form-group"><label className="form-label">Base Price (₱) — used if no options</label><input type="number" className="form-input" value={form.basePrice} onChange={set('basePrice')} /></div>
@@ -300,7 +395,7 @@ function EditGBCard({ gb, gbs, fetchGbs, onClose }) {
 /* ═══════════════════════════════════════════════
    IMAGE PANEL
 ═══════════════════════════════════════════════ */
-function ImagePanel({ gbId, images, fetchGbs }) {
+function ImagePanel({ gbId, images, fetchGbs, onClose }) {
   const [uploading, setUploading] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [addingUrl, setAddingUrl] = useState(false);
@@ -346,8 +441,8 @@ function ImagePanel({ gbId, images, fetchGbs }) {
 
   return (
     <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-subtle)' }}>
+      <PanelHeader title="Images" onClose={onClose} />
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-        <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--ink-faint)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Images</span>
         <label style={{ padding: '4px 12px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', fontSize: '0.72rem', cursor: 'pointer', color: 'var(--accent)', fontWeight: 500, fontFamily: "'DM Sans', sans-serif" }}>
           {uploading ? 'Uploading...' : '+ Upload'}<input type="file" multiple accept="image/*" onChange={upload} style={{ display: 'none' }} disabled={uploading} />
         </label>
@@ -388,7 +483,7 @@ function ImagePanel({ gbId, images, fetchGbs }) {
 /* ═══════════════════════════════════════════════
    GB OPTIONS MANAGER
 ═══════════════════════════════════════════════ */
-function GBOptionsManager({ gb, fetchGbs }) {
+function GBOptionsManager({ gb, fetchGbs, onClose }) {
   const [groups, setGroups] = useState(
     (gb.options || []).map(g => ({ ...g, values: (g.values || []).map(v => ({ ...v })) }))
   );
@@ -437,9 +532,7 @@ function GBOptionsManager({ gb, fetchGbs }) {
 
   return (
     <div style={{ padding: '16px 24px 20px', borderTop: '1px solid var(--border-subtle)' }}>
-      <p style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '12px' }}>
-        Options — price-setting selectors (e.g., Kit: Base Kit / Novelties)
-      </p>
+      <PanelHeader title="Options — price-setting selectors (e.g., Kit: Base Kit / Novelties)" onClose={onClose} />
 
       {groups.map((grp, gi) => (
         <div key={gi} style={{ marginBottom: '12px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
@@ -503,9 +596,14 @@ function GBOptionsManager({ gb, fetchGbs }) {
         <button onClick={addGroup} style={{ padding: '6px 14px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.75rem', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>+ Add Group</button>
       </div>
 
-      <button onClick={save} disabled={saving} className="btn-dark" style={{ padding: '7px 18px', fontSize: '0.8rem' }}>
-        <span>{saving ? 'Saving...' : 'Save Options'}</span>
-      </button>
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button onClick={save} disabled={saving} className="btn-dark" style={{ padding: '7px 18px', fontSize: '0.8rem' }}>
+          <span>{saving ? 'Saving...' : 'Save Options'}</span>
+        </button>
+        {onClose && (
+          <button onClick={onClose} className="btn-outline" style={{ padding: '7px 18px', fontSize: '0.8rem' }}>Cancel</button>
+        )}
+      </div>
     </div>
   );
 }
@@ -514,7 +612,7 @@ function GBOptionsManager({ gb, fetchGbs }) {
 /* ═══════════════════════════════════════════════
    GB CONFIG MANAGER
 ═══════════════════════════════════════════════ */
-function GBConfigManager({ gb, fetchGbs }) {
+function GBConfigManager({ gb, fetchGbs, onClose }) {
   const [configs, setConfigs] = useState(
     (gb.configurations || []).map(c => ({
       ...c, options: (c.options || []).map(o => ({ ...o, image: o.image || { url: '', altText: '' } }))
@@ -562,9 +660,7 @@ function GBConfigManager({ gb, fetchGbs }) {
 
   return (
     <div style={{ padding: '16px 24px 20px', borderTop: '1px solid var(--border-subtle)' }}>
-      <p style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '12px' }}>
-        Configs — add-on selectors that affect the final price
-      </p>
+      <PanelHeader title="Configs — add-on selectors that affect the final price" onClose={onClose} />
 
       {configs.map((cfg, ci) => (
         <div key={ci} style={{ marginBottom: '12px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
@@ -628,9 +724,14 @@ function GBConfigManager({ gb, fetchGbs }) {
         <button onClick={addConfig} style={{ padding: '6px 14px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.75rem', fontFamily: "'DM Sans', sans-serif", whiteSpace: 'nowrap' }}>+ Add Config</button>
       </div>
 
-      <button onClick={save} disabled={saving} className="btn-dark" style={{ padding: '7px 18px', fontSize: '0.8rem' }}>
-        <span>{saving ? 'Saving...' : 'Save Configs'}</span>
-      </button>
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button onClick={save} disabled={saving} className="btn-dark" style={{ padding: '7px 18px', fontSize: '0.8rem' }}>
+          <span>{saving ? 'Saving...' : 'Save Configs'}</span>
+        </button>
+        {onClose && (
+          <button onClick={onClose} className="btn-outline" style={{ padding: '7px 18px', fontSize: '0.8rem' }}>Cancel</button>
+        )}
+      </div>
     </div>
   );
 }
