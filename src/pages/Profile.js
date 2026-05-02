@@ -360,12 +360,12 @@ export default function Profile() {
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {addresses.map(a => (
-                      <div key={a._id} style={{ padding: '16px 18px', border: `1px solid ${a.isDefault ? 'var(--ink)' : 'var(--border)'}`, borderRadius: '12px', display: 'grid', gridTemplateColumns: '1fr auto', gap: '14px', alignItems: 'start' }}>
+                      <div key={a._id} style={{ padding: '16px 18px', border: `1px solid ${a.isDefault ? 'var(--accent)' : 'var(--border)'}`, borderRadius: '12px', display: 'grid', gridTemplateColumns: '1fr auto', gap: '14px', alignItems: 'start' }}>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
                             <p style={{ fontSize: '0.94rem', fontWeight: 500 }}>{a.fullName}</p>
                             {a.isDefault && (
-                              <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', background: 'var(--ink)', color: '#fff', padding: '2px 8px', borderRadius: '6px' }}>Default</span>
+                              <span className="status-badge status-green" style={{ fontSize: '0.62rem', padding: '2px 8px' }}>Default</span>
                             )}
                           </div>
                           <p style={{ fontSize: '0.82rem', color: 'var(--ink-muted)', margin: 0 }}>{a.phone}</p>
