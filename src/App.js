@@ -1,6 +1,8 @@
+import { useContext } from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { UserProvider } from './context/UserContext';
+import UserContext from './context/UserContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { AddToOrderProvider } from './context/AddToOrderContext';
 import AppNavbar from './components/AppNavbar';
@@ -25,6 +27,14 @@ import PaymentSuccess from './pages/PaymentSuccess';
 import AddToOrderHandler from './pages/AddToOrderHandler';
 import AddToOrderBanner from './components/AddToOrderBanner';
 import './styles/globals.css';
+
+function ProtectedRoute({ element, adminOnly = false }) {
+  const { user, loading } = useContext(UserContext);
+  if (loading) return <div className="loading-center"><div className="spinner" /></div>;
+  if (!user) return <Navigate to="/login" replace />;
+  if (adminOnly && !user.isAdmin) return <Navigate to="/products" replace />;
+  return element;
+}
 
 export default function App() {
   return (
@@ -55,15 +65,15 @@ export default function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Navigate to="/login" />} />
                 <Route path="/logout" element={<Logout />} />
-                <Route path="/profile" element={<Profile />} />
+                <Route path="/profile" element={<ProtectedRoute element={<Profile />} />} />
                 <Route path="/order-history" element={<OrderHistory />} />
                 <Route path="/group-buys" element={<GroupBuys />} />
-                <Route path="/group-buys/admin" element={<GroupBuyAdmin />} />
+                <Route path="/group-buys/admin" element={<ProtectedRoute element={<GroupBuyAdmin />} adminOnly />} />
                 <Route path="/group-buys/:id" element={<GroupBuyView />} />
                 <Route path="/add-to-order/:token" element={<AddToOrderHandler />} />
                 <Route path="/community" element={<Placeholder />} />
                 <Route path="/contact" element={<Contact />} />
-                <Route path="/contact/admin" element={<ContactAdmin />} />
+                <Route path="/contact/admin" element={<ProtectedRoute element={<ContactAdmin />} adminOnly />} />
                 <Route path="/payment-success" element={<PaymentSuccess />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

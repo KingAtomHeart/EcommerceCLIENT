@@ -9,7 +9,7 @@ const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID;
 const GSI_SRC = 'https://accounts.google.com/gsi/client';
 
 export default function Login() {
-  const { user, setUser } = useContext(UserContext);
+  const { user, loading: authLoading, setUser } = useContext(UserContext);
   const { theme } = useTheme();
   const navigate = useNavigate();
   const [tab, setTab] = useState('login');
@@ -97,7 +97,8 @@ export default function Login() {
     return () => { cancelled = true; };
   }, [tab, signInWithGoogleCredential]);
 
-  // Redirect if already logged in — must use Navigate component, not navigate()
+  // Wait for auth to resolve before redirecting logged-in users
+  if (authLoading) return null;
   if (user?.id) return <Navigate to="/products" replace />;
 
   const handleLogin = async (e) => {
