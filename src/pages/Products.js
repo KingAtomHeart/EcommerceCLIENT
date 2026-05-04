@@ -32,7 +32,7 @@ export default function Products() {
   const isAdmin = user?.isAdmin;
   const fetchProducts = useCallback(() => {
     setLoading(true);
-    const endpoint = isAdmin ? '/products/all' : '/products/active';
+    const endpoint = isAdmin ? '/products/all?includeAddOns=true' : '/products/active';
     apiFetch(endpoint)
       .then(data => setProducts(Array.isArray(data) ? data : []))
       .catch(() => setProducts([]))

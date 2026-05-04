@@ -212,7 +212,7 @@ export default function Login() {
 
         {tab === 'register' && (
           <form onSubmit={handleRegister} style={{ animation: 'fadeIn 0.25s ease' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <div className="form-row-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div className="form-group">
                 <label className="form-label">First Name</label>
                 <input type="text" className="form-input" placeholder="Jane" required value={reg.firstName} onChange={setR('firstName')} />

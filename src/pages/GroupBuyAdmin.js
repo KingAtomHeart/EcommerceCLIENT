@@ -16,21 +16,38 @@ async function uploadOptionImage(file) {
 const STATUSES = ['interest-check', 'open', 'closing-soon', 'closed', 'production', 'completed'];
 const SL = { 'interest-check': 'Interest Check', 'open': 'Open', 'closing-soon': 'Closing Soon', 'closed': 'Closed', 'production': 'In Production', 'completed': 'Completed' };
 
-export default function GroupBuyAdmin() {
+export default function GroupBuyAdmin({
+  embedded = false,
+  searchQuery: searchQueryProp,
+  sortBy: sortByProp,
+  showArchived: showArchivedProp,
+  showCreate: showCreateProp,
+  setShowCreate: setShowCreateProp,
+}) {
   const { user } = useContext(UserContext);
   const [gbs, setGbs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
+  const [showCreateLocal, setShowCreateLocal] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [expandedPanel, setExpandedPanel] = useState(null);
-  const [showArchived, setShowArchived] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('newest');
+  const [showArchivedLocal, setShowArchivedLocal] = useState(false);
+  const [searchQueryLocal, setSearchQueryLocal] = useState('');
+  const [sortByLocal, setSortByLocal] = useState('newest');
+
+  // Use props when embedded, internal state when standalone
+  const searchQuery = embedded ? (searchQueryProp ?? '') : searchQueryLocal;
+  const setSearchQuery = embedded ? (() => {}) : setSearchQueryLocal;
+  const sortBy = embedded ? (sortByProp ?? 'newest') : sortByLocal;
+  const setSortBy = embedded ? (() => {}) : setSortByLocal;
+  const showArchived = embedded ? !!showArchivedProp : showArchivedLocal;
+  const setShowArchived = embedded ? (() => {}) : setShowArchivedLocal;
+  const showCreate = embedded ? !!showCreateProp : showCreateLocal;
+  const setShowCreate = embedded ? (setShowCreateProp || (() => {})) : setShowCreateLocal;
 
   const fetchGbs = () => { setLoading(true); apiFetch('/group-buys/all').then(d => setGbs(Array.isArray(d) ? d : [])).catch(() => setGbs([])).finally(() => setLoading(false)); };
   useEffect(() => { fetchGbs(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!user?.isAdmin) return <Navigate to="/products" />;
+  if (!embedded && !user?.isAdmin) return <Navigate to="/products" />;
 
   const updateGbLocal = (id, patch) => setGbs(prev => prev.map(g => g._id === id ? { ...g, ...patch } : g));
 
@@ -60,39 +77,41 @@ export default function GroupBuyAdmin() {
     return sorted;
   })();
 
-  return (
-    <div className="page-body" style={{ padding: '56px var(--page-pad) 80px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px', flexWrap: 'wrap', gap: '16px' }}>
-        <div>
-          <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.4rem', letterSpacing: '-0.025em', marginBottom: '8px' }}>Group Buys</h1>
-          <p style={{ color: 'var(--ink-muted)', fontSize: '0.9rem' }}>Manage group buys, interest checks, and orders.</p>
-        </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--ink-muted)', minWidth: 220 }}>
-            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search group buys..."
-              style={{ flex: 1, border: 'none', outline: 'none', background: 'none', fontFamily: "'DM Sans', sans-serif", fontSize: '0.82rem', color: 'var(--ink)', minWidth: 0 }}
-            />
-            {searchQuery && <button onClick={() => setSearchQuery('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-faint)', fontSize: '1rem', lineHeight: 1, padding: '0 2px' }}>×</button>}
+  const inner = (
+    <>
+      {!embedded && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px', flexWrap: 'wrap', gap: '16px' }}>
+          <div>
+            <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.4rem', letterSpacing: '-0.025em', marginBottom: '8px' }}>Group Buys</h1>
+            <p style={{ color: 'var(--ink-muted)', fontSize: '0.9rem' }}>Manage group buys, interest checks, and orders.</p>
           </div>
-          <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: '8px 14px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: 'var(--surface)', fontFamily: "'DM Sans', sans-serif", fontSize: '0.78rem', color: 'var(--ink-muted)', cursor: 'pointer' }}>
-            <option value="newest">Newest first</option>
-            <option value="oldest">Oldest first</option>
-            <option value="name-asc">Name A–Z</option>
-            <option value="name-desc">Name Z–A</option>
-            <option value="orders-desc">Most orders</option>
-            <option value="price-desc">Price: high to low</option>
-            <option value="price-asc">Price: low to high</option>
-            <option value="status">By status</option>
-          </select>
-          <Pill onClick={() => setShowArchived(!showArchived)}>{showArchived ? 'Hide' : 'Show'} Archived</Pill>
-          <button className="btn-dark" onClick={() => setShowCreate(true)} style={{ padding: '10px 24px' }}><span>+ New Group Buy</span></button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--ink-muted)', minWidth: 220 }}>
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search group buys..."
+                style={{ flex: 1, border: 'none', outline: 'none', background: 'none', fontFamily: "'DM Sans', sans-serif", fontSize: '0.82rem', color: 'var(--ink)', minWidth: 0 }}
+              />
+              {searchQuery && <button onClick={() => setSearchQuery('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-faint)', fontSize: '1rem', lineHeight: 1, padding: '0 2px' }}>×</button>}
+            </div>
+            <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: '8px 14px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: 'var(--surface)', fontFamily: "'DM Sans', sans-serif", fontSize: '0.78rem', color: 'var(--ink-muted)', cursor: 'pointer' }}>
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="name-asc">Name A–Z</option>
+              <option value="name-desc">Name Z–A</option>
+              <option value="orders-desc">Most orders</option>
+              <option value="price-desc">Price: high to low</option>
+              <option value="price-asc">Price: low to high</option>
+              <option value="status">By status</option>
+            </select>
+            <Pill onClick={() => setShowArchived(!showArchived)}>{showArchived ? 'Hide' : 'Show'} Archived</Pill>
+            <button className="btn-dark" onClick={() => setShowCreate(true)} style={{ padding: '10px 24px' }}><span>+ New Group Buy</span></button>
+          </div>
         </div>
-      </div>
+      )}
 
       {showCreate && <CreateGBModal gbs={gbs} onClose={() => setShowCreate(false)} onCreated={() => { fetchGbs(); setShowCreate(false); }} />}
 
@@ -114,6 +133,13 @@ export default function GroupBuyAdmin() {
           ))}
         </div>
       )}
+    </>
+  );
+
+  if (embedded) return inner;
+  return (
+    <div className="page-body" style={{ padding: '56px var(--page-pad) 80px' }}>
+      {inner}
     </div>
   );
 }
@@ -221,7 +247,7 @@ function GBCard({ gb, gbs, fetchGbs, updateGbLocal, isExpanded, panel, onToggleP
       opacity: gb.isActive ? 1 : 0.6,
       transition: 'box-shadow 0.2s, border-color 0.2s, opacity 0.2s'
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '20px 24px', flexWrap: 'wrap' }}>
+      <div className="admin-product-row" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '20px 24px', flexWrap: 'wrap' }}>
         <div style={{ width: 56, height: 56, borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: 'var(--accent-light)', flexShrink: 0 }}>
           {gb.images?.[0]?.url ? <img src={gb.images[0].url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Serif Display', serif", color: 'var(--accent)' }}>{gb.name[0]}</div>}
         </div>
@@ -244,7 +270,7 @@ function GBCard({ gb, gbs, fetchGbs, updateGbLocal, isExpanded, panel, onToggleP
           className={`status-select status-${statusPaletteKey(gb.status)}`}>
           {STATUSES.map(s => <option key={s} value={s}>{SL[s]}</option>)}
         </select>
-        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+        <div className="admin-product-actions" style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
           <div ref={editBtnRef} style={{ display: 'inline-block' }}>
             <Pill onClick={toggleEditMenu} active={editMenuOpen || ['details','images','options','configs'].includes(panel)}>
               Edit <Caret open={editMenuOpen} />

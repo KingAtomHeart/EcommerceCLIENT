@@ -1229,3 +1229,227 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
 .config-block-name { font-weight: 500; font-size: 0.85rem; }
 .config-block-mod { color: var(--ink-muted); font-weight: 400; font-size: 0.75rem; }
 .config-block-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ════════════════════════════════════════════════
+   COMPREHENSIVE MOBILE RESPONSIVENESS
+   Targets admin dashboard, modals, customer pages,
+   inline grid layouts via !important overrides on
+   className-bearing elements.
+═══════════════════════════════════════════════ */
+
+/* ── Mobile safety: prevent any stray element from causing horizontal page scroll ── */
+@media (max-width: 900px) {
+  html, body { overflow-x: hidden; }
+}
+
+/* ── Tablet / mid-range (≤900px) ── */
+@media (max-width: 900px) {
+  /* Customer two-column → stack */
+  .checkout-grid { grid-template-columns: 1fr !important; gap: 32px !important; }
+  .cart-layout   { grid-template-columns: 1fr !important; }
+  .product-layout { grid-template-columns: 1fr !important; gap: 36px !important; }
+  .profile-layout { grid-template-columns: 1fr !important; gap: 20px !important; }
+  .profile-info-grid { grid-template-columns: 1fr !important; }
+
+  /* Modal form rows collapse */
+  .modal-row-2,
+  .modal-row-3,
+  .modal-row-4,
+  .form-row-2 { grid-template-columns: 1fr !important; gap: 10px !important; }
+
+  /* Modal sizing */
+  .modal-overlay { padding: 12px; }
+  .modal-body    { padding: 26px 22px; max-height: 92vh; border-radius: 18px; }
+  .modal-title   { font-size: 1.3rem; }
+  .modal-subtitle{ font-size: 0.8rem; margin-bottom: 20px; }
+
+  /* Admin dashboard tabs — horizontal scroll */
+  .admin-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin: 0 calc(-1 * var(--page-pad));
+    padding: 0 var(--page-pad);
+  }
+  .admin-tabs::-webkit-scrollbar { display: none; }
+  .admin-tab { white-space: nowrap; flex-shrink: 0; padding: 12px 16px !important; font-size: 0.84rem; }
+
+  .admin-toolbar { flex-direction: column; align-items: stretch !important; gap: 12px; }
+  .admin-actions { flex-wrap: wrap; gap: 8px; padding-bottom: 8px; }
+  .admin-search  { flex: 1 1 100%; min-width: 0 !important; }
+
+  .admin-stats { grid-template-columns: repeat(2, 1fr) !important; gap: 8px; }
+  .admin-stat  { padding: 14px !important; }
+  .admin-stat-n{ font-size: 1.35rem !important; }
+
+  /* Admin order header grid */
+  .admin-order-header {
+    grid-template-columns: auto 1fr auto !important;
+    grid-auto-rows: auto;
+    row-gap: 6px !important;
+    column-gap: 10px !important;
+    padding: 12px 14px !important;
+  }
+  .admin-order-header > :nth-child(3),  /* Customer */
+  .admin-order-header > :nth-child(4)   /* Date */
+  { grid-column: 1 / -1; }
+  .admin-order-addresses { grid-template-columns: 1fr !important; }
+
+  /* GB unified order header */
+  .gb-order-header {
+    grid-template-columns: auto 1fr auto !important;
+    column-gap: 10px !important;
+    row-gap: 6px !important;
+    padding: 12px 14px !important;
+  }
+  .gb-order-header > :nth-child(4),  /* Customer */
+  .gb-order-header > :nth-child(5)   /* Date */
+  { grid-column: 1 / -1; }
+
+  /* Footer grid already handled in earlier @media */
+
+  /* Auth card */
+  .auth-card { padding: 30px 24px !important; max-width: 100% !important; }
+}
+
+/* ── Mobile (≤640px) ── */
+@media (max-width: 640px) {
+  :root { --nav-h: 56px; --page-pad: 16px; }
+
+  /* Headings scale-down */
+  h1 { font-size: 1.7rem; }
+  h2 { font-size: 1.3rem; }
+
+  /* Compact admin dashboard header */
+  .admin-dashboard-header { margin-bottom: 16px !important; }
+  .admin-dashboard-header h1 { font-size: 1.6rem !important; margin-bottom: 2px !important; }
+  .admin-dashboard-subtitle { display: none; }
+
+  /* Compact stats — 4-up in a single row, tight padding */
+  .admin-stats { grid-template-columns: repeat(4, 1fr) !important; gap: 6px !important; margin-bottom: 16px !important; }
+  .admin-stat { padding: 10px 6px !important; }
+  .admin-stat-n { font-size: 1.1rem !important; margin-bottom: 0 !important; }
+  .admin-stat-l { font-size: 0.56rem !important; letter-spacing: 0.04em !important; }
+
+  /* Compact toolbar margin */
+  .admin-toolbar { margin-bottom: 14px !important; gap: 8px !important; }
+  .admin-tab { padding: 10px 14px !important; font-size: 0.82rem !important; }
+
+  /* Form inputs — 16px to prevent iOS zoom on focus */
+  .form-input,
+  input.form-input,
+  textarea.form-input,
+  select.form-input,
+  .admin-sort { font-size: 16px !important; padding: 10px 12px; }
+  .admin-search input { font-size: 16px !important; }
+
+  /* Admin actions — search full-width, dropdown/toggle share a row, +New full-width */
+  .admin-actions {
+    flex-direction: row !important;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: stretch;
+  }
+  .admin-actions > * { width: auto; }
+  .admin-actions .admin-search { flex: 1 1 100%; min-width: 0; }
+  .admin-actions .admin-sort,
+  .admin-actions .admin-toggle {
+    flex: 1 1 calc(50% - 4px);
+    min-width: 0;
+    justify-content: center;
+    text-align: center;
+  }
+  .admin-actions .btn-dark { flex: 1 1 100%; justify-content: center; }
+
+  /* Stats single col */
+  .admin-stats { grid-template-columns: 1fr 1fr !important; }
+
+  /* Admin order header — single-column stack */
+  .admin-order-header {
+    grid-template-columns: auto 1fr !important;
+  }
+  .admin-order-header > :nth-child(2),  /* Order # block */
+  .admin-order-header > :nth-child(3),  /* Customer */
+  .admin-order-header > :nth-child(4),  /* Date */
+  .admin-order-header > :nth-child(5),  /* Status badge */
+  .admin-order-header > :nth-child(6)   /* Total */
+  { grid-column: 2 / -1; }
+
+  .gb-order-header {
+    grid-template-columns: auto 1fr !important;
+  }
+  .gb-order-header > :nth-child(2),  /* Image */
+  .gb-order-header > :nth-child(3),  /* Order block */
+  .gb-order-header > :nth-child(4),
+  .gb-order-header > :nth-child(5),
+  .gb-order-header > :nth-child(6),  /* Status */
+  .gb-order-header > :nth-child(7)   /* Total */
+  { grid-column: 2 / -1; }
+
+  /* Modal actions */
+  .modal-actions { flex-direction: column; }
+  .modal-actions > * { width: 100%; }
+
+  /* Admin product/group-buy card top row — tighter padding on mobile */
+  .admin-product-row { padding: 14px 16px !important; gap: 10px !important; }
+  .admin-product-actions { width: 100%; justify-content: flex-start !important; }
+
+  /* Orders calendar — compact cells on mobile */
+  .orders-calendar-grid > button { min-height: 64px !important; padding: 4px !important; }
+  .orders-calendar-grid > button > span:first-child { font-size: 0.74rem !important; width: 20px !important; height: 20px !important; }
+  .orders-calendar-grid > button > span:not(:first-child) { font-size: 0.62rem !important; padding: 1px 5px !important; }
+  .orders-calendar-week > div { padding: 6px 4px !important; font-size: 0.6rem !important; }
+
+  /* Admin search-result row in OrdersPanel */
+  .admin-search-result-row {
+    grid-template-columns: auto 1fr auto !important;
+    column-gap: 10px !important;
+    row-gap: 6px !important;
+    padding: 10px 12px !important;
+  }
+  .admin-search-result-row > :nth-child(3),
+  .admin-search-result-row > :nth-child(4) { grid-column: 1 / -1; }
+
+  /* Hero font slightly smaller */
+  .hero-content h1 { font-size: clamp(2rem, 9vw, 3.4rem); }
+
+  /* Section padding */
+  .section { padding: 40px 16px !important; }
+  .section-title { font-size: 1.5rem; }
+
+  /* Cart row image smaller */
+  .cart-row { grid-template-columns: 56px 1fr auto !important; gap: 10px !important; }
+
+  /* Order history cards */
+  .order-card-grid { grid-template-columns: 1fr !important; }
+
+  /* Status badge smaller */
+  .status-badge { font-size: 0.6rem; padding: 2px 8px; }
+}
+
+/* ── Tiny phones (≤420px) ── */
+@media (max-width: 420px) {
+  :root { --page-pad: 14px; }
+
+  .modal-body { padding: 18px 16px; }
+  .auth-card { padding: 22px 18px !important; }
+
+  h1 { font-size: 1.5rem; }
+  .hero-content h1 { font-size: clamp(1.7rem, 10vw, 2.6rem); }
+}
+
+/* ── Touch device tweaks ── */
+@media (hover: none) and (pointer: coarse) {
+  /* Make buttons feel tappable */
+  button, .btn-dark, .btn-light, .btn-primary, .btn-outline, .nav-link, .mobile-link, .auth-tab {
+    -webkit-tap-highlight-color: rgba(0,0,0,0.04);
+  }
+  /* Disable hover-based dropdowns on touch */
+  .nav-dropdown { display: none; }
+}
+
+/* ── Generic table → horizontal scroll wrapper on small screens ── */
+@media (max-width: 768px) {
+  .table-scroll-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}

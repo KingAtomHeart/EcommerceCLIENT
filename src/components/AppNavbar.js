@@ -34,8 +34,7 @@ export default function AppNavbar() {
         <ul className="nav-links">
           {isAdmin ? (
             <>
-              <li><NavLink to="/products" className={({ isActive }) => isActive ? 'active' : ''}>In Stock</NavLink></li>
-              <li><NavLink to="/group-buys/admin" className={({ isActive }) => isActive ? 'active' : ''}>Group Buys</NavLink></li>
+              <li><NavLink to="/products" className={({ isActive }) => isActive ? 'active' : ''}>Dashboard</NavLink></li>
               <li><NavLink to="/contact/admin" className={({ isActive }) => isActive ? 'active' : ''}>Messages</NavLink></li>
             </>
           ) : (
@@ -103,8 +102,7 @@ export default function AppNavbar() {
           <div className="mobile-drawer-links">
             {isAdmin ? (
               <>
-                <NavLink to="/products" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>In Stock Products</NavLink>
-                <NavLink to="/group-buys/admin" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Group Buys</NavLink>
+                <NavLink to="/products" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Dashboard</NavLink>
                 <NavLink to="/contact/admin" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Messages</NavLink>
               </>
             ) : (

@@ -5,8 +5,9 @@ import { StatusBadge, statusStyle, statusPaletteKey } from '../utils/statusColor
 import { useTheme } from '../context/ThemeContext';
 import toast from 'react-hot-toast';
 import AdminHomepageEditor from './AdminHomepageEditor';
+import GroupBuyAdmin from '../pages/GroupBuyAdmin';
 
-const VALID_TABS = ['products', 'orders', 'stats', 'homepage'];
+const VALID_TABS = ['products', 'group-buys', 'orders', 'stats', 'homepage'];
 
 async function uploadOptionImage(file) {
   const fd = new FormData();
@@ -34,6 +35,12 @@ export default function AdminView({ products, fetchData, loading }) {
   const [expandedProductId, setExpandedProductId] = useState(null);
   const [expandedProductPanel, setExpandedProductPanel] = useState(null);
 
+  // Group Buys toolbar state — lifted so it renders in the admin-actions slot
+  const [gbSearchQuery, setGbSearchQuery] = useState('');
+  const [gbSortBy, setGbSortBy] = useState('newest');
+  const [gbShowArchived, setGbShowArchived] = useState(false);
+  const [gbShowCreate, setGbShowCreate] = useState(false);
+
   const fetchOrders = () => {
     setOrdersLoading(true);
     apiFetch('/orders/all-orders')
@@ -47,11 +54,13 @@ export default function AdminView({ products, fetchData, loading }) {
     if ((tab === 'orders' || tab === 'stats') && !ordersLoaded) fetchOrders();
   }, [tab, ordersLoaded]);
 
-  const activeCount = products.filter(p => p.isActive).length;
-  const archivedCount = products.filter(p => !p.isActive).length;
+  // Top-level products only — add-ons live inside their parent's "Add-ons" panel.
+  const topLevelProducts = products.filter(p => !p.parentProductId);
+  const activeCount = topLevelProducts.filter(p => p.isActive).length;
+  const archivedCount = topLevelProducts.filter(p => !p.isActive).length;
 
   const filtered = (() => {
-    let list = showArchived ? products : products.filter(p => p.isActive);
+    let list = showArchived ? topLevelProducts : topLevelProducts.filter(p => p.isActive);
     const q = searchQuery.trim().toLowerCase();
     if (q) {
       list = list.filter(p =>
@@ -78,13 +87,13 @@ export default function AdminView({ products, fetchData, loading }) {
 
   return (
     <div>
-      <div style={{ marginBottom: '36px' }}>
+      <div className="admin-dashboard-header" style={{ marginBottom: '36px' }}>
         <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.4rem', letterSpacing: '-0.025em', marginBottom: '8px' }}>Dashboard</h1>
-        <p style={{ color: 'var(--ink-muted)', fontSize: '0.9rem' }}>Manage your products, images, and orders.</p>
+        <p className="admin-dashboard-subtitle" style={{ color: 'var(--ink-muted)', fontSize: '0.9rem' }}>Manage your products, images, and orders.</p>
       </div>
 
       <div className="admin-stats">
-        <div className="admin-stat"><span className="admin-stat-n">{products.length}</span><span className="admin-stat-l">Total Products</span></div>
+        <div className="admin-stat"><span className="admin-stat-n">{topLevelProducts.length}</span><span className="admin-stat-l">Total Products</span></div>
         <div className="admin-stat"><span className="admin-stat-n">{activeCount}</span><span className="admin-stat-l">Active</span></div>
         <div className="admin-stat"><span className="admin-stat-n">{archivedCount}</span><span className="admin-stat-l">Archived</span></div>
         <div className="admin-stat"><span className="admin-stat-n">{orders.length || '—'}</span><span className="admin-stat-l">Orders</span></div>
@@ -92,7 +101,8 @@ export default function AdminView({ products, fetchData, loading }) {
 
       <div className="admin-toolbar">
         <div className="admin-tabs">
-          <button className={`admin-tab ${tab === 'products' ? 'active' : ''}`} onClick={() => setTab('products')}>Products</button>
+          <button className={`admin-tab ${tab === 'products' ? 'active' : ''}`} onClick={() => setTab('products')}>In Stock</button>
+          <button className={`admin-tab ${tab === 'group-buys' ? 'active' : ''}`} onClick={() => setTab('group-buys')}>Group Buys</button>
           <button className={`admin-tab ${tab === 'orders' ? 'active' : ''}`} onClick={() => setTab('orders')}>Orders</button>
           <button className={`admin-tab ${tab === 'stats' ? 'active' : ''}`} onClick={() => setTab('stats')}>Stats</button>
           <button className={`admin-tab ${tab === 'homepage' ? 'active' : ''}`} onClick={() => setTab('homepage')}>Homepage</button>
@@ -134,6 +144,37 @@ export default function AdminView({ products, fetchData, loading }) {
             <button className="btn-dark" onClick={() => setShowCreate(true)} style={{ padding: '10px 24px' }}><span>+ New Product</span></button>
           </div>
         )}
+        {tab === 'group-buys' && (
+          <div className="admin-actions">
+            <div className="admin-search">
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input
+                type="text"
+                value={gbSearchQuery}
+                onChange={e => setGbSearchQuery(e.target.value)}
+                placeholder="Search group buys..."
+              />
+              {gbSearchQuery && <button onClick={() => setGbSearchQuery('')} aria-label="Clear">×</button>}
+            </div>
+            <select className="admin-sort" value={gbSortBy} onChange={e => setGbSortBy(e.target.value)}>
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="name-asc">Name A–Z</option>
+              <option value="name-desc">Name Z–A</option>
+              <option value="orders-desc">Most orders</option>
+              <option value="price-desc">Price: high to low</option>
+              <option value="price-asc">Price: low to high</option>
+              <option value="status">By status</option>
+            </select>
+            <button className="admin-toggle" onClick={() => setGbShowArchived(!gbShowArchived)}>
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+                {gbShowArchived ? (<><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>) : (<><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></>)}
+              </svg>
+              <span>{gbShowArchived ? 'Hide' : 'Show'} Archived</span>
+            </button>
+            <button className="btn-dark" onClick={() => setGbShowCreate(true)} style={{ padding: '10px 24px' }}><span>+ New Group Buy</span></button>
+          </div>
+        )}
       </div>
 
       {showCreate && <CreateProductModal onClose={() => setShowCreate(false)} onCreated={() => { fetchData(); setShowCreate(false); }} />}
@@ -141,7 +182,7 @@ export default function AdminView({ products, fetchData, loading }) {
       {tab === 'products' && (
         <>
           <p style={{ fontSize: '0.82rem', color: 'var(--ink-faint)', marginBottom: '20px' }}>
-            Showing {filtered.length} of {products.length} product{products.length !== 1 ? 's' : ''}
+            Showing {filtered.length} of {topLevelProducts.length} product{topLevelProducts.length !== 1 ? 's' : ''}
             {searchQuery && ` matching "${searchQuery}"`}
             {!showArchived && archivedCount > 0 && ` (${archivedCount} archived hidden)`}
           </p>
@@ -151,13 +192,20 @@ export default function AdminView({ products, fetchData, loading }) {
                 <ProductCard
                   key={p._id}
                   product={p}
+                  allProducts={products}
                   fetchData={fetchData}
+                  orders={orders}
+                  ordersLoading={ordersLoading}
+                  ordersLoaded={ordersLoaded}
+                  fetchOrders={fetchOrders}
+                  updateOrderLocal={updateOrderLocal}
                   panel={expandedProductId === p._id ? expandedProductPanel : null}
                   onTogglePanel={(pn) => {
                     if (pn === null || (expandedProductId === p._id && expandedProductPanel === pn)) {
                       setExpandedProductId(null); setExpandedProductPanel(null);
                     } else {
                       setExpandedProductId(p._id); setExpandedProductPanel(pn);
+                      if ((pn === 'orders' || pn === 'addons') && !ordersLoaded) fetchOrders();
                     }
                   }}
                 />
@@ -168,6 +216,17 @@ export default function AdminView({ products, fetchData, loading }) {
             <ProductsTable products={filtered} fetchData={fetchData} />
           )}
         </>
+      )}
+
+      {tab === 'group-buys' && (
+        <GroupBuyAdmin
+          embedded
+          searchQuery={gbSearchQuery}
+          sortBy={gbSortBy}
+          showArchived={gbShowArchived}
+          showCreate={gbShowCreate}
+          setShowCreate={setGbShowCreate}
+        />
       )}
 
       {tab === 'orders' && <OrdersPanel orders={orders} loading={ordersLoading} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />}
@@ -266,7 +325,7 @@ function PanelHeader({ title, onClose }) {
 /* ═══════════════════════════════════════════════
    PRODUCT CARD (Admin Grid View)
 ═══════════════════════════════════════════════ */
-function ProductCard({ product, fetchData, panel, onTogglePanel }) {
+function ProductCard({ product, fetchData, panel, onTogglePanel, allProducts = [], orders = [], ordersLoading = false, ordersLoaded = true, fetchOrders, updateOrderLocal }) {
   const [editMenuOpen, setEditMenuOpen] = useState(false);
   const [editMenuPos, setEditMenuPos] = useState({ top: 0, left: 0 });
   const [hoveredMenuKey, setHoveredMenuKey] = useState(null);
@@ -345,7 +404,7 @@ function ProductCard({ product, fetchData, panel, onTogglePanel }) {
       opacity: product.isActive ? 1 : 0.6,
       transition: 'box-shadow 0.2s, border-color 0.2s, opacity 0.2s'
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '20px 24px', flexWrap: 'wrap' }}>
+      <div className="admin-product-row" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '20px 24px', flexWrap: 'wrap' }}>
         <div style={{ width: 56, height: 56, borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: 'var(--accent-light)', flexShrink: 0 }}>
           {imgUrl ? (
             <img src={imgUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -370,7 +429,7 @@ function ProductCard({ product, fetchData, panel, onTogglePanel }) {
         <span className={`status-select status-${product.isActive ? 'green' : 'red'}`} style={{ cursor: 'default' }}>
           {product.isActive ? 'Active' : 'Archived'}
         </span>
-        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+        <div className="admin-product-actions" style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
           <div ref={editBtnRef} style={{ display: 'inline-block' }}>
             <Pill onClick={toggleEditMenu} active={editMenuOpen || editKeys.includes(panel)}>
               Edit <Caret open={editMenuOpen} />
@@ -415,16 +474,139 @@ function ProductCard({ product, fetchData, panel, onTogglePanel }) {
       {panel === 'options' && <OptionsManager product={product} fetchData={fetchData} onClose={closePanel} />}
       {panel === 'variants-config' && <ProductConfigManager product={product} fetchData={fetchData} onClose={closePanel} />}
       {panel === 'orders' && (
-        <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border-subtle)' }}>
-          <PanelHeader title="Orders" onClose={closePanel} />
-          <p style={{ fontSize: '0.82rem', color: 'var(--ink-faint)' }}>Per-product orders panel coming soon.</p>
-        </div>
+        <ProductOrdersPanel
+          product={product}
+          allProducts={allProducts}
+          orders={orders}
+          loading={ordersLoading}
+          ordersLoaded={ordersLoaded}
+          fetchOrders={fetchOrders}
+          updateOrderLocal={updateOrderLocal}
+          onClose={closePanel}
+        />
       )}
       {panel === 'addons' && (
-        <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border-subtle)' }}>
-          <PanelHeader title="Add-ons" onClose={closePanel} />
-          <p style={{ fontSize: '0.82rem', color: 'var(--ink-faint)' }}>Add-ons panel coming soon.</p>
+        <ProductAddonsPanel
+          parent={product}
+          allProducts={allProducts}
+          fetchData={fetchData}
+          orders={orders}
+          ordersLoading={ordersLoading}
+          ordersLoaded={ordersLoaded}
+          fetchOrders={fetchOrders}
+          updateOrderLocal={updateOrderLocal}
+          onClose={closePanel}
+        />
+      )}
+    </div>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════
+   PER-PRODUCT ORDERS PANEL
+═══════════════════════════════════════════════ */
+function ProductOrdersPanel({ product, allProducts, orders, loading, ordersLoaded, fetchOrders, updateOrderLocal, onClose }) {
+  const familyIds = new Set([
+    product._id,
+    ...allProducts.filter(p => {
+      const pid = typeof p.parentProductId === 'object' ? p.parentProductId?._id : p.parentProductId;
+      return pid === product._id;
+    }).map(p => p._id),
+  ]);
+
+  const filtered = orders.filter(o =>
+    (o.productsOrdered || []).some(item => {
+      const pid = typeof item.productId === 'object' ? item.productId?._id : item.productId;
+      return familyIds.has(pid);
+    })
+  );
+
+  if (loading || !ordersLoaded) {
+    return (
+      <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border-subtle)' }}>
+        <PanelHeader title="Orders" onClose={onClose} />
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}><div className="spinner" /></div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+      <PanelHeader title={`Orders (${filtered.length})`} onClose={onClose} />
+      {filtered.length === 0 ? (
+        <p style={{ fontSize: '0.84rem', color: 'var(--ink-muted)', padding: '20px 0' }}>No orders for this product yet.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {filtered.map(o => (
+            <OrderRow key={o._id} order={o} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />
+          ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════
+   PER-PRODUCT ADD-ONS PANEL
+═══════════════════════════════════════════════ */
+function ProductAddonsPanel({ parent, allProducts, fetchData, orders, ordersLoading, ordersLoaded, fetchOrders, updateOrderLocal, onClose }) {
+  const [expandedId, setExpandedId] = useState(null);
+  const [expandedSubPanel, setExpandedSubPanel] = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+
+  const addons = allProducts.filter(p => {
+    const pid = typeof p.parentProductId === 'object' ? p.parentProductId?._id : p.parentProductId;
+    return pid === parent._id;
+  });
+
+  return (
+    <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: '14px' }}>
+        <PanelHeader title={`Add-ons (${addons.length})`} onClose={onClose} />
+        <button type="button" onClick={() => setShowCreate(true)}
+          style={{ padding: '6px 14px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.78rem', fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>
+          + Add add-on
+        </button>
+      </div>
+
+      {addons.length === 0 ? (
+        <p style={{ fontSize: '0.84rem', color: 'var(--ink-muted)', padding: '20px 0' }}>No add-ons yet. Click "+ Add add-on" to create one tied to this product.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {addons.map(ao => (
+            <ProductCard
+              key={ao._id}
+              product={ao}
+              allProducts={allProducts}
+              fetchData={fetchData}
+              orders={orders}
+              ordersLoading={ordersLoading}
+              ordersLoaded={ordersLoaded}
+              fetchOrders={fetchOrders}
+              updateOrderLocal={updateOrderLocal}
+              panel={expandedId === ao._id ? expandedSubPanel : null}
+              onTogglePanel={(pn) => {
+                if (pn === null || (expandedId === ao._id && expandedSubPanel === pn)) {
+                  setExpandedId(null); setExpandedSubPanel(null);
+                } else {
+                  setExpandedId(ao._id); setExpandedSubPanel(pn);
+                  if ((pn === 'orders' || pn === 'addons') && !ordersLoaded) fetchOrders?.();
+                }
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      {showCreate && (
+        <CreateProductModal
+          forcedParentId={parent._id}
+          forcedParentName={parent.name}
+          onClose={() => setShowCreate(false)}
+          onCreated={() => { fetchData(); setShowCreate(false); }}
+        />
       )}
     </div>
   );
@@ -1542,7 +1724,7 @@ function OrdersPanel({ orders, loading, fetchOrders, updateOrderLocal }) {
               {(searchResults.gbOrders || []).length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {(searchResults.gbOrders || []).map(o => (
-                    <div key={o._id} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px 16px', display: 'grid', gridTemplateColumns: 'auto 1fr 1fr auto auto', gap: 14, alignItems: 'center' }}>
+                    <div key={o._id} className="admin-search-result-row" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '12px 16px', display: 'grid', gridTemplateColumns: 'auto 1fr 1fr auto auto', gap: 14, alignItems: 'center' }}>
                       <span className="status-badge status-red" style={{ fontSize: '0.6rem', padding: '3px 8px' }}>Group Buy</span>
                       <div>
                         <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.9rem' }}>{o.cartOrderCode || o.orderCode}</p>
@@ -1637,12 +1819,12 @@ function OrdersCalendar({ orders, fetchOrders, updateOrderLocal }) {
       </div>
 
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', background: 'var(--bg-secondary)' }}>
+        <div className="orders-calendar-week" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', background: 'var(--bg-secondary)' }}>
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
             <div key={d} style={{ padding: '10px', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', textAlign: 'center' }}>{d}</div>
           ))}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+        <div className="orders-calendar-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
           {cells.map((c, i) => {
             const k = c.outside ? null : toKey(c.date);
             const dayOrders = k ? byDay[k] || [] : [];
@@ -2378,7 +2560,7 @@ function AddressBlock({ title, addr, sameAsShipping }) {
 /* ═══════════════════════════════════════════════
    CREATE PRODUCT MODAL
 ═══════════════════════════════════════════════ */
-function CreateProductModal({ onClose, onCreated }) {
+function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentName }) {
   const [form, setForm] = useState({ name: '', description: '', price: '', stocks: '0', category: '' });
   const [images, setImages] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
@@ -2478,6 +2660,7 @@ function CreateProductModal({ onClose, onCreated }) {
           price: Number(form.price) || 0,
           stocks: Number(form.stocks),
           category: form.category,
+          ...(forcedParentId ? { parentProductId: forcedParentId } : {}),
         })
       });
 
@@ -2516,8 +2699,12 @@ function CreateProductModal({ onClose, onCreated }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-body" onClick={e => e.stopPropagation()}>
-        <h2 className="modal-title">New Product</h2>
-        <p className="modal-subtitle">Add a new in-stock product to your catalog.</p>
+        <h2 className="modal-title">{forcedParentId ? 'New Add-on' : 'New Product'}</h2>
+        <p className="modal-subtitle">
+          {forcedParentId
+            ? <>This add-on will be tied to <strong>{forcedParentName}</strong> and hidden from the main product list.</>
+            : 'Add a new in-stock product to your catalog.'}
+        </p>
 
         <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown}>
           {/* Basic Info */}

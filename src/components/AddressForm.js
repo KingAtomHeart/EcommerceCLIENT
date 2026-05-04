@@ -11,7 +11,7 @@ export default function AddressForm({ value, onChange, showDefaultToggle = true,
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? '10px' : '14px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: compact ? '10px' : '14px' }}>
+      <div className="form-row-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: compact ? '10px' : '14px' }}>
         <div className="form-group" style={{ margin: 0 }}>
           <label className="form-label">Full name</label>
           <input className="form-input" value={v.fullName} onChange={set('fullName')} />
@@ -25,7 +25,7 @@ export default function AddressForm({ value, onChange, showDefaultToggle = true,
         <label className="form-label">Street address</label>
         <input className="form-input" placeholder="Unit / House no., street, barangay" value={v.street} onChange={set('street')} />
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: compact ? '10px' : '14px' }}>
+      <div className="form-row-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: compact ? '10px' : '14px' }}>
         <div className="form-group" style={{ margin: 0 }}>
           <label className="form-label">City / Municipality</label>
           <input className="form-input" value={v.city} onChange={set('city')} />
