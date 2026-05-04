@@ -5,7 +5,7 @@ import { StatusBadge, statusStyle, statusPaletteKey } from '../utils/statusColor
 import { useTheme } from '../context/ThemeContext';
 import toast from 'react-hot-toast';
 import AdminHomepageEditor from './AdminHomepageEditor';
-import GroupBuyAdmin from '../pages/GroupBuyAdmin';
+import GroupBuyAdmin, { UnifiedGBOrderCard } from '../pages/GroupBuyAdmin';
 
 const VALID_TABS = ['products', 'group-buys', 'orders', 'stats', 'homepage'];
 
@@ -26,6 +26,7 @@ export default function AdminView({ products, fetchData, loading }) {
   };
   const [showCreate, setShowCreate] = useState(false);
   const [orders, setOrders] = useState([]);
+  const [gbOrders, setGbOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [viewMode, setViewMode] = useState('grid');
@@ -43,12 +44,15 @@ export default function AdminView({ products, fetchData, loading }) {
 
   const fetchOrders = () => {
     setOrdersLoading(true);
-    apiFetch('/orders/all-orders')
-      .then(data => setOrders(data.orders || []))
-      .catch(() => setOrders([]))
+    Promise.all([
+      apiFetch('/orders/all-orders').then(d => d.orders || []).catch(() => []),
+      apiFetch('/group-buys/all-orders').then(d => d.orders || []).catch(() => []),
+    ])
+      .then(([inStock, gb]) => { setOrders(inStock); setGbOrders(gb); })
       .finally(() => { setOrdersLoading(false); setOrdersLoaded(true); });
   };
   const updateOrderLocal = (id, patch) => setOrders(prev => prev.map(o => o._id === id ? { ...o, ...patch } : o));
+  const updateGbOrderLocal = (id, patch) => setGbOrders(prev => prev.map(o => o._id === id ? { ...o, ...patch } : o));
 
   useEffect(() => {
     if ((tab === 'orders' || tab === 'stats') && !ordersLoaded) fetchOrders();
@@ -229,7 +233,7 @@ export default function AdminView({ products, fetchData, loading }) {
         />
       )}
 
-      {tab === 'orders' && <OrdersPanel orders={orders} loading={ordersLoading} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />}
+      {tab === 'orders' && <OrdersPanel orders={orders} gbOrders={gbOrders} loading={ordersLoading} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} updateGbOrderLocal={updateGbOrderLocal} />}
 
       {tab === 'stats' && <StatsPanel orders={orders} loading={ordersLoading} />}
 
@@ -1665,9 +1669,10 @@ function TableRow({ product, fetchData }) {
 /* ═══════════════════════════════════════════════
    ORDERS PANEL
 ═══════════════════════════════════════════════ */
-function OrdersPanel({ orders, loading, fetchOrders, updateOrderLocal }) {
+function OrdersPanel({ orders, gbOrders = [], loading, fetchOrders, updateOrderLocal, updateGbOrderLocal }) {
   const [view, setView] = useState('list');
   const [productFilter, setProductFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all'); // 'all' | 'instock' | 'gb'
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null); // { orders: [], gbOrders: [] } | null
   const [searching, setSearching] = useState(false);
@@ -1676,9 +1681,33 @@ function OrdersPanel({ orders, loading, fetchOrders, updateOrderLocal }) {
     new Set(orders.flatMap(o => (o.productsOrdered || []).map(p => p.productName).filter(Boolean)))
   ).sort();
 
-  const filtered = productFilter
+  // Group GB orders by cartCheckoutId so a single cart shows as one row
+  const gbGroups = (() => {
+    const groups = [];
+    const map = new Map();
+    for (const o of gbOrders) {
+      if (!o.cartCheckoutId) { groups.push({ key: o._id, items: [o], createdAt: o.createdAt }); continue; }
+      if (!map.has(o.cartCheckoutId)) {
+        const g = { key: o.cartCheckoutId, items: [], createdAt: o.createdAt };
+        map.set(o.cartCheckoutId, g);
+        groups.push(g);
+      }
+      const g = map.get(o.cartCheckoutId);
+      g.items.push(o);
+      if (new Date(o.createdAt) < new Date(g.createdAt)) g.createdAt = o.createdAt;
+    }
+    return groups;
+  })();
+
+  const filteredInStock = productFilter
     ? orders.filter(o => (o.productsOrdered || []).some(p => p.productName === productFilter))
     : orders;
+
+  // Build a unified, type-tagged list sorted by createdAt desc
+  const unified = [
+    ...(typeFilter !== 'gb' ? filteredInStock.map(o => ({ type: 'instock', createdAt: o.createdAt, order: o })) : []),
+    ...(typeFilter !== 'instock' ? gbGroups.map(g => ({ type: 'gb', createdAt: g.createdAt, group: g })) : []),
+  ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   const runSearch = async (q) => {
     if (!q.trim()) { setSearchResults(null); return; }
@@ -1694,16 +1723,16 @@ function OrdersPanel({ orders, loading, fetchOrders, updateOrderLocal }) {
   return (
     <div>
       <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: 'var(--surface)', minWidth: 280, flex: '1 1 280px' }}>
-          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" style={{ color: 'var(--ink-faint)' }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 12px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: 'var(--surface)', flex: '1 1 240px', maxWidth: 420, minWidth: 0 }}>
+          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24" style={{ color: 'var(--ink-faint)', flexShrink: 0 }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <input type="text" value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') runSearch(searchQuery); }}
-            placeholder="Search by order ID or order code (across in-stock + group buy)"
+            placeholder="Search by order ID or order code"
             style={{ flex: 1, border: 'none', outline: 'none', background: 'none', fontFamily: "'DM Sans', sans-serif", fontSize: '0.82rem', color: 'var(--ink)', minWidth: 0 }} />
           {(searchQuery || searchResults) && <button onClick={() => { setSearchQuery(''); setSearchResults(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-faint)', fontSize: '1rem', lineHeight: 1, padding: '0 2px' }}>×</button>}
           <button onClick={() => runSearch(searchQuery)} disabled={searching || !searchQuery.trim()}
-            style={{ padding: '4px 10px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.74rem', fontFamily: "'DM Sans', sans-serif", opacity: !searchQuery.trim() ? 0.5 : 1 }}>
+            style={{ padding: '4px 10px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.74rem', fontFamily: "'DM Sans', sans-serif", opacity: !searchQuery.trim() ? 0.5 : 1, flexShrink: 0 }}>
             {searching ? 'Searching…' : 'Search'}
           </button>
         </div>
@@ -1755,6 +1784,19 @@ function OrdersPanel({ orders, loading, fetchOrders, updateOrderLocal }) {
             <span>Calendar</span>
           </button>
         </div>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          {[
+            { key: 'all', label: `All (${filteredInStock.length + gbGroups.length})` },
+            { key: 'instock', label: `In Stock (${filteredInStock.length})` },
+            { key: 'gb', label: `Group Buy (${gbGroups.length})` },
+          ].map(t => (
+            <button key={t.key} onClick={() => setTypeFilter(t.key)}
+              className={`admin-toggle ${typeFilter === t.key ? 'active' : ''}`}
+              style={typeFilter === t.key ? { background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)' } : {}}>
+              {t.label}
+            </button>
+          ))}
+        </div>
         {productNames.length > 0 && (
           <select value={productFilter} onChange={e => setProductFilter(e.target.value)}
             style={{ padding: '7px 12px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: 'var(--surface)', fontFamily: "'DM Sans', sans-serif", fontSize: '0.78rem', color: productFilter ? 'var(--ink)' : 'var(--ink-muted)', cursor: 'pointer' }}>
@@ -1762,21 +1804,40 @@ function OrdersPanel({ orders, loading, fetchOrders, updateOrderLocal }) {
             {productNames.map(n => <option key={n} value={n}>{n}</option>)}
           </select>
         )}
-        {productFilter && (
-          <span style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>
-            Showing {filtered.length} of {orders.length} order{orders.length !== 1 ? 's' : ''}
-          </span>
-        )}
       </div>
-      {filtered.length === 0 ? (
+      {unified.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--ink-muted)' }}>No orders yet.</div>
       ) : view === 'list' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          {filtered.map(order => <OrderRow key={order._id} order={order} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />)}
+          {unified.map(entry => entry.type === 'instock' ? (
+            <TaggedOrderRow key={entry.order._id} order={entry.order} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />
+          ) : (
+            <TaggedGBOrderCard key={entry.group.key} items={entry.group.items} fetchOrders={fetchOrders} updateOrderLocal={updateGbOrderLocal} />
+          ))}
         </div>
       ) : (
-        <OrdersCalendar orders={filtered} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />
+        <OrdersCalendar orders={filteredInStock} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />
       )}
+    </div>
+  );
+}
+
+// Wrap OrderRow / UnifiedGBOrderCard with a "type tag" pill so the unified
+// orders list makes the source obvious at a glance.
+function TaggedOrderRow({ order, fetchOrders, updateOrderLocal }) {
+  return (
+    <div style={{ position: 'relative' }}>
+      <span className="status-badge status-amber" style={{ position: 'absolute', top: 12, right: 12, zIndex: 2, fontSize: '0.6rem', padding: '3px 8px' }}>In Stock</span>
+      <OrderRow order={order} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />
+    </div>
+  );
+}
+function TaggedGBOrderCard({ items, fetchOrders, updateOrderLocal }) {
+  const parentGbId = items.find(i => !i.groupBuyId?.parentGroupBuyId)?.groupBuyId?._id || items[0]?.groupBuyId?._id;
+  return (
+    <div style={{ position: 'relative' }}>
+      <span className="status-badge status-red" style={{ position: 'absolute', top: 12, right: 12, zIndex: 2, fontSize: '0.6rem', padding: '3px 8px' }}>Group Buy</span>
+      <UnifiedGBOrderCard items={items} updateOrderLocal={updateOrderLocal} parentGbId={parentGbId} fetchOrders={fetchOrders} />
     </div>
   );
 }

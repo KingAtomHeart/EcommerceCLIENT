@@ -873,7 +873,7 @@ function OrdersPanel({ groupBuyId }) {
   );
 }
 
-function UnifiedGBOrderCard({ items, updateOrderLocal, parentGbId, fetchOrders }) {
+export function UnifiedGBOrderCard({ items, updateOrderLocal, parentGbId, fetchOrders }) {
   const [expanded, setExpanded] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
   const [showAddItem, setShowAddItem] = useState(false);
