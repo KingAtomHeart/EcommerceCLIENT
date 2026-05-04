@@ -379,20 +379,26 @@ function ProductCard({ product, fetchData, panel, onTogglePanel, allProducts = [
   const displayPrice = hasOptions
     ? `From ₱${Math.min(...product.options.flatMap(g => g.values.map(v => v.price))).toLocaleString()}`
     : `₱${product.price?.toLocaleString()}`;
-  const totalStock = hasOptions
-    ? product.options.flatMap(g => g.values).reduce((s, v) => {
-        const n = v.stocks ?? -1;
-        return n === -1 ? s : s + n;
-      }, 0)
-    : useVariants
-      ? (product.variants || []).reduce((s, v) => {
-          const n = v.stock ?? -1;
-          return n === -1 ? s : s + n;
-        }, 0)
-      : (product.stocks ?? 0);
+  // Stock is unlimited if any tracked source returns -1/null, or there is no tracked source.
+  const stockInfo = (() => {
+    if (hasOptions) {
+      const values = product.options.flatMap(g => g.values || []);
+      let total = 0; let anyUnlimited = false;
+      for (const v of values) { const n = v.stocks; if (n === -1 || n == null) anyUnlimited = true; else total += n; }
+      return anyUnlimited ? { unlimited: true } : { total };
+    }
+    if (useVariants) {
+      let total = 0; let anyUnlimited = false;
+      for (const v of (product.variants || [])) { const n = v.stock; if (n === -1 || n == null) anyUnlimited = true; else total += n; }
+      return anyUnlimited ? { unlimited: true } : { total };
+    }
+    if (product.stocks === -1 || product.stocks == null) return { unlimited: true };
+    return { total: product.stocks };
+  })();
+  const totalStock = stockInfo.unlimited ? null : stockInfo.total;
   const stockText = useVariants
     ? `${variantCount} variant${variantCount === 1 ? '' : 's'}`
-    : `${totalStock} in stock`;
+    : (stockInfo.unlimited ? 'Unlimited stock' : `${totalStock} in stock`);
 
   const editKeys = ['details', 'images', 'options', 'variants-config'];
   const isOpen = !!panel;
@@ -625,7 +631,8 @@ function EditProductCard({ product, fetchData, onClose, inline }) {
     name: product.name,
     description: product.description,
     price: product.price,
-    stocks: product.stocks,
+    // -1 / null / undefined → empty string (means unlimited / untracked)
+    stocks: product.stocks === -1 || product.stocks == null ? '' : product.stocks,
     category: product.category
   });
   const [specs, setSpecs] = useState((product.specifications || []).map(s => ({ label: s.label, value: s.value })));
@@ -635,9 +642,14 @@ function EditProductCard({ product, fetchData, onClose, inline }) {
   const save = async () => {
     setSaving(true);
     try {
+      const payload = {
+        ...form,
+        stocks: form.stocks === '' || form.stocks == null ? -1 : Number(form.stocks),
+        specifications: specs.filter(s => s.label.trim() && s.value.trim()),
+      };
       await apiFetch(`/products/${product._id}/update`, {
         method: 'PATCH',
-        body: JSON.stringify({ ...form, specifications: specs.filter(s => s.label.trim() && s.value.trim()) })
+        body: JSON.stringify(payload)
       });
       toast.success('Product updated'); onClose(); fetchData();
     } catch (err) { toast.error(err.message); } finally { setSaving(false); }
@@ -682,8 +694,9 @@ function EditProductCard({ product, fetchData, onClose, inline }) {
           <div className="form-group"><label className="form-label">Price (₱) — used when no options set</label>
             <input type="number" className="form-input" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
           </div>
-          <div className="form-group"><label className="form-label">Stock</label>
-            <input type="number" className="form-input" value={form.stocks} onChange={e => setForm(f => ({ ...f, stocks: e.target.value }))} />
+          <div className="form-group">
+            <label className="form-label">Stock <span style={{ fontWeight: 400, color: 'var(--ink-faint)', fontSize: '0.7rem' }}>— optional</span></label>
+            <input type="number" className="form-input" min="0" value={form.stocks} onChange={e => setForm(f => ({ ...f, stocks: e.target.value }))} placeholder="Blank = unlimited / set per option or variant" />
           </div>
         </div>
         <div className="form-group"><label className="form-label">Category</label>
@@ -1649,16 +1662,32 @@ function TableRow({ product, fetchData }) {
     try { await apiFetch(`/products/${product._id}/${action}`, { method: 'PATCH' }); toast.success(product.isActive ? 'Archived' : 'Activated'); fetchData(); }
     catch (err) { toast.error(err.message); }
   };
+  const useVariants = !!product.useVariants;
   const displayPrice = hasOptions
     ? `From ₱${Math.min(...product.options.flatMap(g => g.values.map(v => v.price))).toLocaleString()}`
     : `₱${product.price?.toLocaleString()}`;
+  const stockDisplay = (() => {
+    if (hasOptions) {
+      const values = product.options.flatMap(g => g.values || []);
+      let total = 0; let anyUnlimited = false;
+      for (const v of values) { const n = v.stocks; if (n === -1 || n == null) anyUnlimited = true; else total += n; }
+      return anyUnlimited ? '∞' : total;
+    }
+    if (useVariants) {
+      let total = 0; let anyUnlimited = false;
+      for (const v of (product.variants || [])) { const n = v.stock; if (n === -1 || n == null) anyUnlimited = true; else total += n; }
+      return anyUnlimited ? '∞' : total;
+    }
+    if (product.stocks === -1 || product.stocks == null) return '∞';
+    return product.stocks;
+  })();
   return (
     <tr style={{ borderBottom: '1px solid var(--border-subtle)', opacity: product.isActive ? 1 : 0.5 }}>
       <td style={{ padding: '10px 14px', width: 48 }}><div style={{ width: 40, height: 40, borderRadius: '8px', overflow: 'hidden', background: 'var(--accent-light)' }}>{imgUrl ? <img src={imgUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}</div></td>
       <td style={{ padding: '10px 14px', fontWeight: 500 }}>{product.name}</td>
       <td style={{ padding: '10px 14px', color: 'var(--ink-muted)' }}>{product.category}</td>
       <td style={{ padding: '10px 14px' }}>{displayPrice}</td>
-      <td style={{ padding: '10px 14px' }}>{product.stocks}</td>
+      <td style={{ padding: '10px 14px' }}>{stockDisplay}</td>
       <td style={{ padding: '10px 14px' }}><span className={`status-badge ${product.isActive ? 'status-green' : 'status-red'}`}>{product.isActive ? 'Active' : 'Archived'}</span></td>
       <td style={{ padding: '10px 14px' }}><button className="admin-card-btn" onClick={toggleActive} style={{ fontSize: '0.72rem' }}>{product.isActive ? 'Archive' : 'Activate'}</button></td>
     </tr>
@@ -1810,34 +1839,20 @@ function OrdersPanel({ orders, gbOrders = [], loading, fetchOrders, updateOrderL
       ) : view === 'list' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {unified.map(entry => entry.type === 'instock' ? (
-            <TaggedOrderRow key={entry.order._id} order={entry.order} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />
+            <OrderRow key={'is-' + entry.order._id} order={entry.order} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal}
+              typeTag={{ label: 'In Stock', className: 'status-amber' }} />
           ) : (
-            <TaggedGBOrderCard key={entry.group.key} items={entry.group.items} fetchOrders={fetchOrders} updateOrderLocal={updateGbOrderLocal} />
+            <UnifiedGBOrderCard key={'gb-' + entry.group.key}
+              items={entry.group.items}
+              updateOrderLocal={updateGbOrderLocal}
+              parentGbId={entry.group.items.find(i => !i.groupBuyId?.parentGroupBuyId)?.groupBuyId?._id || entry.group.items[0]?.groupBuyId?._id}
+              fetchOrders={fetchOrders}
+              typeTag={{ label: 'Group Buy', className: 'status-red' }} />
           ))}
         </div>
       ) : (
         <OrdersCalendar orders={filteredInStock} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />
       )}
-    </div>
-  );
-}
-
-// Wrap OrderRow / UnifiedGBOrderCard with a "type tag" pill so the unified
-// orders list makes the source obvious at a glance.
-function TaggedOrderRow({ order, fetchOrders, updateOrderLocal }) {
-  return (
-    <div style={{ position: 'relative' }}>
-      <span className="status-badge status-amber" style={{ position: 'absolute', top: 12, right: 12, zIndex: 2, fontSize: '0.6rem', padding: '3px 8px' }}>In Stock</span>
-      <OrderRow order={order} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />
-    </div>
-  );
-}
-function TaggedGBOrderCard({ items, fetchOrders, updateOrderLocal }) {
-  const parentGbId = items.find(i => !i.groupBuyId?.parentGroupBuyId)?.groupBuyId?._id || items[0]?.groupBuyId?._id;
-  return (
-    <div style={{ position: 'relative' }}>
-      <span className="status-badge status-red" style={{ position: 'absolute', top: 12, right: 12, zIndex: 2, fontSize: '0.6rem', padding: '3px 8px' }}>Group Buy</span>
-      <UnifiedGBOrderCard items={items} updateOrderLocal={updateOrderLocal} parentGbId={parentGbId} fetchOrders={fetchOrders} />
     </div>
   );
 }
@@ -2263,7 +2278,7 @@ function StatTile({ label, value, sub, subColor, accent }) {
   );
 }
 
-function OrderRow({ order, fetchOrders, updateOrderLocal }) {
+function OrderRow({ order, fetchOrders, updateOrderLocal, typeTag }) {
   const [expanded, setExpanded] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [updatingItemId, setUpdatingItemId] = useState(null);
@@ -2334,7 +2349,10 @@ function OrderRow({ order, fetchOrders, updateOrderLocal }) {
           <polyline points="9 18 15 12 9 6"/>
         </svg>
         <div>
-          <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Order</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Order</p>
+            {typeTag && <span className={`status-badge ${typeTag.className || 'status-amber'}`} style={{ fontSize: '0.55rem', padding: '2px 6px', letterSpacing: '0.04em' }}>{typeTag.label}</span>}
+          </div>
           <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem', marginTop: 2 }}>{orderNum}</p>
         </div>
         <div>
@@ -2622,7 +2640,7 @@ function AddressBlock({ title, addr, sameAsShipping }) {
    CREATE PRODUCT MODAL
 ═══════════════════════════════════════════════ */
 function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentName }) {
-  const [form, setForm] = useState({ name: '', description: '', price: '', stocks: '0', category: '' });
+  const [form, setForm] = useState({ name: '', description: '', price: '', stocks: '', category: '' });
   const [images, setImages] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
   const [urlInputCreate, setUrlInputCreate] = useState('');
@@ -2719,7 +2737,7 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
           name: form.name,
           description: form.description,
           price: Number(form.price) || 0,
-          stocks: Number(form.stocks),
+          stocks: form.stocks === '' || form.stocks == null ? -1 : Number(form.stocks),
           category: form.category,
           ...(forcedParentId ? { parentProductId: forcedParentId } : {}),
         })
@@ -2803,7 +2821,10 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
               <label className="form-label">Price (₱)</label>
               <input type="number" className="form-input" min="0" value={form.price} onChange={set('price')} placeholder="Used if no options" />
             </div>
-            <div className="form-group"><label className="form-label">Stock</label><input type="number" className="form-input" min="0" value={form.stocks} onChange={set('stocks')} /></div>
+            <div className="form-group">
+              <label className="form-label">Stock <span style={{ fontWeight: 400, color: 'var(--ink-faint)', fontSize: '0.7rem' }}>— optional</span></label>
+              <input type="number" className="form-input" min="0" value={form.stocks} onChange={set('stocks')} placeholder="Leave blank if unlimited or set per option/variant" />
+            </div>
             <div className="form-group"><label className="form-label">Category</label><input className="form-input" value={form.category} onChange={set('category')} placeholder="keyboards" /></div>
           </div>
 

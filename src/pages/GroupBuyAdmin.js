@@ -873,7 +873,7 @@ function OrdersPanel({ groupBuyId }) {
   );
 }
 
-export function UnifiedGBOrderCard({ items, updateOrderLocal, parentGbId, fetchOrders }) {
+export function UnifiedGBOrderCard({ items, updateOrderLocal, parentGbId, fetchOrders, typeTag }) {
   const [expanded, setExpanded] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
   const [showAddItem, setShowAddItem] = useState(false);
@@ -935,7 +935,10 @@ export function UnifiedGBOrderCard({ items, updateOrderLocal, parentGbId, fetchO
             : <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.4rem', color: 'var(--accent)' }}>{primaryName?.[0]}</span>}
         </div>
         <div>
-          <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Order</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Order</p>
+            {typeTag && <span className={`status-badge ${typeTag.className || 'status-red'}`} style={{ fontSize: '0.55rem', padding: '2px 6px', letterSpacing: '0.04em' }}>{typeTag.label}</span>}
+          </div>
           <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem', marginTop: 2 }}>{cartCode}</p>
           <p style={{ fontSize: '0.76rem', color: 'var(--ink-muted)', marginTop: 2 }}>
             {primaryName}{addonCount > 0 && <span style={{ color: 'rgb(120,80,200)' }}> + {addonCount} add-on{addonCount > 1 ? 's' : ''}</span>}
