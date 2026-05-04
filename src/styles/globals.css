@@ -1344,23 +1344,40 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
   .admin-sort { font-size: 16px !important; padding: 10px 12px; }
   .admin-search input { font-size: 16px !important; }
 
-  /* Admin actions — search full-width, dropdown/toggle share a row, +New full-width */
+  /* Admin actions — search full-width, sort/toggle share a row, +New full-width.
+     box-sizing + min-width:0 + overflow:hidden ensure no element overflows row. */
   .admin-actions {
+    display: flex !important;
     flex-direction: row !important;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: stretch;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    width: 100%;
+    max-width: 100%;
   }
-  .admin-actions > * { width: auto; }
-  .admin-actions .admin-search { flex: 1 1 100%; min-width: 0; }
+  .admin-actions > * {
+    box-sizing: border-box !important;
+    max-width: 100%;
+    min-width: 0 !important;
+  }
+  .admin-actions .admin-search {
+    flex: 0 0 100% !important;
+    width: 100%;
+  }
   .admin-actions .admin-sort,
   .admin-actions .admin-toggle {
-    flex: 1 1 calc(50% - 4px);
-    min-width: 0;
+    flex: 1 1 0 !important;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
     justify-content: center;
     text-align: center;
+    padding: 10px 8px !important;
   }
-  .admin-actions .btn-dark { flex: 1 1 100%; justify-content: center; }
+  .admin-actions .btn-dark {
+    flex: 0 0 100% !important;
+    width: 100%;
+    justify-content: center;
+  }
 
   /* Stats single col */
   .admin-stats { grid-template-columns: 1fr 1fr !important; }
