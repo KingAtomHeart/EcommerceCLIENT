@@ -61,6 +61,24 @@ export default function ProductCard({ product }) {
   const { outOfStock, trackedStockLeft } = computeStockSummary({ useVariants, variants, options, stocks });
   const showLowStock = trackedStockLeft !== null && trackedStockLeft > 0 && trackedStockLeft <= 5;
 
+  // Display price: prefer the lowest available option/variant price so option-based
+  // products (e.g., keycaps) don't render as ₱0 when the base price isn't set.
+  const displayPriceInfo = (() => {
+    if (useVariants && variants?.length) {
+      const usable = variants.filter(v => v.available !== false && v.stock !== 0);
+      const prices = usable.map(v => (v.price != null ? v.price : price)).filter(p => p != null);
+      const min = prices.length ? Math.min(...prices) : null;
+      if (min != null) return { value: min, prefix: 'Starts at ' };
+    }
+    if (options?.length) {
+      const allValues = options.flatMap(g => g.values || []).filter(v => v.available !== false);
+      const prices = allValues.map(v => v.price).filter(p => typeof p === 'number');
+      const min = prices.length ? Math.min(...prices) : null;
+      if (min != null) return { value: min, prefix: 'Starts at ' };
+    }
+    return { value: price ?? 0, prefix: '' };
+  })();
+
   return (
     <Link to={`/products/${_id}`} className="product-card">
       <div className="card-img">
@@ -87,7 +105,10 @@ export default function ProductCard({ product }) {
         <p className="card-name">{name}</p>
         <p className="card-desc">{description?.length > 80 ? description.slice(0, 80) + '…' : description}</p>
         <div className="card-footer">
-          <span className="card-price">₱{price?.toLocaleString()}</span>
+          <span className="card-price">
+            {displayPriceInfo.prefix && <span style={{ fontSize: '0.7em', fontWeight: 400, color: 'var(--ink-muted)', marginRight: 4 }}>{displayPriceInfo.prefix}</span>}
+            ₱{displayPriceInfo.value?.toLocaleString()}
+          </span>
           <span className="card-add-btn" aria-label="View product">
             <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
               <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>

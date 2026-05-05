@@ -29,7 +29,6 @@ export default function AdminView({ products, fetchData, loading }) {
   const [gbOrders, setGbOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
-  const [viewMode, setViewMode] = useState('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('newest');
   const [ordersLoaded, setOrdersLoaded] = useState(false);
@@ -45,8 +44,16 @@ export default function AdminView({ products, fetchData, loading }) {
   const fetchOrders = () => {
     setOrdersLoading(true);
     Promise.all([
-      apiFetch('/orders/all-orders').then(d => d.orders || []).catch(() => []),
-      apiFetch('/group-buys/all-orders').then(d => d.orders || []).catch(() => []),
+      apiFetch('/orders/all-orders').then(d => d.orders || []).catch(err => {
+        console.error('In-stock orders fetch failed:', err);
+        toast.error('Failed to load in-stock orders: ' + (err.message || 'unknown'));
+        return [];
+      }),
+      apiFetch('/group-buys/all-orders').then(d => d.orders || []).catch(err => {
+        console.error('Group-buy orders fetch failed:', err);
+        toast.error('Failed to load group-buy orders: ' + (err.message || 'unknown'));
+        return [];
+      }),
     ])
       .then(([inStock, gb]) => { setOrders(inStock); setGbOrders(gb); })
       .finally(() => { setOrdersLoading(false); setOrdersLoaded(true); });
@@ -137,14 +144,6 @@ export default function AdminView({ products, fetchData, loading }) {
               </svg>
               <span>{showArchived ? 'Hide' : 'Show'} Archived</span>
             </button>
-            <button className="admin-toggle" onClick={() => setViewMode(v => v === 'grid' ? 'table' : 'grid')}>
-              {viewMode === 'grid' ? (
-                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-              ) : (
-                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-              )}
-              <span>{viewMode === 'grid' ? 'List' : 'Grid'}</span>
-            </button>
             <button className="btn-dark" onClick={() => setShowCreate(true)} style={{ padding: '10px 24px' }}><span>+ New Product</span></button>
           </div>
         )}
@@ -190,35 +189,31 @@ export default function AdminView({ products, fetchData, loading }) {
             {searchQuery && ` matching "${searchQuery}"`}
             {!showArchived && archivedCount > 0 && ` (${archivedCount} archived hidden)`}
           </p>
-          {viewMode === 'grid' ? (
-            <div className="admin-grid">
-              {filtered.map(p => (
-                <ProductCard
-                  key={p._id}
-                  product={p}
-                  allProducts={products}
-                  fetchData={fetchData}
-                  orders={orders}
-                  ordersLoading={ordersLoading}
-                  ordersLoaded={ordersLoaded}
-                  fetchOrders={fetchOrders}
-                  updateOrderLocal={updateOrderLocal}
-                  panel={expandedProductId === p._id ? expandedProductPanel : null}
-                  onTogglePanel={(pn) => {
-                    if (pn === null || (expandedProductId === p._id && expandedProductPanel === pn)) {
-                      setExpandedProductId(null); setExpandedProductPanel(null);
-                    } else {
-                      setExpandedProductId(p._id); setExpandedProductPanel(pn);
-                      if ((pn === 'orders' || pn === 'addons') && !ordersLoaded) fetchOrders();
-                    }
-                  }}
-                />
-              ))}
-              {filtered.length === 0 && <p style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--ink-muted)' }}>No products to show.</p>}
-            </div>
-          ) : (
-            <ProductsTable products={filtered} fetchData={fetchData} />
-          )}
+          <div className="admin-grid">
+            {filtered.map(p => (
+              <ProductCard
+                key={p._id}
+                product={p}
+                allProducts={products}
+                fetchData={fetchData}
+                orders={orders}
+                ordersLoading={ordersLoading}
+                ordersLoaded={ordersLoaded}
+                fetchOrders={fetchOrders}
+                updateOrderLocal={updateOrderLocal}
+                panel={expandedProductId === p._id ? expandedProductPanel : null}
+                onTogglePanel={(pn) => {
+                  if (pn === null || (expandedProductId === p._id && expandedProductPanel === pn)) {
+                    setExpandedProductId(null); setExpandedProductPanel(null);
+                  } else {
+                    setExpandedProductId(p._id); setExpandedProductPanel(pn);
+                    if ((pn === 'orders' || pn === 'addons') && !ordersLoaded) fetchOrders();
+                  }
+                }}
+              />
+            ))}
+            {filtered.length === 0 && <p style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--ink-muted)' }}>No products to show.</p>}
+          </div>
         </>
       )}
 
@@ -2691,19 +2686,20 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
     if (!newOptGroup.name.trim()) return;
     const idx = optionGroups.length;
     setOptionGroups(g => [...g, { name: newOptGroup.name.trim(), values: [] }]);
-    setNewOptValues(v => ({ ...v, [idx]: { value: '', price: '', imageUrl: '' } }));
+    setNewOptValues(v => ({ ...v, [idx]: { value: '', price: '', stocks: '', imageUrl: '' } }));
     setNewOptGroup({ name: '' });
   };
   const addOptValue = (gi) => {
     const nv = newOptValues[gi];
-    if (!nv?.value?.trim() || nv.price === '') return;
+    if (!nv?.value?.trim() || nv.price === '' || nv.stocks === '' || nv.stocks == null) return;
     setOptionGroups(g => g.map((grp, i) => i !== gi ? grp : {
       ...grp, values: [...grp.values, {
         value: nv.value.trim(), price: Number(nv.price) || 0, available: true,
+        stocks: Number(nv.stocks),
         image: { url: nv.imageUrl?.trim() || '', altText: nv.value.trim() }
       }]
     }));
-    setNewOptValues(v => ({ ...v, [gi]: { value: '', price: '', imageUrl: '' } }));
+    setNewOptValues(v => ({ ...v, [gi]: { value: '', price: '', stocks: '', imageUrl: '' } }));
   };
 
   // Config group helpers
@@ -2921,17 +2917,21 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
                   <div key={vi} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '4px', fontSize: '0.78rem' }}>
                     <span style={{ flex: 1 }}>{v.value}</span>
                     <span style={{ color: 'var(--ink-muted)' }}>₱{v.price.toLocaleString()}</span>
+                    <span style={{ color: 'var(--ink-muted)', fontSize: '0.72rem' }}>· {v.stocks} stock</span>
                     {v.image?.url && <span style={{ color: 'var(--accent)', fontSize: '0.68rem' }}>📷</span>}
                     <button type="button" onClick={() => setOptionGroups(g => g.map((gg, i) => i !== gi ? gg : { ...gg, values: gg.values.filter((_, j) => j !== vi) }))} style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
                   </div>
                 ))}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 1fr auto', gap: '5px', marginTop: '6px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 70px 1fr auto', gap: '5px', marginTop: '6px' }}>
                   <input className="form-input" style={inputSm} placeholder="Value (e.g. Base Kit)"
                     value={newOptValues[gi]?.value || ''}
                     onChange={e => setNewOptValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), value: e.target.value } }))} />
                   <input type="number" className="form-input" style={inputSm} placeholder="₱"
                     value={newOptValues[gi]?.price || ''}
                     onChange={e => setNewOptValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), price: e.target.value } }))} />
+                  <input type="number" className="form-input" style={inputSm} placeholder="Stock" min="0"
+                    value={newOptValues[gi]?.stocks ?? ''}
+                    onChange={e => setNewOptValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), stocks: e.target.value } }))} />
                   <input className="form-input" style={inputSm} placeholder="Image URL (optional)"
                     value={newOptValues[gi]?.imageUrl || ''}
                     onChange={e => setNewOptValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), imageUrl: e.target.value } }))} />
