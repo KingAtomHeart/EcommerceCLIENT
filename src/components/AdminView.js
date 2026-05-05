@@ -367,6 +367,14 @@ function ProductCard({ product, fetchData, panel, onTogglePanel, allProducts = [
     } catch (err) { toast.error(err.message); }
   };
 
+  const publish = async () => {
+    try {
+      await apiFetch(`/products/${product._id}/update`, { method: 'PATCH', body: JSON.stringify({ isQueued: false }) });
+      toast.success('Published');
+      fetchData();
+    } catch (err) { toast.error(err.message); }
+  };
+
   const imgUrl = product.images?.[0]?.url;
   const hasOptions = (product.options?.length || 0) > 0;
   const useVariants = !!product.useVariants;
@@ -431,8 +439,8 @@ function ProductCard({ product, fetchData, panel, onTogglePanel, allProducts = [
             {!product.isActive && <span style={{ color: '#c0392b' }}>Archived</span>}
           </div>
         </div>
-        <span className={`status-select status-${product.isActive ? 'green' : 'red'}`} style={{ cursor: 'default' }}>
-          {product.isActive ? 'Active' : 'Archived'}
+        <span className={`status-select ${product.isQueued ? 'status-purple' : (product.isActive ? 'status-green' : 'status-red')}`} style={{ cursor: 'default' }}>
+          {product.isQueued ? 'Queued' : (product.isActive ? 'Active' : 'Archived')}
         </span>
         <div className="admin-product-actions" style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
           <div ref={editBtnRef} style={{ display: 'inline-block' }}>
@@ -471,6 +479,7 @@ function ProductCard({ product, fetchData, panel, onTogglePanel, allProducts = [
             Add-ons <Caret open={panel === 'addons'} />
           </Pill>
           <Pill onClick={exportCSV}>CSV</Pill>
+          {product.isQueued && <Pill onClick={publish}>Publish</Pill>}
           <Pill onClick={toggleActive}>{product.isActive ? 'Archive' : 'Activate'}</Pill>
         </div>
       </div>
@@ -2641,7 +2650,6 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
   const [urlInputCreate, setUrlInputCreate] = useState('');
   const [urlPreviews, setUrlPreviews] = useState([]);
   const [optionGroups, setOptionGroups] = useState([]);
-  const [configs, setConfigs] = useState([]);
   const [specs, setSpecs] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [descPreview, setDescPreview] = useState(false);
@@ -2649,8 +2657,35 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
   // Option group builder state
   const [newOptGroup, setNewOptGroup] = useState({ name: '' });
   const [newOptValues, setNewOptValues] = useState({});
-  const [newCfgGroup, setNewCfgGroup] = useState({ name: '' });
-  const [newCfgOpts, setNewCfgOpts] = useState({});
+
+  // Variants state — dimensions + per-combination stock/price overrides
+  const [variantDimensions, setVariantDimensions] = useState([]); // [{ name, values: [] }]
+  const [newDim, setNewDim] = useState({ name: '', values: '' });
+  const [variantRows, setVariantRows] = useState([]); // [{ attrs: {dim:val}, stock, price }]
+
+  // Re-generate the cartesian product whenever dimensions change.
+  useEffect(() => {
+    if (variantDimensions.length === 0) { setVariantRows([]); return; }
+    const combos = variantDimensions.reduce(
+      (acc, d) => acc.flatMap(a => d.values.map(v => ({ ...a, [d.name]: v }))),
+      [{}]
+    );
+    setVariantRows(prev => combos.map(attrs => {
+      const matchKey = JSON.stringify(attrs);
+      const existing = prev.find(r => JSON.stringify(r.attrs) === matchKey);
+      return existing || { attrs, stock: '', price: '' };
+    }));
+  }, [variantDimensions]);
+
+  const addDimension = () => {
+    const name = newDim.name.trim();
+    const values = newDim.values.split(',').map(s => s.trim()).filter(Boolean);
+    if (!name || values.length === 0) return;
+    setVariantDimensions(d => [...d, { name, values }]);
+    setNewDim({ name: '', values: '' });
+  };
+  const removeDimension = (di) => setVariantDimensions(d => d.filter((_, i) => i !== di));
+  const updateVariantField = (idx, field, val) => setVariantRows(rows => rows.map((r, i) => i === idx ? { ...r, [field]: val } : r));
 
   const handleFormKeyDown = (e) => {
     if (e.key === 'Enter' && e.target.tagName === 'INPUT' && !e.target.dataset.enterAction) {
@@ -2702,29 +2737,7 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
     setNewOptValues(v => ({ ...v, [gi]: { value: '', price: '', stocks: '', imageUrl: '' } }));
   };
 
-  // Config group helpers
-  const addCfgGroup = () => {
-    if (!newCfgGroup.name.trim()) return;
-    const idx = configs.length;
-    setConfigs(c => [...c, { name: newCfgGroup.name.trim(), options: [] }]);
-    setNewCfgOpts(v => ({ ...v, [idx]: { value: '', priceModifier: 0, imageUrl: '' } }));
-    setNewCfgGroup({ name: '' });
-  };
-  const addCfgOpt = (ci) => {
-    const inp = newCfgOpts[ci];
-    if (!inp?.value?.trim()) return;
-    setConfigs(c => c.map((cfg, i) => i !== ci ? cfg : {
-      ...cfg, options: [...cfg.options, {
-        value: inp.value.trim(), available: true,
-        priceModifier: Number(inp.priceModifier) || 0,
-        image: { url: inp.imageUrl?.trim() || '', altText: inp.value.trim() }
-      }]
-    }));
-    setNewCfgOpts(v => ({ ...v, [ci]: { value: '', priceModifier: 0, imageUrl: '' } }));
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const submitProduct = async (queued) => {
     setSubmitting(true);
     try {
       const product = await apiFetch('/products', {
@@ -2735,6 +2748,7 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
           price: Number(form.price) || 0,
           stocks: form.stocks === '' || form.stocks == null ? -1 : Number(form.stocks),
           category: form.category,
+          isQueued: !!queued,
           ...(forcedParentId ? { parentProductId: forcedParentId } : {}),
         })
       });
@@ -2752,21 +2766,36 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
       }
 
       const filteredSpecs = specs.filter(s => s.label.trim() && s.value.trim());
-      if (optionGroups.length > 0 || configs.length > 0 || filteredSpecs.length > 0) {
+      const buildVariants = () => {
+        if (variantDimensions.length === 0) return null;
+        const variants = variantRows.map(r => ({
+          attributes: r.attrs,
+          stock: r.stock === '' ? -1 : Number(r.stock),
+          price: r.price === '' ? null : Number(r.price),
+          available: true,
+        }));
+        return { useVariants: true, variantDimensions, variants };
+      };
+      const variantPayload = buildVariants();
+      if (optionGroups.length > 0 || filteredSpecs.length > 0 || variantPayload) {
         await apiFetch(`/products/${product._id}/update`, {
           method: 'PATCH',
           body: JSON.stringify({
             options: optionGroups,
-            configurations: configs,
             specifications: filteredSpecs,
+            ...(variantPayload || {}),
           })
         });
       }
 
-      toast.success('Product created');
+      toast.success(queued ? 'Product queued' : 'Product created');
       onCreated();
     } catch (err) { toast.error(err.message); }
     finally { setSubmitting(false); }
+  };
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await submitProduct(false);
   };
 
   const inputSm = { fontSize: '0.78rem', padding: '7px 9px' };
@@ -2949,52 +2978,76 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
             </div>
           </div>
 
-          {/* Add Configs */}
+          {/* Variants */}
           <div className="modal-section">
-            <p className="modal-section-title">Add Configs</p>
+            <p className="modal-section-title">Variants</p>
             <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
-              Configs add to the base price (e.g., Plate Material → Brass +₱200). Add unlimited groups.
+              Use variants when each combination is its own SKU with its own stock (e.g. Color × Size).
+              Combinations auto-generate; fill the stock for each row. Leave price blank to use the base price.
             </p>
 
-            {configs.map((cfg, ci) => (
-              <div key={ci} style={{ marginBottom: '10px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{cfg.name}</span>
-                  <button type="button" onClick={() => setConfigs(c => c.filter((_, i) => i !== ci))} style={{ fontSize: '0.7rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
-                </div>
-                {cfg.options.map((opt, oi) => (
-                  <div key={oi} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '4px', fontSize: '0.78rem' }}>
-                    <span style={{ flex: 1 }}>{opt.value}</span>
-                    {opt.priceModifier > 0 && <span style={{ color: 'var(--ink-muted)' }}>+₱{opt.priceModifier}</span>}
-                    {opt.image?.url && <span style={{ color: 'var(--accent)', fontSize: '0.68rem' }}>📷</span>}
-                    <button type="button" onClick={() => setConfigs(c => c.map((cc, i) => i !== ci ? cc : { ...cc, options: cc.options.filter((_, j) => j !== oi) }))} style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
-                  </div>
-                ))}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 1fr auto', gap: '5px', marginTop: '6px' }}>
-                  <input className="form-input" style={inputSm} placeholder="Option value"
-                    value={newCfgOpts[ci]?.value || ''}
-                    onChange={e => setNewCfgOpts(v => ({ ...v, [ci]: { ...(v[ci] || {}), value: e.target.value } }))} />
-                  <input type="number" className="form-input" style={inputSm} placeholder="+₱"
-                    value={newCfgOpts[ci]?.priceModifier || ''}
-                    onChange={e => setNewCfgOpts(v => ({ ...v, [ci]: { ...(v[ci] || {}), priceModifier: e.target.value } }))} />
-                  <input className="form-input" style={inputSm} placeholder="Image URL (optional)"
-                    value={newCfgOpts[ci]?.imageUrl || ''}
-                    onChange={e => setNewCfgOpts(v => ({ ...v, [ci]: { ...(v[ci] || {}), imageUrl: e.target.value } }))} />
-                  <button type="button" onClick={() => addCfgOpt(ci)} className="config-add-btn">+</button>
-                </div>
+            {variantDimensions.map((d, di) => (
+              <div key={di} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', padding: '8px 10px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '0.82rem' }}>
+                <span style={{ fontWeight: 600 }}>{d.name}</span>
+                <span style={{ color: 'var(--ink-muted)', flex: 1 }}>{d.values.join(', ')}</span>
+                <button type="button" onClick={() => removeDimension(di)} style={{ fontSize: '0.7rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
               </div>
             ))}
 
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <input className="form-input" style={inputSm} placeholder="Config group name (e.g. Layout)"
-                value={newCfgGroup.name} onChange={e => setNewCfgGroup({ name: e.target.value })} />
-              <button type="button" onClick={addCfgGroup} className="config-add-btn">+ Add Config</button>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: '6px', marginBottom: '12px' }}>
+              <input className="form-input" style={inputSm} placeholder="Dimension (e.g. Color)"
+                value={newDim.name} onChange={e => setNewDim(d => ({ ...d, name: e.target.value }))}
+                data-enter-action="custom"
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addDimension(); } }} />
+              <input className="form-input" style={inputSm} placeholder="Values, comma-separated (e.g. Red, Blue, Green)"
+                value={newDim.values} onChange={e => setNewDim(d => ({ ...d, values: e.target.value }))}
+                data-enter-action="custom"
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addDimension(); } }} />
+              <button type="button" onClick={addDimension} className="config-add-btn">+ Add Dimension</button>
             </div>
+
+            {variantRows.length > 0 && (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      {variantDimensions.map(d => (
+                        <th key={d.name} style={{ textAlign: 'left', padding: '6px 8px', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-faint)' }}>{d.name}</th>
+                      ))}
+                      <th style={{ textAlign: 'left', padding: '6px 8px', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-faint)' }}>Stock</th>
+                      <th style={{ textAlign: 'left', padding: '6px 8px', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-faint)' }}>Price (override)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {variantRows.map((row, idx) => (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                        {variantDimensions.map(d => (
+                          <td key={d.name} style={{ padding: '6px 8px' }}>{row.attrs[d.name]}</td>
+                        ))}
+                        <td style={{ padding: '6px 8px' }}>
+                          <input type="number" min="0" required className="form-input" style={{ ...inputSm, width: 80 }}
+                            value={row.stock}
+                            onChange={e => updateVariantField(idx, 'stock', e.target.value)} />
+                        </td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <input type="number" min="0" placeholder="Use base" className="form-input" style={{ ...inputSm, width: 100 }}
+                            value={row.price}
+                            onChange={e => updateVariantField(idx, 'price', e.target.value)} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           <div className="modal-actions">
             <button type="submit" className="btn-dark" disabled={submitting} style={{ flex: 1, justifyContent: 'center' }}>
-              <span>{submitting ? 'Creating...' : 'Create Product'}</span>
+              <span>{submitting ? 'Creating...' : (forcedParentId ? 'Create Add-on' : 'Create Product')}</span>
+            </button>
+            <button type="button" className="btn-outline" disabled={submitting} onClick={() => submitProduct(true)} title="Save as draft, hidden from customers">
+              <span>{submitting ? '…' : 'Queue'}</span>
             </button>
             <button type="button" className="btn-outline" onClick={onClose}>Cancel</button>
           </div>

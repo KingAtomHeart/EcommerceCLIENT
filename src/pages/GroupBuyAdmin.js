@@ -213,6 +213,11 @@ function GBCard({ gb, gbs, fetchGbs, updateGbLocal, isExpanded, panel, onToggleP
     try { await apiFetch(`/group-buys/${gb._id}/${action}`, { method: 'PATCH' }); toast.success(prev ? 'Archived' : 'Activated'); }
     catch (err) { updateGbLocal(gb._id, { isActive: prev }); toast.error(err.message); }
   };
+  const publish = async () => {
+    updateGbLocal(gb._id, { isQueued: false });
+    try { await apiFetch(`/group-buys/${gb._id}`, { method: 'PATCH', body: JSON.stringify({ isQueued: false }) }); toast.success('Published'); }
+    catch (err) { updateGbLocal(gb._id, { isQueued: true }); toast.error(err.message); }
+  };
   const exportCSV = async (type) => {
     try {
       const token = localStorage.getItem('token');
@@ -254,6 +259,9 @@ function GBCard({ gb, gbs, fetchGbs, updateGbLocal, isExpanded, panel, onToggleP
         <div style={{ flex: 1, minWidth: 160 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '3px' }}>
             <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.08rem', margin: 0 }}>{gb.name}</p>
+            {gb.isQueued && (
+              <span className="status-badge status-purple" style={{ fontSize: '0.6rem', padding: '2px 8px' }}>Queued</span>
+            )}
             {parentGb && (
               <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: '10px', background: 'rgba(120,80,200,0.1)', color: 'rgb(120,80,200)', whiteSpace: 'nowrap' }}>
                 Add-on of {parentGb.name}
@@ -313,6 +321,7 @@ function GBCard({ gb, gbs, fetchGbs, updateGbLocal, isExpanded, panel, onToggleP
           {!parentGb && <Pill onClick={() => exportCSV('orders')}>CSV</Pill>}
           {!parentGb && (gb.addOns?.length > 0) && <Pill onClick={() => exportCSV('addons')}>Add-ons CSV</Pill>}
           {gb.status === 'interest-check' && <Pill onClick={() => togglePanel('interest')} active={panel === 'interest'}>IC ({icCount})</Pill>}
+          {gb.isQueued && <Pill onClick={publish}>Publish</Pill>}
           <Pill onClick={toggleActive}>{gb.isActive ? 'Archive' : 'Activate'}</Pill>
         </div>
       </div>
@@ -1322,8 +1331,8 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
     setNewCfgOpts(v => ({ ...v, [ci]: { value: '', priceModifier: 0, imageUrl: '' } }));
   };
 
-  const submit = async (e) => {
-    e.preventDefault(); setSub(true);
+  const submitGB = async (queued) => {
+    setSub(true);
     try {
       const created = await apiFetch('/group-buys/create', {
         method: 'POST',
@@ -1335,6 +1344,7 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
           startDate: form.startDate || null, endDate: form.endDate || null,
           options: optionGroups, configurations: configs,
           parentGroupBuyId: form.parentGroupBuyId || null,
+          isQueued: !!queued,
         })
       });
       if (images.length > 0) {
@@ -1347,9 +1357,10 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
           method: 'POST', body: JSON.stringify({ url: up.url }),
         });
       }
-      toast.success('Created'); onCreated();
+      toast.success(queued ? 'Group buy queued' : 'Created'); onCreated();
     } catch (err) { toast.error(err.message); } finally { setSub(false); }
   };
+  const submit = async (e) => { e.preventDefault(); await submitGB(false); };
 
   const inputSm = { fontSize: '0.78rem', padding: '7px 9px' };
 
@@ -1540,6 +1551,9 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
 
           <div className="modal-actions">
             <button type="submit" className="btn-dark" disabled={sub} style={{ flex: 1, justifyContent: 'center' }}><span>{sub ? 'Creating...' : 'Create Group Buy'}</span></button>
+            <button type="button" className="btn-outline" disabled={sub} onClick={() => submitGB(true)} title="Save as draft, hidden from customers">
+              <span>{sub ? '…' : 'Queue'}</span>
+            </button>
             <button type="button" className="btn-outline" onClick={onClose}>Cancel</button>
           </div>
         </form>
