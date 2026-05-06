@@ -237,7 +237,7 @@ function GBCard({ gb, gbs, fetchGbs, updateGbLocal, isExpanded, panel, onToggleP
   const icCount = gb.interestChecks?.length || 0;
   const hasOptions = (gb.options?.length || 0) > 0;
   const displayPrice = hasOptions
-    ? `From ₱${Math.min(...gb.options.flatMap(g => g.values.map(v => v.price))).toLocaleString()}`
+    ? `From ₱${((gb.basePrice || 0) + Math.min(...gb.options.flatMap(g => g.values.map(v => v.price || 0)))).toLocaleString()}`
     : `₱${gb.basePrice?.toLocaleString()}`;
   const parentGb = gb.parentGroupBuyId ? (gbs || []).find(g => g._id === (gb.parentGroupBuyId?._id || gb.parentGroupBuyId)) : null;
 
@@ -577,7 +577,7 @@ function GBOptionsManager({ gb, fetchGbs, onClose }) {
           </div>
           {grp.values.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 1fr 56px 24px', gap: '4px', marginBottom: '4px' }}>
-              {['Value', 'Price ₱', 'Image URL (opt.)', 'Avail.', ''].map((h, i) => (
+              {['Value', '+ ₱', 'Image URL (opt.)', 'Avail.', ''].map((h, i) => (
                 <span key={i} style={{ fontSize: '0.61rem', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>{h}</span>
               ))}
             </div>
@@ -605,7 +605,7 @@ function GBOptionsManager({ gb, fetchGbs, onClose }) {
           ))}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 1fr auto', gap: '4px', alignItems: 'center', marginTop: '6px' }}>
             <input className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="Value (e.g. Base Kit)" value={newValues[gi]?.value || ''} onChange={e => setNewValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), value: e.target.value } }))} />
-            <input type="number" className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="₱" value={newValues[gi]?.price || ''} onChange={e => setNewValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), price: e.target.value } }))} />
+            <input type="number" className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="+ ₱" value={newValues[gi]?.price || ''} onChange={e => setNewValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), price: e.target.value } }))} />
             <div style={{ display: 'flex', gap: '3px' }}>
               <input className="form-input" style={{ ...inputSm, borderStyle: 'dashed', flex: 1, minWidth: 0 }} placeholder="Image URL (opt.)" value={newValues[gi]?.imageUrl || ''} onChange={e => setNewValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), imageUrl: e.target.value } }))} />
               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border)', cursor: 'pointer', background: 'var(--bg-secondary)', flexShrink: 0, opacity: uploadingImg[`${gi}-new`] ? 0.5 : 1 }} title="Upload image">
@@ -1220,7 +1220,7 @@ function AddItemToOrder({ parentGbId, cartOrderCode, cartCheckoutId, shippingAdd
             }
           }}>
             {(selectedGb.options || []).flatMap(grp => (grp.values || []).filter(v => v.available !== false).map(v => (
-              <option key={v._id} value={v._id}>{grp.name}: {v.value} — ₱{v.price?.toLocaleString()}</option>
+              <option key={v._id} value={v._id}>{grp.name}: {v.value} — ₱{((selectedGb.basePrice || 0) + (v.price || 0)).toLocaleString()}</option>
             )))}
           </select>
         </div>
@@ -1398,7 +1398,7 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
           </div>
 
           <div className="modal-row-3">
-            <div className="form-group"><label className="form-label">Base Price (₱)</label><input type="number" className="form-input" required min="0" value={form.basePrice} onChange={set('basePrice')} placeholder="Used if no options" /></div>
+            <div className="form-group"><label className="form-label">Base Price (₱)</label><input type="number" className="form-input" required min="0" value={form.basePrice} onChange={set('basePrice')} placeholder="Foundation price; options add on top" /></div>
             <div className="form-group"><label className="form-label">MOQ</label><input type="number" className="form-input" value={form.moq} onChange={set('moq')} placeholder="0" /></div>
             <div className="form-group"><label className="form-label">Max Orders</label><input type="number" className="form-input" value={form.maxOrders} onChange={set('maxOrders')} placeholder="0 = unlimited" /></div>
           </div>
@@ -1485,7 +1485,7 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
           <div className="modal-section">
             <p className="modal-section-title">Add Options</p>
             <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
-              Options set the base price (e.g., Kit → Base Kit ₱7,300 / Novelties ₱2,000).
+              Each option's price is <strong>added on top of the base price</strong> above (e.g. base ₱5,000 + Novelties +₱2,300 = ₱7,300).
             </p>
             {optionGroups.map((grp, gi) => (
               <div key={gi} style={{ marginBottom: '10px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
@@ -1496,14 +1496,14 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
                 {grp.values.map((v, vi) => (
                   <div key={vi} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '4px', fontSize: '0.78rem' }}>
                     <span style={{ flex: 1 }}>{v.value}</span>
-                    <span style={{ color: 'var(--ink-muted)' }}>₱{v.price.toLocaleString()}</span>
+                    <span style={{ color: 'var(--ink-muted)' }}>{v.price > 0 ? `+₱${v.price.toLocaleString()}` : 'base'}</span>
                     {v.image?.url && <span style={{ color: 'var(--accent)', fontSize: '0.68rem' }}>📷</span>}
                     <button type="button" onClick={() => setOptionGroups(g => g.map((gg, i) => i !== gi ? gg : { ...gg, values: gg.values.filter((_, j) => j !== vi) }))} style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
                   </div>
                 ))}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 1fr auto', gap: '5px', marginTop: '6px' }}>
                   <input className="form-input" style={inputSm} placeholder="Value (e.g. Base Kit)" value={newOptValues[gi]?.value || ''} onChange={e => setNewOptValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), value: e.target.value } }))} />
-                  <input type="number" className="form-input" style={inputSm} placeholder="₱" value={newOptValues[gi]?.price || ''} onChange={e => setNewOptValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), price: e.target.value } }))} />
+                  <input type="number" className="form-input" style={inputSm} placeholder="+ ₱" value={newOptValues[gi]?.price || ''} onChange={e => setNewOptValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), price: e.target.value } }))} />
                   <input className="form-input" style={inputSm} placeholder="Image URL (optional)" value={newOptValues[gi]?.imageUrl || ''} onChange={e => setNewOptValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), imageUrl: e.target.value } }))} />
                   <button type="button" onClick={() => addOptValue(gi)} className="config-add-btn">+</button>
                 </div>

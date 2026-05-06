@@ -83,13 +83,11 @@ export default function GroupBuyView() {
     });
   }, [selectedOption?.valueId, gb]);
 
-  // Compute total price including config modifiers
+  // Compute total price: basePrice is the foundation; options + config modifiers add on top.
   const computedPrice = useMemo(() => {
-    let base = 0;
+    let base = gb?.basePrice || 0;
     if (hasOptions && selectedOption) {
-      base = selectedOption.price;
-    } else if (gb) {
-      base = gb.basePrice || 0;
+      base += (selectedOption.price || 0);
     }
     // Add configuration modifiers
     if (gb?.configurations?.length > 0) {
@@ -182,7 +180,7 @@ export default function GroupBuyView() {
   const basePriceDisplay = hasOptions
     ? selectedOption
       ? `₱${computedPrice.toLocaleString()}`
-      : `From ₱${Math.min(...gb.options.flatMap(g => g.values.map(v => v.price))).toLocaleString()}`
+      : `From ₱${((gb.basePrice || 0) + Math.min(...gb.options.flatMap(g => g.values.map(v => v.price || 0)))).toLocaleString()}`
     : `₱${computedPrice.toLocaleString()}`;
 
   return (
@@ -295,6 +293,11 @@ export default function GroupBuyView() {
                           style={!avail ? { textDecoration: 'line-through', opacity: 0.4 } : {}}
                         >
                           {val.value}
+                          {val.price > 0 && (
+                            <span style={{ fontSize: '0.72rem', opacity: 0.7, marginLeft: '4px' }}>
+                              +₱{val.price.toLocaleString()}
+                            </span>
+                          )}
                           {val.stocks >= 0 && val.stocks <= 10 && (
                             <span style={{ fontSize: '0.65rem', color: val.stocks === 0 ? '#dc3545' : '#856404', marginLeft: '6px' }}>
                               {val.stocks === 0 ? 'Sold Out' : `${val.stocks} left`}

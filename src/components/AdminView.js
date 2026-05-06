@@ -380,7 +380,7 @@ function ProductCard({ product, fetchData, panel, onTogglePanel, allProducts = [
   const useVariants = !!product.useVariants;
   const variantCount = product.variants?.length || 0;
   const displayPrice = hasOptions
-    ? `From ₱${Math.min(...product.options.flatMap(g => g.values.map(v => v.price))).toLocaleString()}`
+    ? `From ₱${((product.price || 0) + Math.min(...product.options.flatMap(g => g.values.map(v => v.price || 0)))).toLocaleString()}`
     : `₱${product.price?.toLocaleString()}`;
   // Stock is unlimited if any tracked source returns -1/null, or there is no tracked source.
   const stockInfo = (() => {
@@ -913,7 +913,7 @@ function OptionsManager({ product, fetchData, onClose }) {
 
   return (
     <div style={{ padding: '16px 24px 20px', borderTop: '1px solid var(--border-subtle)' }}>
-      <PanelHeader title="Options — price-setting selectors (e.g., Kit: Base Kit / Novelties)" onClose={onClose} />
+      <PanelHeader title="Options — additional-price selectors (added on top of base price)" onClose={onClose} />
 
       {groups.map((grp, gi) => (
         <div key={gi} style={{ marginBottom: '12px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
@@ -925,7 +925,7 @@ function OptionsManager({ product, fetchData, onClose }) {
           {/* Column headers */}
           {grp.values.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 50px 1fr 56px 24px', gap: '4px', marginBottom: '4px' }}>
-              {['Value', 'Price ₱', 'Stock', 'Image URL (optional)', 'Avail.', ''].map((h, i) => (
+              {['Value', '+ ₱', 'Stock', 'Image URL (optional)', 'Avail.', ''].map((h, i) => (
                 <span key={i} style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>{h}</span>
               ))}
             </div>
@@ -968,7 +968,7 @@ function OptionsManager({ product, fetchData, onClose }) {
             <input className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="Value (e.g. Base Kit)"
               value={newValues[gi]?.value || ''}
               onChange={e => setNewValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), value: e.target.value } }))} />
-            <input type="number" className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="₱"
+            <input type="number" className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="+ ₱"
               value={newValues[gi]?.price || ''}
               onChange={e => setNewValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), price: e.target.value } }))} />
             <input type="number" className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="∞"
@@ -1504,7 +1504,7 @@ function VariantEditor({ product, fetchData, onClose, embedded }) {
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
                   {dims.map(d => <th key={d.name} style={{ padding: '4px 6px', textAlign: 'left', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--ink-faint)', whiteSpace: 'nowrap' }}>{d.name}</th>)}
                   <th style={{ padding: '4px 6px', textAlign: 'left', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Stock</th>
-                  <th style={{ padding: '4px 6px', textAlign: 'left', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Price (₱)</th>
+                  <th style={{ padding: '4px 6px', textAlign: 'left', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--ink-faint)' }}>+ Price (₱)</th>
                   <th style={{ padding: '4px 6px', textAlign: 'left', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--ink-faint)' }}>SKU</th>
                   <th style={{ padding: '4px 6px', textAlign: 'left', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Avail</th>
                   <th style={{ padding: '4px 6px' }}></th>
@@ -1668,7 +1668,7 @@ function TableRow({ product, fetchData }) {
   };
   const useVariants = !!product.useVariants;
   const displayPrice = hasOptions
-    ? `From ₱${Math.min(...product.options.flatMap(g => g.values.map(v => v.price))).toLocaleString()}`
+    ? `From ₱${((product.price || 0) + Math.min(...product.options.flatMap(g => g.values.map(v => v.price || 0)))).toLocaleString()}`
     : `₱${product.price?.toLocaleString()}`;
   const stockDisplay = (() => {
     if (hasOptions) {
@@ -2658,13 +2658,29 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
   const [newOptGroup, setNewOptGroup] = useState({ name: '' });
   const [newOptValues, setNewOptValues] = useState({});
 
-  // Variants state — dimensions + per-combination stock/price overrides
+  // Variants state — dimensions + per-combination stock/price.
+  // Two modes:
+  //  • matrix → cartesian product auto-generated, bulk-fill helps fill the grid.
+  //  • list   → admin manually adds the SKUs that actually exist; no shadow rows.
+  const [variantMode, setVariantMode] = useState('matrix'); // 'matrix' | 'list'
   const [variantDimensions, setVariantDimensions] = useState([]); // [{ name, values: [] }]
   const [newDim, setNewDim] = useState({ name: '', values: '' });
   const [variantRows, setVariantRows] = useState([]); // [{ attrs: {dim:val}, stock, price }]
+  const [bulkStock, setBulkStock] = useState('');
+  const [bulkPrice, setBulkPrice] = useState('');
+  const [showJsonImport, setShowJsonImport] = useState(false);
+  const [jsonImportText, setJsonImportText] = useState('');
 
-  // Re-generate the cartesian product whenever dimensions change.
+  // Auto-generate cartesian product in matrix mode; in list mode, leave rows alone
+  // and only prune values that no longer exist on a dimension.
   useEffect(() => {
+    if (variantMode === 'list') {
+      // Drop rows that reference values that no longer exist on a dimension.
+      setVariantRows(prev => prev.filter(r => variantDimensions.every(d =>
+        !r.attrs[d.name] || d.values.includes(r.attrs[d.name])
+      )));
+      return;
+    }
     if (variantDimensions.length === 0) { setVariantRows([]); return; }
     const combos = variantDimensions.reduce(
       (acc, d) => acc.flatMap(a => d.values.map(v => ({ ...a, [d.name]: v }))),
@@ -2675,7 +2691,31 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
       const existing = prev.find(r => JSON.stringify(r.attrs) === matchKey);
       return existing || { attrs, stock: '', price: '' };
     }));
-  }, [variantDimensions]);
+  }, [variantDimensions, variantMode]);
+
+  // Switching modes: matrix→list keeps existing rows as-is; list→matrix regenerates.
+  const switchVariantMode = (mode) => {
+    if (mode === variantMode) return;
+    setVariantMode(mode);
+    if (mode === 'matrix' && variantDimensions.length > 0) {
+      // useEffect will rebuild the grid, merging any rows that already match
+    }
+  };
+
+  // List mode: append a blank SKU using the first available value per dimension.
+  const addListVariant = () => {
+    if (variantDimensions.length === 0) {
+      toast.error('Add at least one dimension first.');
+      return;
+    }
+    const attrs = {};
+    for (const d of variantDimensions) attrs[d.name] = d.values[0] || '';
+    setVariantRows(rows => [...rows, { attrs, stock: '', price: '' }]);
+  };
+  const updateListVariantAttr = (idx, dimName, val) => {
+    setVariantRows(rows => rows.map((r, i) => i === idx ? { ...r, attrs: { ...r.attrs, [dimName]: val } } : r));
+  };
+  const removeListVariant = (idx) => setVariantRows(rows => rows.filter((_, i) => i !== idx));
 
   const addDimension = () => {
     const name = newDim.name.trim();
@@ -2686,6 +2726,87 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
   };
   const removeDimension = (di) => setVariantDimensions(d => d.filter((_, i) => i !== di));
   const updateVariantField = (idx, field, val) => setVariantRows(rows => rows.map((r, i) => i === idx ? { ...r, [field]: val } : r));
+
+  const applyBulkStock = () => {
+    if (bulkStock === '') return;
+    setVariantRows(rows => rows.map(r => ({ ...r, stock: bulkStock })));
+  };
+  const applyBulkPrice = () => {
+    if (bulkPrice === '') return;
+    setVariantRows(rows => rows.map(r => ({ ...r, price: bulkPrice })));
+  };
+  const clearBulkStock = () => setVariantRows(rows => rows.map(r => ({ ...r, stock: '' })));
+  const clearBulkPrice = () => setVariantRows(rows => rows.map(r => ({ ...r, price: '' })));
+
+  const importVariantsJson = () => {
+    try {
+      const data = JSON.parse(jsonImportText);
+      const dims = Array.isArray(data.dimensions) ? data.dimensions
+        .filter(d => d && d.name && Array.isArray(d.values))
+        .map(d => ({ name: String(d.name).trim(), values: d.values.map(v => String(v).trim()).filter(Boolean) }))
+        : [];
+      if (dims.length === 0) {
+        toast.error('JSON must include a non-empty "dimensions" array.');
+        return;
+      }
+      setVariantDimensions(dims);
+      const incoming = Array.isArray(data.variants) ? data.variants : [];
+
+      if (variantMode === 'list') {
+        // List mode: only import the SKUs listed; ignore unspecified combinations entirely.
+        const rows = incoming.map(v => {
+          const attrs = {};
+          for (const d of dims) attrs[d.name] = String(v?.attributes?.[d.name] ?? '');
+          return {
+            attrs,
+            stock: v.stock === -1 || v.stock == null ? '' : String(v.stock),
+            price: v.price == null ? '' : String(v.price),
+          };
+        });
+        setVariantRows(rows);
+        setShowJsonImport(false);
+        setJsonImportText('');
+        toast.success(`Imported ${dims.length} dimension${dims.length === 1 ? '' : 's'} and ${rows.length} SKU${rows.length === 1 ? '' : 's'}.`);
+        return;
+      }
+
+      // Matrix mode: build full cartesian product and merge incoming values.
+      const combos = dims.reduce(
+        (acc, d) => acc.flatMap(a => d.values.map(v => ({ ...a, [d.name]: v }))),
+        [{}]
+      );
+      const findIncoming = (attrs) => incoming.find(v => {
+        const va = v?.attributes || {};
+        return dims.every(d => va[d.name] === attrs[d.name]);
+      });
+      setVariantRows(combos.map(attrs => {
+        const m = findIncoming(attrs);
+        if (!m) return { attrs, stock: '', price: '' };
+        return {
+          attrs,
+          stock: m.stock === -1 || m.stock == null ? '' : String(m.stock),
+          price: m.price == null ? '' : String(m.price),
+        };
+      }));
+      setShowJsonImport(false);
+      setJsonImportText('');
+      toast.success(`Imported ${dims.length} dimension${dims.length === 1 ? '' : 's'} and ${combos.length} variant${combos.length === 1 ? '' : 's'}.`);
+    } catch (err) {
+      toast.error('Invalid JSON: ' + (err.message || 'parse error'));
+    }
+  };
+
+  const sampleVariantJson = JSON.stringify({
+    dimensions: [
+      { name: 'Color', values: ['Red', 'Blue'] },
+      { name: 'Size', values: ['S', 'M', 'L'] }
+    ],
+    variants: [
+      { attributes: { Color: 'Red', Size: 'S' }, stock: 10, price: 0 },
+      { attributes: { Color: 'Red', Size: 'M' }, stock: 5, price: 0 },
+      { attributes: { Color: 'Blue', Size: 'L' }, stock: 8, price: 50 }
+    ]
+  }, null, 2);
 
   const handleFormKeyDown = (e) => {
     if (e.key === 'Enter' && e.target.tagName === 'INPUT' && !e.target.dataset.enterAction) {
@@ -2768,7 +2889,12 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
       const filteredSpecs = specs.filter(s => s.label.trim() && s.value.trim());
       const buildVariants = () => {
         if (variantDimensions.length === 0) return null;
-        const variants = variantRows.map(r => ({
+        // List mode: drop rows missing any attribute value (incomplete SKUs).
+        const usable = variantMode === 'list'
+          ? variantRows.filter(r => variantDimensions.every(d => r.attrs[d.name]))
+          : variantRows;
+        if (variantMode === 'list' && usable.length === 0) return null;
+        const variants = usable.map(r => ({
           attributes: r.attrs,
           stock: r.stock === '' ? -1 : Number(r.stock),
           price: r.price === '' ? null : Number(r.price),
@@ -2844,7 +2970,7 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
           <div className="modal-row-3">
             <div className="form-group">
               <label className="form-label">Price (₱)</label>
-              <input type="number" className="form-input" min="0" value={form.price} onChange={set('price')} placeholder="Used if no options" />
+              <input type="number" className="form-input" min="0" value={form.price} onChange={set('price')} placeholder="Foundation; options/variants add on top" />
             </div>
             <div className="form-group">
               <label className="form-label">Stock <span style={{ fontWeight: 400, color: 'var(--ink-faint)', fontSize: '0.7rem' }}>— optional</span></label>
@@ -2933,7 +3059,8 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
           <div className="modal-section">
             <p className="modal-section-title">Add Options</p>
             <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
-              Options set the base price (e.g., Kit → Base Kit ₱7,300 / Novelties ₱2,000). Leave empty to use the price above.
+              Each option's price is <strong>added on top of the base price</strong> above (e.g. base ₱5,000 + Novelties +₱2,300 = ₱7,300).
+              Leave this section empty if the product has a single price.
             </p>
 
             {optionGroups.map((grp, gi) => (
@@ -2945,7 +3072,7 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
                 {grp.values.map((v, vi) => (
                   <div key={vi} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '4px', fontSize: '0.78rem' }}>
                     <span style={{ flex: 1 }}>{v.value}</span>
-                    <span style={{ color: 'var(--ink-muted)' }}>₱{v.price.toLocaleString()}</span>
+                    <span style={{ color: 'var(--ink-muted)' }}>{v.price > 0 ? `+₱${v.price.toLocaleString()}` : 'base'}</span>
                     <span style={{ color: 'var(--ink-muted)', fontSize: '0.72rem' }}>· {v.stocks} stock</span>
                     {v.image?.url && <span style={{ color: 'var(--accent)', fontSize: '0.68rem' }}>📷</span>}
                     <button type="button" onClick={() => setOptionGroups(g => g.map((gg, i) => i !== gi ? gg : { ...gg, values: gg.values.filter((_, j) => j !== vi) }))} style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
@@ -2955,7 +3082,7 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
                   <input className="form-input" style={inputSm} placeholder="Value (e.g. Base Kit)"
                     value={newOptValues[gi]?.value || ''}
                     onChange={e => setNewOptValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), value: e.target.value } }))} />
-                  <input type="number" className="form-input" style={inputSm} placeholder="₱"
+                  <input type="number" className="form-input" style={inputSm} placeholder="+ ₱"
                     value={newOptValues[gi]?.price || ''}
                     onChange={e => setNewOptValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), price: e.target.value } }))} />
                   <input type="number" className="form-input" style={inputSm} placeholder="Stock" min="0"
@@ -2980,11 +3107,54 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
 
           {/* Variants */}
           <div className="modal-section">
-            <p className="modal-section-title">Variants</p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '8px' }}>
+              <p className="modal-section-title" style={{ margin: 0 }}>Variants</p>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', overflow: 'hidden', fontSize: '0.7rem' }}>
+                  <button type="button" onClick={() => switchVariantMode('matrix')}
+                    style={{ padding: '4px 10px', background: variantMode === 'matrix' ? 'var(--accent)' : 'transparent', color: variantMode === 'matrix' ? '#fff' : 'var(--ink-muted)', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                    Matrix
+                  </button>
+                  <button type="button" onClick={() => switchVariantMode('list')}
+                    style={{ padding: '4px 10px', background: variantMode === 'list' ? 'var(--accent)' : 'transparent', color: variantMode === 'list' ? '#fff' : 'var(--ink-muted)', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                    List
+                  </button>
+                </div>
+                <button type="button" onClick={() => setShowJsonImport(s => !s)}
+                  style={{ fontSize: '0.72rem', color: 'var(--accent)', background: 'none', border: '1px solid var(--accent)', borderRadius: 'var(--radius-pill)', padding: '4px 12px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                  {showJsonImport ? 'Cancel import' : '↓ Import JSON'}
+                </button>
+              </div>
+            </div>
             <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
-              Use variants when each combination is its own SKU with its own stock (e.g. Color × Size).
-              Combinations auto-generate; fill the stock for each row. Leave price blank to use the base price.
+              {variantMode === 'matrix'
+                ? <>Every combination of dimensions auto-generates as a row. Use bulk-fill when most rows share the same value, then override exceptions. Leave stock blank for unlimited; leave price blank for base price.</>
+                : <>List only the SKUs you actually stock. Add a row, pick its dimension values, set stock + price. Combinations not listed simply don't exist for the customer. Best when most combinations don't apply.</>
+              }
+              {' '}Prices are <strong>added on top of the base price</strong>.
             </p>
+
+            {showJsonImport && (
+              <div style={{ marginBottom: '14px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', margin: '0 0 6px' }}>
+                  Paste JSON with <code>dimensions</code> + <code>variants</code> arrays. Existing rows are replaced.
+                </p>
+                <textarea className="form-input" value={jsonImportText}
+                  onChange={e => setJsonImportText(e.target.value)}
+                  placeholder={sampleVariantJson}
+                  style={{ minHeight: 140, fontFamily: 'monospace', fontSize: '0.74rem', resize: 'vertical' }} />
+                <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                  <button type="button" onClick={importVariantsJson} disabled={!jsonImportText.trim()}
+                    style={{ padding: '6px 14px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontSize: '0.75rem', fontFamily: "'DM Sans', sans-serif", opacity: !jsonImportText.trim() ? 0.5 : 1 }}>
+                    Apply JSON
+                  </button>
+                  <button type="button" onClick={() => setJsonImportText(sampleVariantJson)}
+                    style={{ padding: '6px 14px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: 'none', color: 'var(--ink-muted)', cursor: 'pointer', fontSize: '0.75rem', fontFamily: "'DM Sans', sans-serif" }}>
+                    Insert sample
+                  </button>
+                </div>
+              </div>
+            )}
 
             {variantDimensions.map((d, di) => (
               <div key={di} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', padding: '8px 10px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '0.82rem' }}>
@@ -3006,7 +3176,43 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
               <button type="button" onClick={addDimension} className="config-add-btn">+ Add Dimension</button>
             </div>
 
-            {variantRows.length > 0 && (
+            {variantMode === 'matrix' && variantRows.length > 0 && (
+              <>
+                {/* Bulk-fill controls — apply one value to every row at once */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', padding: '8px 10px', marginBottom: '8px', background: 'var(--bg-secondary)', border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.74rem' }}>
+                  <span style={{ color: 'var(--ink-muted)', fontWeight: 500 }}>Bulk fill:</span>
+                  <input type="number" min="0" placeholder="Stock" className="form-input"
+                    style={{ ...inputSm, width: 80 }}
+                    value={bulkStock} onChange={e => setBulkStock(e.target.value)}
+                    data-enter-action="custom"
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); applyBulkStock(); } }} />
+                  <button type="button" onClick={applyBulkStock} disabled={bulkStock === ''}
+                    style={{ padding: '4px 10px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.72rem', opacity: bulkStock === '' ? 0.5 : 1 }}>
+                    Apply stock
+                  </button>
+                  <button type="button" onClick={clearBulkStock}
+                    style={{ padding: '4px 10px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: 'none', color: 'var(--ink-muted)', cursor: 'pointer', fontSize: '0.72rem' }}>
+                    Clear stock
+                  </button>
+                  <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
+                  <input type="number" min="0" placeholder="+ ₱" className="form-input"
+                    style={{ ...inputSm, width: 80 }}
+                    value={bulkPrice} onChange={e => setBulkPrice(e.target.value)}
+                    data-enter-action="custom"
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); applyBulkPrice(); } }} />
+                  <button type="button" onClick={applyBulkPrice} disabled={bulkPrice === ''}
+                    style={{ padding: '4px 10px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.72rem', opacity: bulkPrice === '' ? 0.5 : 1 }}>
+                    Apply price
+                  </button>
+                  <button type="button" onClick={clearBulkPrice}
+                    style={{ padding: '4px 10px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: 'none', color: 'var(--ink-muted)', cursor: 'pointer', fontSize: '0.72rem' }}>
+                    Clear price
+                  </button>
+                </div>
+              </>
+            )}
+
+            {(variantRows.length > 0 || variantMode === 'list') && variantDimensions.length > 0 && (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                   <thead>
@@ -3015,30 +3221,53 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
                         <th key={d.name} style={{ textAlign: 'left', padding: '6px 8px', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-faint)' }}>{d.name}</th>
                       ))}
                       <th style={{ textAlign: 'left', padding: '6px 8px', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-faint)' }}>Stock</th>
-                      <th style={{ textAlign: 'left', padding: '6px 8px', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-faint)' }}>Price (override)</th>
+                      <th style={{ textAlign: 'left', padding: '6px 8px', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-faint)' }}>+ Price (₱)</th>
+                      {variantMode === 'list' && <th style={{ width: 28 }}></th>}
                     </tr>
                   </thead>
                   <tbody>
                     {variantRows.map((row, idx) => (
                       <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                         {variantDimensions.map(d => (
-                          <td key={d.name} style={{ padding: '6px 8px' }}>{row.attrs[d.name]}</td>
+                          <td key={d.name} style={{ padding: '6px 8px' }}>
+                            {variantMode === 'list' ? (
+                              <select className="form-input" style={{ ...inputSm, width: 'auto', minWidth: 90 }}
+                                value={row.attrs[d.name] || ''}
+                                onChange={e => updateListVariantAttr(idx, d.name, e.target.value)}>
+                                <option value="">—</option>
+                                {d.values.map(v => <option key={v} value={v}>{v}</option>)}
+                              </select>
+                            ) : row.attrs[d.name]}
+                          </td>
                         ))}
                         <td style={{ padding: '6px 8px' }}>
-                          <input type="number" min="0" required className="form-input" style={{ ...inputSm, width: 80 }}
+                          <input type="number" min="0" placeholder={variantMode === 'list' ? '∞' : 'Use base'} className="form-input" style={{ ...inputSm, width: 80 }}
                             value={row.stock}
                             onChange={e => updateVariantField(idx, 'stock', e.target.value)} />
                         </td>
                         <td style={{ padding: '6px 8px' }}>
-                          <input type="number" min="0" placeholder="Use base" className="form-input" style={{ ...inputSm, width: 100 }}
+                          <input type="number" min="0" placeholder="0" className="form-input" style={{ ...inputSm, width: 100 }}
                             value={row.price}
                             onChange={e => updateVariantField(idx, 'price', e.target.value)} />
                         </td>
+                        {variantMode === 'list' && (
+                          <td style={{ padding: '6px 4px', textAlign: 'right' }}>
+                            <button type="button" onClick={() => removeListVariant(idx)}
+                              style={{ fontSize: '0.7rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
+            )}
+
+            {variantMode === 'list' && variantDimensions.length > 0 && (
+              <button type="button" onClick={addListVariant}
+                style={{ marginTop: '8px', fontSize: '0.78rem', color: 'var(--accent)', background: 'none', border: '1px solid var(--accent)', borderRadius: 'var(--radius-pill)', padding: '5px 14px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                + Add Variant
+              </button>
             )}
           </div>
 

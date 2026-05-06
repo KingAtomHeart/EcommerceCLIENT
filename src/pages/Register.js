@@ -52,28 +52,28 @@ export default function Register() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div className="form-group">
               <label className="form-label">First Name</label>
-              <input type="text" className="form-input" placeholder="Jane" required value={form.firstName} onChange={set('firstName')} />
+              <input type="text" className="form-input" required value={form.firstName} onChange={set('firstName')} />
             </div>
             <div className="form-group">
               <label className="form-label">Last Name</label>
-              <input type="text" className="form-input" placeholder="Doe" required value={form.lastName} onChange={set('lastName')} />
+              <input type="text" className="form-input" required value={form.lastName} onChange={set('lastName')} />
             </div>
           </div>
           <div className="form-group">
             <label className="form-label">Email</label>
-            <input type="email" className="form-input" placeholder="you@example.com" required value={form.email} onChange={set('email')} />
+            <input type="email" className="form-input" required value={form.email} onChange={set('email')} />
           </div>
           <div className="form-group">
             <label className="form-label">Mobile No.</label>
-            <input type="text" className="form-input" placeholder="09XXXXXXXXX" required maxLength="11" value={form.mobileNo} onChange={set('mobileNo')} />
+            <input type="text" className="form-input" required maxLength="11" value={form.mobileNo} onChange={set('mobileNo')} />
           </div>
           <div className="form-group">
             <label className="form-label">Password</label>
-            <input type="password" className="form-input" placeholder="Min. 8 characters" required value={form.password} onChange={set('password')} />
+            <input type="password" className="form-input" required value={form.password} onChange={set('password')} />
           </div>
           <div className="form-group">
             <label className="form-label">Confirm Password</label>
-            <input type="password" className="form-input" placeholder="Repeat password" required value={form.confirmPassword} onChange={set('confirmPassword')} />
+            <input type="password" className="form-input" required value={form.confirmPassword} onChange={set('confirmPassword')} />
           </div>
           {form.password && form.confirmPassword && form.password !== form.confirmPassword && (
             <p style={{ color: '#c0392b', fontSize: '0.82rem', marginBottom: '12px' }}>Passwords do not match.</p>

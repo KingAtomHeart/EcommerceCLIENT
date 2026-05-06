@@ -61,22 +61,23 @@ export default function ProductCard({ product }) {
   const { outOfStock, trackedStockLeft } = computeStockSummary({ useVariants, variants, options, stocks });
   const showLowStock = trackedStockLeft !== null && trackedStockLeft > 0 && trackedStockLeft <= 5;
 
-  // Display price: prefer the lowest available option/variant price so option-based
-  // products (e.g., keycaps) don't render as ₱0 when the base price isn't set.
+  // Display price: product.price is the base; option/variant prices are ADDITIONAL on top.
+  // For option/variant products, show "Starts at" with the base + cheapest additional.
   const displayPriceInfo = (() => {
+    const basePrice = price || 0;
     if (useVariants && variants?.length) {
       const usable = variants.filter(v => v.available !== false && v.stock !== 0);
-      const prices = usable.map(v => (v.price != null ? v.price : price)).filter(p => p != null);
-      const min = prices.length ? Math.min(...prices) : null;
-      if (min != null) return { value: min, prefix: 'Starts at ' };
+      const additionals = usable.map(v => v.price || 0);
+      const minAdd = additionals.length ? Math.min(...additionals) : null;
+      if (minAdd != null) return { value: basePrice + minAdd, prefix: 'Starts at ' };
     }
     if (options?.length) {
       const allValues = options.flatMap(g => g.values || []).filter(v => v.available !== false);
-      const prices = allValues.map(v => v.price).filter(p => typeof p === 'number');
-      const min = prices.length ? Math.min(...prices) : null;
-      if (min != null) return { value: min, prefix: 'Starts at ' };
+      const additionals = allValues.map(v => v.price || 0);
+      const minAdd = additionals.length ? Math.min(...additionals) : null;
+      if (minAdd != null) return { value: basePrice + minAdd, prefix: 'Starts at ' };
     }
-    return { value: price ?? 0, prefix: '' };
+    return { value: basePrice, prefix: '' };
   })();
 
   return (

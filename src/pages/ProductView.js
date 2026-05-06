@@ -289,26 +289,26 @@ export default function ProductView() {
 
   const { soldOut: outOfStock, max: maxQty } = computeStockStatus();
 
-  // Calculate displayed price: base/option price + config modifiers
+  // Calculate displayed price: product.price is the base, option/variant/config prices add on top.
   const computeDisplayPrice = () => {
-    let base = hasOptions
-      ? (selectedOption?.price || 0)
-      : (product.price || 0);
+    let total = product.price || 0;
+    if (hasOptions && selectedOption) total += (selectedOption.price || 0);
+    if (currentVariant) total += (currentVariant.price || 0);
 
     // Add config price modifiers
     for (const cfg of (product.configurations || [])) {
       const selected = selectedConfigs[cfg.name];
       if (!selected) continue;
       const opt = cfg.options?.find(o => o.value === selected);
-      if (opt?.priceModifier > 0) base += opt.priceModifier;
+      if (opt?.priceModifier > 0) total += opt.priceModifier;
     }
 
-    return base;
+    return total;
   };
 
   const displayPrice = computeDisplayPrice();
   const priceDisplay = (hasOptions && !selectedOption)
-    ? `From ₱${Math.min(...product.options.flatMap(g => g.values.map(v => v.price))).toLocaleString()}`
+    ? `From ₱${((product.price || 0) + Math.min(...product.options.flatMap(g => g.values.map(v => v.price || 0)))).toLocaleString()}`
     : `₱${displayPrice.toLocaleString()}`;
 
   return (
@@ -460,6 +460,11 @@ export default function ProductView() {
                             style={!avail ? { textDecoration: 'line-through', opacity: 0.4 } : {}}
                           >
                             {val.value}
+                            {val.price > 0 && (
+                              <span style={{ fontSize: '0.72rem', opacity: 0.7, marginLeft: '4px' }}>
+                                +₱{val.price.toLocaleString()}
+                              </span>
+                            )}
                           </button>
                         );
                       })}

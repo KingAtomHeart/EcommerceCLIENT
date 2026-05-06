@@ -43,7 +43,7 @@ export default function GroupBuyCard({ gb }) {
         <div className="card-footer">
           <span className="card-price">
             {(gb.options?.length > 0)
-              ? `From ₱${Math.min(...gb.options.flatMap(g => (g.values || []).map(v => v.price))).toLocaleString()}`
+              ? `From ₱${((gb.basePrice || 0) + Math.min(...gb.options.flatMap(g => (g.values || []).map(v => v.price || 0)))).toLocaleString()}`
               : `₱${gb.basePrice?.toLocaleString()}`
             }
           </span>

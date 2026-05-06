@@ -159,7 +159,7 @@ export default function Login() {
             </p>
             <div className="form-group">
               <label className="form-label">Mobile No.</label>
-              <input type="text" className="form-input" placeholder="09XXXXXXXXX" required maxLength="11" value={mobileNo} onChange={e => setMobileNo(e.target.value.replace(/\D/g, ''))} autoFocus />
+              <input type="text" className="form-input" required maxLength="11" value={mobileNo} onChange={e => setMobileNo(e.target.value.replace(/\D/g, ''))} autoFocus />
             </div>
             <button type="submit" className="btn-dark" disabled={mobileSubmitting || mobileNo.length !== 11} style={{ width: '100%', justifyContent: 'center', marginTop: '8px' }}>
               <span>{mobileSubmitting ? 'Saving…' : 'Continue'}</span>
@@ -198,11 +198,11 @@ export default function Login() {
           <form onSubmit={handleLogin} style={{ animation: 'fadeIn 0.25s ease' }}>
             <div className="form-group">
               <label className="form-label">Email</label>
-              <input type="email" className="form-input" placeholder="you@example.com" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" />
+              <input type="email" className="form-input" required value={email} onChange={e => setEmail(e.target.value)} autoComplete="email" />
             </div>
             <div className="form-group">
               <label className="form-label">Password</label>
-              <input type="password" className="form-input" placeholder="••••••••" required value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
+              <input type="password" className="form-input" required value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
             </div>
             <button type="submit" className="btn-dark" disabled={submitting || !email || !password} style={{ width: '100%', justifyContent: 'center', marginTop: '8px' }}>
               <span>{submitting ? 'Signing in…' : 'Sign In'}</span>
@@ -215,24 +215,24 @@ export default function Login() {
             <div className="form-row-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div className="form-group">
                 <label className="form-label">First Name</label>
-                <input type="text" className="form-input" placeholder="Jane" required value={reg.firstName} onChange={setR('firstName')} />
+                <input type="text" className="form-input" required value={reg.firstName} onChange={setR('firstName')} />
               </div>
               <div className="form-group">
                 <label className="form-label">Last Name</label>
-                <input type="text" className="form-input" placeholder="Doe" required value={reg.lastName} onChange={setR('lastName')} />
+                <input type="text" className="form-input" required value={reg.lastName} onChange={setR('lastName')} />
               </div>
             </div>
             <div className="form-group">
               <label className="form-label">Email</label>
-              <input type="email" className="form-input" placeholder="you@example.com" required value={reg.email} onChange={setR('email')} autoComplete="email" />
+              <input type="email" className="form-input" required value={reg.email} onChange={setR('email')} autoComplete="email" />
             </div>
             <div className="form-group">
               <label className="form-label">Mobile No.</label>
-              <input type="text" className="form-input" placeholder="09XXXXXXXXX" required maxLength="11" value={reg.mobileNo} onChange={setR('mobileNo')} />
+              <input type="text" className="form-input" required maxLength="11" value={reg.mobileNo} onChange={setR('mobileNo')} />
             </div>
             <div className="form-group">
               <label className="form-label">Password</label>
-              <input type="password" className="form-input" placeholder="Min. 8 characters" required value={reg.password} onChange={setR('password')} autoComplete="new-password" />
+              <input type="password" className="form-input" required value={reg.password} onChange={setR('password')} autoComplete="new-password" />
             </div>
             <button type="submit" className="btn-dark" disabled={regSubmitting} style={{ width: '100%', justifyContent: 'center', marginTop: '8px' }}>
               <span>{regSubmitting ? 'Creating…' : 'Create Account'}</span>
