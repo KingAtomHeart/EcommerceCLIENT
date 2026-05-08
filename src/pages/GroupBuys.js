@@ -1,11 +1,23 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect, useContext } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
 import GroupBuyCard from '../components/GroupBuyCard';
+import AddToOrderContext from '../context/AddToOrderContext';
+import toast from 'react-hot-toast';
 
 export default function GroupBuys() {
   const [gbs, setGbs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { info: addToOrderInfo } = useContext(AddToOrderContext);
+  const navigate = useNavigate();
+
+  // Lock customers with an active gb-cart add-link to their original group buy.
+  useEffect(() => {
+    if (addToOrderInfo?.type === 'gb-cart' && addToOrderInfo.rootGroupBuyId) {
+      toast.error('This add-link is locked to your original group buy.');
+      navigate(`/group-buys/${addToOrderInfo.rootGroupBuyId}`, { replace: true });
+    }
+  }, [addToOrderInfo, navigate]);
 
   useEffect(() => {
     apiFetch('/group-buys/active')

@@ -984,8 +984,9 @@ export function UnifiedGBOrderCard({ items, updateOrderLocal, parentGbId, fetchO
                 <button type="button" onClick={async () => {
                   try {
                     const res = await apiFetch('/orders/admin/add-link', { method: 'POST', body: JSON.stringify({ type: 'gb-cart', cartOrderCode: cartCode, cartCheckoutId: primary.cartCheckoutId }) });
-                    try { await navigator.clipboard.writeText(res.url); toast.success('Add-link copied to clipboard'); }
-                    catch { window.prompt('Copy the add-to-order link:', res.url); }
+                    const fullUrl = /^https?:\/\//i.test(res.url) ? res.url : `${window.location.origin}${res.url.startsWith('/') ? '' : '/'}${res.url}`;
+                    try { await navigator.clipboard.writeText(fullUrl); toast.success('Add-link copied to clipboard'); }
+                    catch { window.prompt('Copy the add-to-order link:', fullUrl); }
                   } catch (err) { toast.error(err.message); }
                 }}
                   style={{ fontSize: '0.7rem', padding: '4px 10px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>

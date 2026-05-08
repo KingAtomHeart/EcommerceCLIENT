@@ -1,6 +1,7 @@
 import { useState, useEffect, useContext, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import UserContext from '../context/UserContext';
+import AddToOrderContext from '../context/AddToOrderContext';
 import ProductCard from '../components/ProductCard';
 import { RichText } from '../components/AdminView';
 import { apiFetch } from '../utils/api';
@@ -16,7 +17,16 @@ const categoryLabel = (slug) => ({
 export default function ProductView() {
   const { productId } = useParams();
   const { user } = useContext(UserContext);
+  const { token: addToOrderToken, info: addToOrderInfo } = useContext(AddToOrderContext);
   const navigate = useNavigate();
+
+  // Customers locked to a GB add-link can't browse in-stock — bounce back to their GB.
+  useEffect(() => {
+    if (addToOrderInfo?.type === 'gb-cart' && addToOrderInfo.rootGroupBuyId) {
+      toast.error('This add-link is locked to your group buy.');
+      navigate(`/group-buys/${addToOrderInfo.rootGroupBuyId}`, { replace: true });
+    }
+  }, [addToOrderInfo, navigate]);
   const [product, setProduct] = useState(null);
   const [related, setRelated] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -182,7 +192,7 @@ export default function ProductView() {
       }
       setAddingToCart(true);
       try {
-        await apiFetch('/cart/add-to-cart', { method: 'POST', body: JSON.stringify({ productId: product._id, quantity, variantId: variant._id }) });
+        await apiFetch('/cart/add-to-cart', { method: 'POST', body: JSON.stringify({ productId: product._id, quantity, variantId: variant._id, ...(addToOrderToken ? { addToOrderToken } : {}) }) });
         toast.success('Added to cart!');
       } catch (err) { toast.error(err.message || 'Failed to add to cart'); }
       finally { setAddingToCart(false); }
@@ -213,6 +223,7 @@ export default function ProductView() {
           optionGroupId: selectedOption.groupId,
           optionValueId: selectedOption.valueId,
         } : {}),
+        ...(addToOrderToken ? { addToOrderToken } : {}),
       };
       await apiFetch('/cart/add-to-cart', { method: 'POST', body: JSON.stringify(body) });
       toast.success(`${product.name} added to cart`);

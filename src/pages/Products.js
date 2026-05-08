@@ -1,16 +1,28 @@
 import { useState, useEffect, useContext, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import UserContext from '../context/UserContext';
+import AddToOrderContext from '../context/AddToOrderContext';
 import ProductCard, { computeStockSummary } from '../components/ProductCard';
 import AdminView from '../components/AdminView';
 import { apiFetch } from '../utils/api';
+import toast from 'react-hot-toast';
 
 const PAGE_SIZE = 12;
 
 export default function Products() {
   const { user, loading: userLoading } = useContext(UserContext);
+  const { info: addToOrderInfo } = useContext(AddToOrderContext);
+  const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Customers locked to a GB add-link can't browse in-stock — bounce back to their GB.
+  useEffect(() => {
+    if (!user?.isAdmin && addToOrderInfo?.type === 'gb-cart' && addToOrderInfo.rootGroupBuyId) {
+      toast.error('This add-link is locked to your group buy.');
+      navigate(`/group-buys/${addToOrderInfo.rootGroupBuyId}`, { replace: true });
+    }
+  }, [user, addToOrderInfo, navigate]);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState('default');
   const [searchParams] = useSearchParams();

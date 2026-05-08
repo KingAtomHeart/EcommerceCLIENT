@@ -19,8 +19,14 @@ export default function AddToOrderHandler() {
       .then(info => {
         setToken(token, info);
         toast.success(`Adding to ${info.targetLabel}. Browse below.`);
-        // Send GB-cart links to /group-buys, in-stock to /products
-        navigate(info.type === 'gb-cart' ? '/group-buys' : '/products', { replace: true });
+        // GB add-links are locked to the originating group-buy family — drop the customer
+        // straight onto the parent GB page so they only see add-ons for that buy. In-stock
+        // links go to the full catalog.
+        if (info.type === 'gb-cart') {
+          navigate(info.rootGroupBuyId ? `/group-buys/${info.rootGroupBuyId}` : '/group-buys', { replace: true });
+        } else {
+          navigate('/products', { replace: true });
+        }
       })
       .catch(err => setError(err.message))
       .finally(() => setLoading(false));

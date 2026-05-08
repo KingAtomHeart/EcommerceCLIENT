@@ -2303,8 +2303,10 @@ function OrderRow({ order, fetchOrders, updateOrderLocal, typeTag }) {
   const generateAddLink = async (payload) => {
     try {
       const res = await apiFetch('/orders/admin/add-link', { method: 'POST', body: JSON.stringify(payload) });
-      try { await navigator.clipboard.writeText(res.url); toast.success('Add-link copied to clipboard'); }
-      catch { window.prompt('Copy the add-to-order link:', res.url); }
+      // Server may return a relative path if CLIENT_URL env var is unset — anchor it to this app's origin.
+      const fullUrl = /^https?:\/\//i.test(res.url) ? res.url : `${window.location.origin}${res.url.startsWith('/') ? '' : '/'}${res.url}`;
+      try { await navigator.clipboard.writeText(fullUrl); toast.success('Add-link copied to clipboard'); }
+      catch { window.prompt('Copy the add-to-order link:', fullUrl); }
     } catch (err) { toast.error(err.message); }
   };
   const updateItemStatus = async (itemId, newStatus) => {

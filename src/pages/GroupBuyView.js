@@ -1,6 +1,7 @@
 import { useState, useEffect, useContext, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import UserContext from '../context/UserContext';
+import AddToOrderContext from '../context/AddToOrderContext';
 import { RichText } from '../components/AdminView';
 import GroupBuyCard from '../components/GroupBuyCard';
 import { apiFetch } from '../utils/api';
@@ -14,6 +15,7 @@ const statusLabel = {
 export default function GroupBuyView() {
   const { id } = useParams();
   const { user } = useContext(UserContext);
+  const { token: addToOrderToken, info: addToOrderInfo } = useContext(AddToOrderContext);
   const navigate = useNavigate();
   const [gb, setGb] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -123,10 +125,28 @@ export default function GroupBuyView() {
     return [{ url: overrideUrl, altText: '', _id: 'override' }, ...withoutDupe];
   }, [gb, configs, selectedOption, hasOptions]);
 
+  // If a GB add-link is active and the customer wandered to a different group buy
+  // (different fulfillment timeline), bounce them back to the locked GB.
+  const lockedFamily = addToOrderInfo?.type === 'gb-cart' && Array.isArray(addToOrderInfo.allowedGroupBuyIds)
+    ? addToOrderInfo.allowedGroupBuyIds : null;
+  const isLockedToFamily = !!lockedFamily;
+  const isAllowedHere = !isLockedToFamily || lockedFamily.includes(id);
+
+  useEffect(() => {
+    if (isLockedToFamily && !isAllowedHere && addToOrderInfo?.rootGroupBuyId) {
+      toast.error('This add-link is locked to your original group buy.');
+      navigate(`/group-buys/${addToOrderInfo.rootGroupBuyId}`, { replace: true });
+    }
+  }, [isLockedToFamily, isAllowedHere, addToOrderInfo, navigate]);
+
   const addToCart = async () => {
     if (!user) { navigate('/login'); return; }
     if (hasOptions && !selectedOption) {
       toast.error('Please select an option');
+      return;
+    }
+    if (isLockedToFamily && !isAllowedHere) {
+      toast.error('You can only add items from your original group buy or its add-ons.');
       return;
     }
     setSubmitting(true);
@@ -142,6 +162,7 @@ export default function GroupBuyView() {
             optionGroupId: selectedOption.groupId,
             optionValueId: selectedOption.valueId,
           } : {}),
+          ...(addToOrderToken ? { addToOrderToken } : {}),
         }),
       });
       toast.success('Added to cart!');
