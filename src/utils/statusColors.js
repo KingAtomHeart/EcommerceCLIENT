@@ -55,7 +55,8 @@ export function statusPaletteKey(status) {
 export function statusStyle(status) {
   const key = statusPaletteKey(status);
   const pal = PALETTES[currentTheme()] || PALETTES.light;
-  return pal[key];
+  const entry = pal[key];
+  return { backgroundColor: entry.bg, color: entry.color };
 }
 
 export function StatusBadge({ status, label, style }) {

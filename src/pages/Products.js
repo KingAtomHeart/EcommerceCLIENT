@@ -82,9 +82,22 @@ export default function Products() {
     const q = search.toLowerCase();
     filtered = filtered.filter(p => p.name.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q));
   }
+  const tsOf = (p) => {
+    const d = p.createdAt ? new Date(p.createdAt).getTime() : NaN;
+    if (!isNaN(d)) return d;
+    // Fallback to Mongo ObjectId timestamp (first 4 bytes = seconds since epoch).
+    const id = p._id || '';
+    if (typeof id === 'string' && id.length >= 8) {
+      const secs = parseInt(id.slice(0, 8), 16);
+      if (!isNaN(secs)) return secs * 1000;
+    }
+    return 0;
+  };
   if (sort === 'price-asc') filtered = [...filtered].sort((a, b) => a.price - b.price);
   else if (sort === 'price-desc') filtered = [...filtered].sort((a, b) => b.price - a.price);
   else if (sort === 'name') filtered = [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+  else if (sort === 'newest') filtered = [...filtered].sort((a, b) => tsOf(b) - tsOf(a));
+  else if (sort === 'oldest') filtered = [...filtered].sort((a, b) => tsOf(a) - tsOf(b));
 
   const visible = filtered.slice(0, visibleCount);
 
@@ -104,6 +117,8 @@ export default function Products() {
           </div>
           <select value={sort} onChange={e => setSort(e.target.value)} className="form-input" style={{ borderRadius: 'var(--radius-pill)', width: 'auto', paddingRight: 34, cursor: 'pointer' }}>
             <option value="default">Sort: Default</option>
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
             <option value="price-asc">Price: Low → High</option>
             <option value="price-desc">Price: High → Low</option>
             <option value="name">Name: A–Z</option>

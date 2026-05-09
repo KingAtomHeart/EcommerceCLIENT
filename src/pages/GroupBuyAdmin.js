@@ -2,9 +2,9 @@ import { useState, useEffect, useContext, useRef } from 'react';
 import { Navigate } from 'react-router-dom';
 import UserContext from '../context/UserContext';
 import { apiFetch } from '../utils/api';
-import { statusPaletteKey, StatusBadge } from '../utils/statusColors';
+import { statusPaletteKey, StatusBadge, statusStyle } from '../utils/statusColors';
 import toast from 'react-hot-toast';
-import { RichText } from '../components/AdminView';
+import { RichText, AddressBlock, Detail, CopyButton } from '../components/AdminView';
 
 async function uploadOptionImage(file) {
   const fd = new FormData();
@@ -882,11 +882,13 @@ function OrdersPanel({ groupBuyId }) {
   );
 }
 
-export function UnifiedGBOrderCard({ items, updateOrderLocal, parentGbId, fetchOrders, typeTag }) {
-  const [expanded, setExpanded] = useState(false);
-  const [updatingId, setUpdatingId] = useState(null);
+export function UnifiedGBOrderCard({ items, updateOrderLocal, parentGbId, fetchOrders, typeTag, expanded: extExpanded, onToggle: extOnToggle }) {
+  const [intExpanded, setIntExpanded] = useState(false);
+  const expanded = extExpanded !== undefined ? extExpanded : intExpanded;
+  const onToggle = () => (extOnToggle ? extOnToggle() : setIntExpanded(e => !e));
+  const [updatingCart, setUpdatingCart] = useState(false);
   const [showAddItem, setShowAddItem] = useState(false);
-  const statuses = ['Confirmed', 'In Production', 'Shipped', 'Delivered', 'Cancelled'];
+  const statuses = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
 
   // Sort items: parent first, then add-ons
   const sorted = [...items].sort((a, b) => {
@@ -908,30 +910,78 @@ export function UnifiedGBOrderCard({ items, updateOrderLocal, parentGbId, fetchO
   const originalTotal = sorted.reduce((s, i) => s + (i.totalPrice || 0), 0);
   const primaryName = primary.groupBuyId?.name || 'Group Buy';
   const addonCount = sorted.filter(i => i.groupBuyId?.parentGroupBuyId).length;
-  // Header summary status: most common active status, or "Cancelled" if all cancelled
-  const headerStatus = activeItems.length === 0 ? 'Cancelled' : (() => {
-    const counts = {};
-    activeItems.forEach(i => { counts[i.status] = (counts[i.status] || 0) + 1; });
-    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
-  })();
+  // Cart-level status: all items share one. Map legacy values to current ones for display.
+  const legacyStatusMap = { 'Confirmed': 'Pending', 'In Production': 'Processing' };
+  const rawCartStatus = primary.status || 'Pending';
+  const cartStatus = legacyStatusMap[rawCartStatus] || rawCartStatus;
+  const headerStatus = activeItems.length === 0 ? 'Cancelled' : cartStatus;
 
+  // Update status for the entire cart (every item shares the same status).
+  const updateCartStatus = async (newStatus) => {
+    const allCancelled = sorted.every(i => i.status === 'Cancelled');
+    if (newStatus === 'Cancelled' && !allCancelled &&
+        !window.confirm('Cancel the entire group-buy order?\n\nStock will be restored and the customer will be automatically refunded for every item. This is hard to undo cleanly.')) return;
+    if (allCancelled && newStatus !== 'Cancelled' &&
+        !window.confirm('Reactivate this group-buy order?\n\nStock will be re-deducted and the customer will be automatically recharged. Proceed?')) return;
+    const prev = sorted.map(i => ({ id: i._id, status: i.status }));
+    setUpdatingCart(true);
+    sorted.forEach(i => updateOrderLocal(i._id, { status: newStatus }));
+    try {
+      await apiFetch('/group-buys/orders/cart-status', {
+        method: 'PATCH',
+        body: JSON.stringify({ status: newStatus, cartOrderCode: cartCode, cartCheckoutId: primary.cartCheckoutId }),
+      });
+      toast.success(newStatus === 'Cancelled' ? 'Order cancelled — stock restored' : `Status → ${newStatus}`);
+    } catch (err) {
+      prev.forEach(p => updateOrderLocal(p.id, { status: p.status }));
+      toast.error(err.message);
+    } finally { setUpdatingCart(false); }
+  };
+
+  const [updatingPackedId, setUpdatingPackedId] = useState(null);
+  const togglePacked = async (orderId, current) => {
+    setUpdatingPackedId(orderId);
+    updateOrderLocal(orderId, { packed: !current });
+    try {
+      await apiFetch(`/group-buys/orders/${orderId}/packed`, { method: 'PATCH', body: JSON.stringify({ packed: !current }) });
+    } catch (err) {
+      updateOrderLocal(orderId, { packed: current });
+      toast.error(err.message);
+    } finally { setUpdatingPackedId(null); }
+  };
+
+  // Per-item cancel/reactivate (kept separate from the cart-level status dropdown).
+  const [updatingItemId, setUpdatingItemId] = useState(null);
   const updateItemStatus = async (orderId, newStatus) => {
     const item = sorted.find(i => i._id === orderId);
     if (!item) return;
+    const wasCancelled = item.status === 'Cancelled';
+    if (newStatus === 'Cancelled' && !wasCancelled &&
+        !window.confirm('Cancel this item?\n\nStock will be restored and the customer will be automatically refunded for this item. It will appear struck-through in their order history.')) return;
+    if (wasCancelled && newStatus !== 'Cancelled' &&
+        !window.confirm('Reactivate this item?\n\nStock will be re-deducted and the customer will be automatically recharged for this item. Proceed?')) return;
     const prev = item.status;
-    setUpdatingId(orderId);
+    setUpdatingItemId(orderId);
     updateOrderLocal(orderId, { status: newStatus });
     try {
       await apiFetch(`/group-buys/orders/${orderId}/status`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) });
-      toast.success(newStatus === 'Cancelled' ? 'Item cancelled — stock restored' : `Status → ${newStatus}`);
-    }
-    catch (err) { updateOrderLocal(orderId, { status: prev }); toast.error(err.message); }
-    finally { setUpdatingId(null); }
+      toast.success(newStatus === 'Cancelled' ? 'Item cancelled — stock restored' : `Item reactivated`);
+    } catch (err) {
+      updateOrderLocal(orderId, { status: prev });
+      toast.error(err.message);
+    } finally { setUpdatingItemId(null); }
   };
 
   return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
-      <button type="button" onClick={() => setExpanded(e => !e)}
+    <div style={{
+      background: 'var(--surface)',
+      border: expanded ? '1px solid var(--accent)' : '1px solid var(--border)',
+      borderRadius: 'var(--radius-sm)',
+      overflow: 'hidden',
+      boxShadow: expanded ? '0 8px 24px rgba(0,0,0,0.12), 0 0 0 3px var(--accent-light)' : 'none',
+      transition: 'box-shadow 0.2s, border-color 0.2s',
+    }}>
+      <button type="button" onClick={onToggle}
         style={{ width: '100%', display: 'grid', gridTemplateColumns: 'auto auto 1fr 1fr 1fr auto auto', gap: '16px', alignItems: 'center', padding: '14px 20px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: 'var(--ink)' }}
         className="gb-order-header">
         <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"
@@ -948,7 +998,10 @@ export function UnifiedGBOrderCard({ items, updateOrderLocal, parentGbId, fetchO
             <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Order</p>
             {typeTag && <span className={`status-badge ${typeTag.className || 'status-red'}`} style={{ fontSize: '0.55rem', padding: '2px 6px', letterSpacing: '0.04em' }}>{typeTag.label}</span>}
           </div>
-          <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem', marginTop: 2 }}>{cartCode}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+            <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem' }}>{cartCode}</p>
+            <CopyButton value={cartCode} label="Order number" />
+          </div>
           <p style={{ fontSize: '0.76rem', color: 'var(--ink-muted)', marginTop: 2 }}>
             {primaryName}{addonCount > 0 && <span style={{ color: 'rgb(120,80,200)' }}> + {addonCount} add-on{addonCount > 1 ? 's' : ''}</span>}
           </p>
@@ -970,15 +1023,36 @@ export function UnifiedGBOrderCard({ items, updateOrderLocal, parentGbId, fetchO
 
       {expanded && (
         <div style={{ borderTop: '1px solid var(--border-subtle)', padding: '18px 22px', background: 'var(--bg-secondary)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '18px' }}>
-            <DetailItem label="Email" value={email || '—'} />
-            <DetailItem label="Phone" value={phone || ship.phone || '—'} />
-            <DetailItem label="Cart Order Code" value={cartCode} />
-            <DetailItem label="Placed" value={new Date(primary.createdAt).toLocaleString()} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '18px' }}>
+            <Detail label="Customer" value={customerName || '—'} copyable />
+            <Detail label="Email" value={email || '—'} copyable />
+            <Detail label="Phone" value={phone || ship.phone || '—'} copyable />
+            <Detail label="Placed" value={new Date(primary.createdAt).toLocaleString()} />
+            <Detail label="Payment status" value={primary.paymentStatus || '—'} />
+          </div>
+
+          {/* Addresses moved above items to match in-stock card layout. */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px', marginBottom: '18px' }} className="admin-order-addresses">
+            <AddressBlock title="Shipping Address" addr={ship?.fullName || ship?.street || ship?.city ? ship : null} />
+            <AddressBlock title="Billing Address" sameAsShipping />
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
-            <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Items ({sorted.length})</p>
+            {(() => {
+              const liveItems = sorted.filter(i => i.status !== 'Cancelled');
+              const packedCount = liveItems.filter(i => i.packed).length;
+              const allPacked = liveItems.length > 0 && packedCount === liveItems.length;
+              return (
+                <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>
+                  Items ({sorted.length})
+                  {liveItems.length > 0 && (
+                    <span style={{ marginLeft: 10, color: allPacked ? 'var(--accent)' : 'var(--ink-muted)' }}>
+                      · {packedCount}/{liveItems.length} packed{allPacked ? ' ✓' : ''}
+                    </span>
+                  )}
+                </p>
+              );
+            })()}
             {parentGbId && (
               <div style={{ display: 'flex', gap: 6 }}>
                 <button type="button" onClick={async () => {
@@ -1006,72 +1080,89 @@ export function UnifiedGBOrderCard({ items, updateOrderLocal, parentGbId, fetchO
               const itemConfigs = item.configurations || [];
               const itemKits = item.kits || [];
               const isCancelled = item.status === 'Cancelled';
-              const thumbUrl = !isAddon ? item.groupBuyId?.images?.[0]?.url : null;
+              const thumbUrl = item.groupBuyId?.images?.[0]?.url;
               return (
                 <div key={item._id} style={{ padding: '14px 16px', borderTop: idx > 0 ? '1px solid var(--border-subtle)' : 'none', opacity: isCancelled ? 0.55 : 1, background: isCancelled ? 'repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(0,0,0,0.02) 8px, rgba(0,0,0,0.02) 16px)' : 'transparent' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: !isAddon ? 'auto 1fr auto auto' : '1fr auto auto', gap: '12px', alignItems: 'center' }}>
-                    {!isAddon && (
-                      <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: 'var(--accent-light)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {thumbUrl
-                          ? <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          : <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1rem', color: 'var(--accent)' }}>{item.groupBuyId?.name?.[0]}</span>}
-                      </div>
-                    )}
-                    <div style={{ minWidth: 0 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'auto auto 1fr auto auto', gap: '12px', alignItems: 'center' }}>
+                    {/* Packing checklist — admin ticks as items go into the customer's box */}
+                    <label title={isCancelled ? 'Cancelled — cannot pack' : (item.packed ? 'Packed — uncheck to revert' : 'Mark as packed')}
+                      style={{ display: 'flex', alignItems: 'center', cursor: isCancelled ? 'not-allowed' : 'pointer' }}>
+                      <input type="checkbox" checked={!!item.packed} disabled={updatingPackedId === item._id || isCancelled}
+                        onChange={() => togglePacked(item._id, item.packed)}
+                        style={{ width: 16, height: 16, cursor: isCancelled ? 'not-allowed' : 'pointer', accentColor: 'var(--accent)' }} />
+                    </label>
+                    <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: 'var(--accent-light)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {thumbUrl
+                        ? <img src={thumbUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1rem', color: 'var(--accent)' }}>{item.groupBuyId?.name?.[0] || '?'}</span>}
+                    </div>
+                    <div style={{ minWidth: 0, color: item.packed && !isCancelled ? 'var(--ink-muted)' : 'inherit' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: 3 }}>
                         {isAddon && (
-                          <span style={{ fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: '8px', background: 'rgba(120,80,200,0.12)', color: 'rgb(120,80,200)' }}>Add-on</span>
+                          <span style={{ fontSize: '0.58rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '2px 6px', borderRadius: '6px', background: 'rgba(120,80,200,0.12)', color: 'rgb(120,80,200)' }}>Add-on</span>
                         )}
                         {item.addedAfterPurchase && (
-                          <span className="status-badge status-green" style={{ fontSize: '0.6rem', padding: '2px 7px' }}>Added</span>
+                          <span className="status-badge status-green" style={{ fontSize: '0.58rem', padding: '2px 6px' }}>Added</span>
                         )}
-                        <span style={{ fontSize: '0.9rem', fontWeight: 500, textDecoration: isCancelled ? 'line-through' : 'none' }}>{item.groupBuyId?.name || 'Group Buy'}</span>
+                        {/* Title includes the selected option inline so packers can scan at a glance. */}
+                        <span style={{ fontSize: '0.9rem', fontWeight: 600, textDecoration: isCancelled ? 'line-through' : (item.packed ? 'line-through' : 'none') }}>
+                          {item.groupBuyId?.name || 'Group Buy'}
+                          {item.selectedOption?.value ? ` — ${item.selectedOption.groupName}: ${item.selectedOption.value}` : ''}
+                        </span>
                         <span style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>× {item.quantity}</span>
                       </div>
-                      {item.selectedOption?.value && (
-                        <p style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>
-                          {item.selectedOption.groupName}: {item.selectedOption.value}
-                          {item.selectedOption.price ? ` — ₱${item.selectedOption.price.toLocaleString()}` : ''}
-                        </p>
-                      )}
                       {itemConfigs.length > 0 && (
-                        <p style={{ fontSize: '0.74rem', color: 'var(--ink-faint)', marginTop: 2 }}>
+                        <p style={{ fontSize: '0.78rem', color: 'var(--ink-muted)', marginTop: 2 }}>
                           {itemConfigs.map(c => `${c.name}: ${c.selected}`).join(' · ')}
                         </p>
                       )}
                       {itemKits.length > 0 && (
-                        <p style={{ fontSize: '0.74rem', color: 'var(--ink-faint)', marginTop: 2 }}>
+                        <p style={{ fontSize: '0.78rem', color: 'var(--ink-muted)', marginTop: 2 }}>
                           Kits: {itemKits.map(k => `${k.name} × ${k.quantity}`).join(' · ')}
                         </p>
                       )}
-                      <p style={{ fontSize: '0.66rem', color: 'var(--ink-faint)', marginTop: 4 }}>{item.orderCode}</p>
                     </div>
-                    <select value={item.status} onChange={e => updateItemStatus(item._id, e.target.value)}
-                      disabled={updatingId === item._id}
-                      className={`status-select status-${statusPaletteKey(item.status)}`}
-                      style={{ fontSize: '0.74rem' }}>
-                      {statuses.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                    {!isCancelled ? (
+                      <button type="button" onClick={() => updateItemStatus(item._id, 'Cancelled')} disabled={updatingItemId === item._id}
+                        title="Cancel this item — restores stock"
+                        style={{ fontSize: '0.7rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: '3px 9px', cursor: 'pointer' }}>
+                        Cancel
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => updateItemStatus(item._id, 'Pending')} disabled={updatingItemId === item._id}
+                        title="Reactivate this item"
+                        style={{ fontSize: '0.7rem', color: 'var(--accent)', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: '3px 9px', cursor: 'pointer' }}>
+                        Reactivate
+                      </button>
+                    )}
                     <span style={{ fontWeight: 600, fontSize: '0.88rem', whiteSpace: 'nowrap', textDecoration: isCancelled ? 'line-through' : 'none' }}>₱{item.totalPrice?.toLocaleString()}</span>
                   </div>
                 </div>
               );
             })}
-            <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.86rem' }}>
               {cancelledTotal > 0 && (
                 <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', color: 'var(--ink-muted)' }}>
-                    <span>Original total</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--ink-muted)' }}>
+                    <span>Original subtotal</span>
                     <span style={{ textDecoration: 'line-through' }}>₱{originalTotal.toLocaleString()}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', color: 'var(--ink-muted)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--ink-muted)' }}>
                     <span>Cancelled</span>
                     <span>−₱{cancelledTotal.toLocaleString()}</span>
                   </div>
                 </>
               )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '0.95rem', borderTop: cancelledTotal > 0 ? '1px solid var(--border-subtle)' : 'none', paddingTop: cancelledTotal > 0 ? 6 : 0 }}>
-                <span>Subtotal</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--ink-muted)' }}>Subtotal</span>
+                <span>₱{activeTotal.toLocaleString()}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--ink-muted)' }}>Shipping</span>
+                <span>—</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '0.95rem', paddingTop: 6, borderTop: '1px solid var(--border-subtle)' }}>
+                <span>Total</span>
                 <span>₱{activeTotal.toLocaleString()}</span>
               </div>
             </div>
@@ -1089,24 +1180,6 @@ export function UnifiedGBOrderCard({ items, updateOrderLocal, parentGbId, fetchO
             />
           )}
 
-          <div style={{ marginBottom: '14px' }}>
-            <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 8 }}>Shipping Address</p>
-            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '14px 16px' }}>
-              {ship.fullName || ship.street || ship.city ? (
-                <>
-                  <p style={{ fontSize: '0.88rem', fontWeight: 500 }}>{ship.fullName || '—'}</p>
-                  <p style={{ fontSize: '0.82rem', color: 'var(--ink-muted)' }}>{ship.phone || '—'}</p>
-                  <p style={{ fontSize: '0.84rem', marginTop: 6, lineHeight: 1.5 }}>
-                    {ship.street || '—'}<br />
-                    {[ship.city, ship.province, ship.zipCode].filter(Boolean).join(', ') || '—'}
-                  </p>
-                </>
-              ) : (
-                <p style={{ fontSize: '0.84rem', color: 'var(--ink-muted)', fontStyle: 'italic' }}>No address recorded</p>
-              )}
-            </div>
-          </div>
-
           {sorted.some(i => i.notes?.trim()) && (
             <div>
               <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 8 }}>Notes</p>
@@ -1117,6 +1190,27 @@ export function UnifiedGBOrderCard({ items, updateOrderLocal, parentGbId, fetchO
               ))}
             </div>
           )}
+
+          {/* One status dropdown per cart — applies to every line item. Setting Processing+ locks the customer's add-link. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '18px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>Order status:</span>
+            <select value={cartStatus} onChange={e => updateCartStatus(e.target.value)} disabled={updatingCart}
+              style={{
+                fontSize: '0.7rem', padding: '4px 26px 4px 12px', width: 'auto', borderRadius: 'var(--radius-pill)',
+                cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: 700,
+                letterSpacing: '0.05em', textTransform: 'uppercase',
+                ...statusStyle(cartStatus),
+                border: 'none', outline: 'none',
+                appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
+                backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' stroke='${encodeURIComponent(statusStyle(cartStatus).color)}' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>")`,
+                backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', backgroundSize: '10px 10px',
+              }}>
+              {statuses.map(s => <option key={s} value={s} style={{ background: 'var(--surface)', color: 'var(--ink)', fontWeight: 400 }}>{s}</option>)}
+            </select>
+            <span style={{ fontSize: '0.7rem', color: 'var(--ink-faint)' }}>
+              Processing+ locks the customer's add-link.
+            </span>
+          </div>
         </div>
       )}
       <style>{`
@@ -1252,16 +1346,6 @@ function AddItemToOrder({ parentGbId, cartOrderCode, cartCheckoutId, shippingAdd
     </div>
   );
 }
-
-function DetailItem({ label, value, mono }) {
-  return (
-    <div>
-      <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 2 }}>{label}</p>
-      <p style={{ fontSize: '0.84rem', fontFamily: mono ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>{value || '—'}</p>
-    </div>
-  );
-}
-
 
 /* ═══════════════════════════════════════════════
    CREATE GROUP BUY MODAL

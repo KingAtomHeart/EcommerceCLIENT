@@ -1,5 +1,33 @@
 import { useState } from 'react';
+import toast from 'react-hot-toast';
 import { StatusBadge } from '../utils/statusColors';
+
+function CopyButton({ value, label }) {
+  // Span (not button) so it can nest inside the header <button> without invalid HTML.
+  const onClick = async (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label || 'Value'} copied`);
+    } catch {
+      toast.error('Copy failed');
+    }
+  };
+  return (
+    <span role="button" tabIndex={0} onClick={onClick}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') onClick(e); }}
+      title={`Copy ${label?.toLowerCase() || 'value'}`}
+      className="oc-copy-btn"
+      style={{ display: 'inline-flex', cursor: 'pointer', padding: 2, lineHeight: 0, color: 'var(--ink-faint)', opacity: 0.45, transition: 'opacity 0.15s' }}>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+      </svg>
+    </span>
+  );
+}
 
 function Thumbnail({ url, name, size = 48 }) {
   return (
@@ -20,11 +48,15 @@ function TypeTag({ isGroupBuy }) {
   );
 }
 
-function Detail({ label, value, mono }) {
+function Detail({ label, value, mono, copyable }) {
+  const stringValue = typeof value === 'string' ? value : (value != null ? String(value) : '');
   return (
     <div>
       <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 2 }}>{label}</p>
-      <p style={{ fontSize: '0.86rem', fontFamily: mono ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>{value || '—'}</p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <p style={{ fontSize: '0.86rem', fontFamily: mono ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>{value || '—'}</p>
+        {copyable && stringValue && stringValue !== '—' && <CopyButton value={stringValue} label={label} />}
+      </div>
     </div>
   );
 }
@@ -47,12 +79,20 @@ export default function OrderCard({ order }) {
   const [open, setOpen] = useState(false);
 
   const isGrouped = !!order.isGrouped;
+  const firstItem = order.productsOrdered?.[0];
+  const extraInStock = Math.max(0, (order.productsOrdered?.length || 0) - 1);
   const title = isGrouped
     ? (order.groupBuyName || `${order.lineItems?.length || 0} items`)
     : order.isGroupBuy
       ? (order.groupBuyName || 'Group Buy')
-      : `Order ${order._id.slice(-8).toUpperCase()}`;
-  const firstItem = order.productsOrdered?.[0];
+      : `${firstItem?.productName || 'Order'}${extraInStock > 0 ? ` + ${extraInStock} more` : ''}`;
+  // Customer-facing order number: GB carts share a cartOrderCode; in-stock have orderNumber.
+  // Falls back to the truncated _id only for legacy orders the backfill hasn't touched yet.
+  const orderNumber = isGrouped
+    ? (order.cartOrderCode || order.orderCode || order._id?.slice(-8).toUpperCase())
+    : order.isGroupBuy
+      ? (order.cartOrderCode || order.orderCode || order._id?.slice(-8).toUpperCase())
+      : (order.orderNumber || order._id?.slice(-8).toUpperCase());
   const inStockImg = firstItem?.productImage
     || firstItem?.productId?.images?.[0]?.url
     || null;
@@ -101,19 +141,25 @@ export default function OrderCard({ order }) {
             <TypeTag isGroupBuy={order.isGroupBuy} />
           </div>
           <p style={{ fontSize: '0.95rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+            <span style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', fontFamily: 'monospace' }}>#{orderNumber}</span>
+            <CopyButton value={orderNumber} label="Order number" />
+          </div>
           <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)' }}>{new Date(order.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</p>
         </div>
         {(() => {
-          // For GB orders: main tag = group buy campaign status (open/closing-soon/production/etc).
-          // For in-stock: main tag = order.status.
-          // Only show "Cancelled" when EVERY item is cancelled.
+          // Main tag is the shipping/order status (Pending/Processing/Shipped/Delivered/Cancelled)
+          // for both in-stock and group-buy orders. Campaign phase moves to the detail grid below.
           if (order.isGroupBuy) {
             const allItemsCancelled = isGrouped
               ? (order.lineItems || []).length > 0 && (order.lineItems || []).every(li => li.status === 'Cancelled')
               : order.status === 'Cancelled';
             if (allItemsCancelled) return <StatusBadge status="Cancelled" />;
-            const campaignStatus = order.groupBuyStatus || 'open';
-            return <StatusBadge status={campaignStatus} label={campaignStatus.replace('-', ' ')} />;
+            // For grouped GB carts every item shares one status; pick the first non-cancelled.
+            const shippingStatus = isGrouped
+              ? (order.lineItems?.find(li => li.status !== 'Cancelled')?.status || order.status || 'Pending')
+              : (order.status || 'Pending');
+            return <StatusBadge status={shippingStatus} />;
           }
           // In-stock: show order.status; partial-item-cancellation doesn't flip order.status here
           const items = order.productsOrdered || [];
@@ -134,7 +180,7 @@ export default function OrderCard({ order }) {
         <div style={{ borderTop: '1px solid var(--border-subtle)', padding: '20px 22px', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', gap: '18px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px' }}>
             <Detail label="Placed" value={new Date(order.createdAt).toLocaleString()} />
-            <Detail label="Order ID" value={order.isGroupBuy ? (order.cartOrderCode || order.orderCode || order._id) : order._id} mono />
+            <Detail label="Order Number" value={orderNumber} mono copyable />
             {order.isGroupBuy && order.groupBuyStatus && <Detail label="Campaign Phase" value={order.groupBuyStatus.replace('-', ' ')} />}
           </div>
 
@@ -161,7 +207,6 @@ export default function OrderCard({ order }) {
                       </div>
                       {li.selectedOption?.value && <div style={{ fontSize: '0.78rem', color: 'var(--ink-muted)', marginTop: 2 }}>{li.selectedOption.groupName}: {li.selectedOption.value}</div>}
                       {cfg && <div style={{ fontSize: '0.78rem', color: 'var(--ink-muted)', marginTop: 2 }}>{cfg}</div>}
-                      <div style={{ marginTop: 4 }}><StatusBadge status={li.status} /></div>
                     </span>
                     <span style={{ fontWeight: 500, textDecoration: cancelled ? 'line-through' : 'none' }}>₱{li.totalPrice?.toLocaleString()}</span>
                   </div>
@@ -257,6 +302,7 @@ export default function OrderCard({ order }) {
       )}
       <style>{`
         .order-card-header:hover { background: var(--bg-secondary); }
+        .oc-copy-btn:hover { opacity: 0.95 !important; color: var(--accent) !important; }
         .oc-section-title { font-size: 0.66rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 8px; }
         @media (max-width: 720px) {
           .order-card-header { grid-template-columns: auto auto 1fr auto !important; row-gap: 10px !important; }

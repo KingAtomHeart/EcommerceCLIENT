@@ -4,6 +4,7 @@ import UserContext from '../context/UserContext';
 import AddToOrderContext from '../context/AddToOrderContext';
 import ProductCard from '../components/ProductCard';
 import { RichText } from '../components/AdminView';
+import { LandingPageRenderer } from '../components/LandingPage';
 import { apiFetch } from '../utils/api';
 import { allowedValuesForTarget } from '../utils/availabilityRules';
 import { resolveImages, findVariant, allowedValuesFor } from '../utils/variants';
@@ -570,6 +571,12 @@ export default function ProductView() {
           </div>
         </div>
       </div>
+
+      {Array.isArray(product.landingPage) && product.landingPage.length > 0 && (
+        <div style={{ borderTop: '1px solid var(--border)' }}>
+          <LandingPageRenderer blocks={product.landingPage} />
+        </div>
+      )}
 
       {related.length > 0 && (
         <section style={{ padding: '64px var(--page-pad) 80px', borderTop: '1px solid var(--border)' }}>

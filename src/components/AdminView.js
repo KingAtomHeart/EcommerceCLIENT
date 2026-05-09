@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
-import { StatusBadge, statusStyle, statusPaletteKey } from '../utils/statusColors';
+import { StatusBadge, statusStyle } from '../utils/statusColors';
 import { useTheme } from '../context/ThemeContext';
 import toast from 'react-hot-toast';
 import AdminHomepageEditor from './AdminHomepageEditor';
 import GroupBuyAdmin, { UnifiedGBOrderCard } from '../pages/GroupBuyAdmin';
+import { LandingPageEditor, serializeLandingPage } from './LandingPage';
 
 const VALID_TABS = ['products', 'group-buys', 'orders', 'stats', 'homepage'];
 
@@ -640,6 +641,7 @@ function EditProductCard({ product, fetchData, onClose, inline }) {
     category: product.category
   });
   const [specs, setSpecs] = useState((product.specifications || []).map(s => ({ label: s.label, value: s.value })));
+  const [landingPage, setLandingPage] = useState(() => (product.landingPage || []).map(b => ({ _id: b._id, type: b.type, data: b.data || {} })));
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
@@ -650,6 +652,7 @@ function EditProductCard({ product, fetchData, onClose, inline }) {
         ...form,
         stocks: form.stocks === '' || form.stocks == null ? -1 : Number(form.stocks),
         specifications: specs.filter(s => s.label.trim() && s.value.trim()),
+        landingPage: serializeLandingPage(landingPage),
       };
       await apiFetch(`/products/${product._id}/update`, {
         method: 'PATCH',
@@ -731,6 +734,11 @@ function EditProductCard({ product, fetchData, onClose, inline }) {
             + Add Specification
           </button>
         </div>
+
+        {/* Landing page editor — collapsible to keep the inline edit panel compact */}
+        <CollapsibleSection title="Landing Page" summary={landingPage.length > 0 ? `${landingPage.length} block${landingPage.length === 1 ? '' : 's'}` : 'optional'}>
+          <LandingPageEditor value={landingPage} onChange={setLandingPage} />
+        </CollapsibleSection>
 
         <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
           <button className="btn-dark" disabled={saving} onClick={save} style={{ padding: '10px 24px' }}><span>{saving ? 'Saving...' : 'Save'}</span></button>
@@ -1709,6 +1717,9 @@ function OrdersPanel({ orders, gbOrders = [], loading, fetchOrders, updateOrderL
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null); // { orders: [], gbOrders: [] } | null
   const [searching, setSearching] = useState(false);
+  // One card open at a time. Key includes type prefix so in-stock and GB IDs don't collide.
+  const [expandedKey, setExpandedKey] = useState(null);
+  const toggleExpanded = (key) => setExpandedKey(prev => prev === key ? null : key);
 
   const productNames = Array.from(
     new Set(orders.flatMap(o => (o.productsOrdered || []).map(p => p.productName).filter(Boolean)))
@@ -1842,17 +1853,22 @@ function OrdersPanel({ orders, gbOrders = [], loading, fetchOrders, updateOrderL
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--ink-muted)' }}>No orders yet.</div>
       ) : view === 'list' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          {unified.map(entry => entry.type === 'instock' ? (
-            <OrderRow key={'is-' + entry.order._id} order={entry.order} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal}
-              typeTag={{ label: 'In Stock', className: 'status-amber' }} />
-          ) : (
-            <UnifiedGBOrderCard key={'gb-' + entry.group.key}
-              items={entry.group.items}
-              updateOrderLocal={updateGbOrderLocal}
-              parentGbId={entry.group.items.find(i => !i.groupBuyId?.parentGroupBuyId)?.groupBuyId?._id || entry.group.items[0]?.groupBuyId?._id}
-              fetchOrders={fetchOrders}
-              typeTag={{ label: 'Group Buy', className: 'status-red' }} />
-          ))}
+          {unified.map(entry => {
+            const key = entry.type === 'instock' ? 'is-' + entry.order._id : 'gb-' + entry.group.key;
+            return entry.type === 'instock' ? (
+              <OrderRow key={key} order={entry.order} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal}
+                typeTag={{ label: 'In Stock', className: 'status-amber' }}
+                expanded={expandedKey === key} onToggle={() => toggleExpanded(key)} />
+            ) : (
+              <UnifiedGBOrderCard key={key}
+                items={entry.group.items}
+                updateOrderLocal={updateGbOrderLocal}
+                parentGbId={entry.group.items.find(i => !i.groupBuyId?.parentGroupBuyId)?.groupBuyId?._id || entry.group.items[0]?.groupBuyId?._id}
+                fetchOrders={fetchOrders}
+                typeTag={{ label: 'Group Buy', className: 'status-red' }}
+                expanded={expandedKey === key} onToggle={() => toggleExpanded(key)} />
+            );
+          })}
         </div>
       ) : (
         <OrdersCalendar orders={filteredInStock} fetchOrders={fetchOrders} updateOrderLocal={updateOrderLocal} />
@@ -2282,13 +2298,19 @@ function StatTile({ label, value, sub, subColor, accent }) {
   );
 }
 
-function OrderRow({ order, fetchOrders, updateOrderLocal, typeTag }) {
-  const [expanded, setExpanded] = useState(false);
+function OrderRow({ order, fetchOrders, updateOrderLocal, typeTag, expanded: extExpanded, onToggle: extOnToggle }) {
+  const [intExpanded, setIntExpanded] = useState(false);
+  const expanded = extExpanded !== undefined ? extExpanded : intExpanded;
+  const onToggle = () => (extOnToggle ? extOnToggle() : setIntExpanded(e => !e));
   const [updating, setUpdating] = useState(false);
   const [updatingItemId, setUpdatingItemId] = useState(null);
   const [showAddItem, setShowAddItem] = useState(false);
   const statuses = ['Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled'];
   const updateStatus = async (newStatus) => {
+    if (newStatus === 'Cancelled' && order.status !== 'Cancelled' &&
+        !window.confirm('Cancel the entire order?\n\nStock will be restored and the customer will be automatically refunded for every item. This is hard to undo cleanly.')) return;
+    if (order.status === 'Cancelled' && newStatus !== 'Cancelled' &&
+        !window.confirm('Reactivate this order?\n\nStock will be re-deducted and the customer will be automatically recharged. Proceed?')) return;
     const prev = order.status;
     setUpdating(true);
     if (updateOrderLocal) updateOrderLocal(order._id, { status: newStatus });
@@ -2310,6 +2332,12 @@ function OrderRow({ order, fetchOrders, updateOrderLocal, typeTag }) {
     } catch (err) { toast.error(err.message); }
   };
   const updateItemStatus = async (itemId, newStatus) => {
+    const item = items.find(it => it._id === itemId);
+    const wasCancelled = item?.status === 'Cancelled';
+    if (newStatus === 'Cancelled' && !wasCancelled &&
+        !window.confirm('Cancel this item?\n\nStock will be restored and the customer will be automatically refunded for this item. The item will appear struck-through in their order history.')) return;
+    if (wasCancelled && newStatus !== 'Cancelled' &&
+        !window.confirm('Reactivate this item?\n\nStock will be re-deducted and the customer will be automatically recharged for this item. Proceed?')) return;
     setUpdatingItemId(itemId);
     try {
       const res = await apiFetch(`/orders/${order._id}/items/${itemId}/status`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) });
@@ -2320,10 +2348,20 @@ function OrderRow({ order, fetchOrders, updateOrderLocal, typeTag }) {
     } catch (err) { toast.error(err.message); fetchOrders?.(); }
     finally { setUpdatingItemId(null); }
   };
+  const togglePacked = async (itemId, current) => {
+    setUpdatingItemId(itemId);
+    try {
+      const res = await apiFetch(`/orders/${order._id}/items/${itemId}/packed`, { method: 'PATCH', body: JSON.stringify({ packed: !current }) });
+      if (res.order && updateOrderLocal) updateOrderLocal(order._id, res.order);
+      else fetchOrders?.();
+    } catch (err) { toast.error(err.message); fetchOrders?.(); }
+    finally { setUpdatingItemId(null); }
+  };
   const customer = order.userId;
   const name = typeof customer === 'object' ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim() : 'Unknown';
   const email = typeof customer === 'object' ? customer.email : '';
-  const orderNum = order._id.slice(-8).toUpperCase();
+  const phone = typeof customer === 'object' ? customer.mobileNo : '';
+  const orderNum = order.orderNumber || order._id.slice(-8).toUpperCase();
   const ship = order.shippingAddress;
   const bill = order.billingAddress;
   const billSameAsShip = !bill || !ship || (
@@ -2336,16 +2374,26 @@ function OrderRow({ order, fetchOrders, updateOrderLocal, typeTag }) {
   const subtotal = activeItems.reduce((n, p) => n + (p.subtotal || 0), 0);
   const cancelledTotal = cancelledItems.reduce((n, p) => n + (p.subtotal || 0), 0);
   const originalSubtotal = items.reduce((n, p) => n + (p.subtotal || 0), 0);
+  const primaryThumb = items[0]?.productImage || null;
+  const primaryItemName = items[0]?.productName || 'Order';
+  const extraItemCount = Math.max(0, items.length - 1);
 
   return (
-    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+    <div style={{
+      background: 'var(--surface)',
+      border: expanded ? '1px solid var(--accent)' : '1px solid var(--border)',
+      borderRadius: 'var(--radius-sm)',
+      overflow: 'hidden',
+      boxShadow: expanded ? '0 8px 24px rgba(0,0,0,0.12), 0 0 0 3px var(--accent-light)' : 'none',
+      transition: 'box-shadow 0.2s, border-color 0.2s',
+    }}>
       <button
         type="button"
-        onClick={() => setExpanded(e => !e)}
+        onClick={onToggle}
         style={{
-          width: '100%', display: 'grid', gridTemplateColumns: 'auto 1fr 1fr 1fr auto auto',
-          gap: '20px', alignItems: 'center',
-          padding: '16px 22px', background: 'transparent', border: 'none',
+          width: '100%', display: 'grid', gridTemplateColumns: 'auto auto 1fr 1fr 1fr auto auto',
+          gap: '16px', alignItems: 'center',
+          padding: '14px 20px', background: 'transparent', border: 'none',
           cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', color: 'var(--ink)',
         }}
         className="admin-order-header"
@@ -2354,32 +2402,47 @@ function OrderRow({ order, fetchOrders, updateOrderLocal, typeTag }) {
           style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', color: 'var(--ink-muted)' }}>
           <polyline points="9 18 15 12 9 6"/>
         </svg>
+        <div style={{ width: 56, height: 56, borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: 'var(--accent-light)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {primaryThumb
+            ? <img src={primaryThumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.4rem', color: 'var(--accent)' }}>{primaryItemName?.[0] || 'O'}</span>}
+        </div>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Order</p>
             {typeTag && <span className={`status-badge ${typeTag.className || 'status-amber'}`} style={{ fontSize: '0.55rem', padding: '2px 6px', letterSpacing: '0.04em' }}>{typeTag.label}</span>}
           </div>
-          <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem', marginTop: 2 }}>{orderNum}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+            <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '0.95rem' }}>{orderNum}</p>
+            <CopyButton value={orderNum} label="Order number" />
+          </div>
+          <p style={{ fontSize: '0.76rem', color: 'var(--ink-muted)', marginTop: 2 }}>
+            {primaryItemName}{extraItemCount > 0 && <span> + {extraItemCount} more</span>}
+          </p>
         </div>
         <div>
           <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Customer</p>
-          <p style={{ fontSize: '0.88rem', fontWeight: 500, marginTop: 2 }}>{name || '—'}</p>
+          <p style={{ fontSize: '0.86rem', fontWeight: 500, marginTop: 2 }}>{name || '—'}</p>
         </div>
         <div>
           <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Date</p>
-          <p style={{ fontSize: '0.88rem', marginTop: 2 }}>{new Date(order.createdAt).toLocaleDateString()}</p>
+          <p style={{ fontSize: '0.86rem', marginTop: 2 }}>{new Date(order.createdAt).toLocaleDateString()}</p>
         </div>
         <StatusBadge status={order.status} />
-        <span style={{ fontWeight: 600, fontSize: '0.95rem', whiteSpace: 'nowrap' }}>₱{order.totalPrice?.toLocaleString()}</span>
+        <span style={{ fontWeight: 600, fontSize: '0.92rem', whiteSpace: 'nowrap' }}>
+          ₱{(subtotal + (order.shippingFee || 0)).toLocaleString()}
+          {cancelledTotal > 0 && <span style={{ display: 'block', fontSize: '0.7rem', fontWeight: 400, color: 'var(--ink-faint)', textAlign: 'right' }}>−₱{cancelledTotal.toLocaleString()} cancelled</span>}
+        </span>
       </button>
 
       {expanded && (
-        <div style={{ borderTop: '1px solid var(--border-subtle)', padding: '20px 24px', background: 'var(--bg-secondary)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '18px', marginBottom: '18px' }}>
-            <Detail label="Email" value={email || '—'} />
-            <Detail label="Order ID" value={order._id} mono />
-            <Detail label="Payment status" value={order.paymentStatus || 'n/a'} />
+        <div style={{ borderTop: '1px solid var(--border-subtle)', padding: '18px 22px', background: 'var(--bg-secondary)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '18px' }}>
+            <Detail label="Customer" value={name || '—'} copyable />
+            <Detail label="Email" value={email || '—'} copyable />
+            <Detail label="Phone" value={phone || ship?.phone || '—'} copyable />
             <Detail label="Placed" value={new Date(order.createdAt).toLocaleString()} />
+            <Detail label="Payment status" value={order.paymentStatus || '—'} />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px', marginBottom: '18px' }} className="admin-order-addresses">
@@ -2389,7 +2452,21 @@ function OrderRow({ order, fetchOrders, updateOrderLocal, typeTag }) {
 
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: 8 }}>
-              <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Products ({items.length})</p>
+              {(() => {
+                const liveItems = items.filter(it => it.status !== 'Cancelled');
+                const packedCount = liveItems.filter(it => it.packed).length;
+                const allPacked = liveItems.length > 0 && packedCount === liveItems.length;
+                return (
+                  <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>
+                    Items ({items.length})
+                    {liveItems.length > 0 && (
+                      <span style={{ marginLeft: 10, color: allPacked ? 'var(--accent)' : 'var(--ink-muted)' }}>
+                        · {packedCount}/{liveItems.length} packed{allPacked ? ' ✓' : ''}
+                      </span>
+                    )}
+                  </p>
+                );
+              })()}
               <div style={{ display: 'flex', gap: 6 }}>
                 <button type="button" onClick={() => generateAddLink({ type: 'order', orderId: order._id })}
                   style={{ fontSize: '0.7rem', padding: '4px 10px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
@@ -2407,22 +2484,58 @@ function OrderRow({ order, fetchOrders, updateOrderLocal, typeTag }) {
             <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
               {items.map((item, i) => {
                 const cancelled = item.status === 'Cancelled';
+                const busy = updatingItemId === item._id || !item._id;
+                const itemThumb = item.productImage;
+                const optionLabel = item.selectedOption?.value
+                  ? `${item.selectedOption.groupName}: ${item.selectedOption.value}` : '';
+                const variantLabel = item.variantAttributes
+                  ? Object.entries(typeof item.variantAttributes === 'object' ? item.variantAttributes : {}).map(([k, v]) => `${k}: ${v}`).join(' · ')
+                  : '';
+                const configLabel = (item.configurations || []).map(c => `${c.name}: ${c.selected}`).join(' · ');
                 return (
-                  <div key={item._id || i} style={{ padding: '10px 14px', borderTop: i > 0 ? '1px solid var(--border-subtle)' : 'none', opacity: cancelled ? 0.55 : 1, background: cancelled ? 'repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(0,0,0,0.02) 8px, rgba(0,0,0,0.02) 16px)' : 'transparent' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.86rem', minWidth: 0, textDecoration: cancelled ? 'line-through' : 'none' }}>
-                        {item.addedAfterPurchase && (
-                          <span className="status-badge status-green" style={{ fontSize: '0.58rem', padding: '2px 7px', marginRight: 8 }}>Added</span>
+                  <div key={item._id || i} style={{ padding: '14px 16px', borderTop: i > 0 ? '1px solid var(--border-subtle)' : 'none', opacity: cancelled ? 0.55 : 1, background: cancelled ? 'repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(0,0,0,0.02) 8px, rgba(0,0,0,0.02) 16px)' : 'transparent' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'auto auto 1fr auto auto', gap: 12, alignItems: 'center' }}>
+                      {/* Packing checklist — admin ticks as items go into the customer's box */}
+                      <label title={cancelled ? 'Cancelled — cannot pack' : (item.packed ? 'Packed — uncheck to revert' : 'Mark as packed')}
+                        style={{ display: 'flex', alignItems: 'center', cursor: cancelled ? 'not-allowed' : 'pointer' }}>
+                        <input type="checkbox" checked={!!item.packed} disabled={busy || cancelled}
+                          onChange={() => togglePacked(item._id, item.packed)}
+                          style={{ width: 16, height: 16, cursor: cancelled ? 'not-allowed' : 'pointer', accentColor: 'var(--accent)' }} />
+                      </label>
+                      <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: 'var(--accent-light)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {itemThumb
+                          ? <img src={itemThumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1rem', color: 'var(--accent)' }}>{item.productName?.[0] || '?'}</span>}
+                      </div>
+                      <div style={{ minWidth: 0, color: item.packed && !cancelled ? 'var(--ink-muted)' : 'inherit' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
+                          {item.addedAfterPurchase && (
+                            <span className="status-badge status-green" style={{ fontSize: '0.58rem', padding: '2px 6px' }}>Added</span>
+                          )}
+                          {/* Title includes the selected option inline so packers can scan at a glance. */}
+                          <span style={{ fontSize: '0.9rem', fontWeight: 600, textDecoration: cancelled ? 'line-through' : (item.packed ? 'line-through' : 'none') }}>
+                            {item.productName}{optionLabel ? ` — ${optionLabel}` : ''}
+                          </span>
+                          <span style={{ fontSize: '0.78rem', color: 'var(--ink-muted)' }}>× {item.quantity}</span>
+                        </div>
+                        {(variantLabel || configLabel) && (
+                          <p style={{ fontSize: '0.78rem', color: 'var(--ink-muted)', marginTop: 2 }}>{variantLabel || configLabel}</p>
                         )}
-                        {item.productName} <span style={{ color: 'var(--ink-muted)' }}>× {item.quantity}</span>
-                      </span>
-                      <select value={item.status || 'Pending'} onChange={e => updateItemStatus(item._id, e.target.value)}
-                        disabled={updatingItemId === item._id || !item._id}
-                        className={`status-select status-${statusPaletteKey(item.status || 'Pending')}`}
-                        style={{ fontSize: '0.74rem' }}>
-                        {statuses.map(s => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                      <span style={{ fontWeight: 500, textDecoration: cancelled ? 'line-through' : 'none', whiteSpace: 'nowrap' }}>₱{item.subtotal?.toLocaleString()}</span>
+                      </div>
+                      {!cancelled ? (
+                        <button type="button" onClick={() => updateItemStatus(item._id, 'Cancelled')} disabled={busy}
+                          title="Cancel this item — restores stock"
+                          style={{ fontSize: '0.7rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: '3px 9px', cursor: 'pointer' }}>
+                          Cancel
+                        </button>
+                      ) : (
+                        <button type="button" onClick={() => updateItemStatus(item._id, 'Pending')} disabled={busy}
+                          title="Reactivate this item"
+                          style={{ fontSize: '0.7rem', color: 'var(--accent)', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: '3px 9px', cursor: 'pointer' }}>
+                          Reactivate
+                        </button>
+                      )}
+                      <span style={{ fontWeight: 600, fontSize: '0.88rem', textDecoration: cancelled ? 'line-through' : 'none', whiteSpace: 'nowrap' }}>₱{item.subtotal?.toLocaleString()}</span>
                     </div>
                   </div>
                 );
@@ -2456,16 +2569,30 @@ function OrderRow({ order, fetchOrders, updateOrderLocal, typeTag }) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '18px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.8rem', color: 'var(--ink-muted)' }}>Order status:</span>
-            <select value={order.status} onChange={e => updateStatus(e.target.value)} disabled={updating} className="form-input" style={{ fontSize: '0.8rem', padding: '6px 10px', width: 'auto', borderRadius: 'var(--radius-pill)', cursor: 'pointer' }}>
-              {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+            <select value={order.status} onChange={e => updateStatus(e.target.value)} disabled={updating}
+              style={{
+                fontSize: '0.7rem', padding: '4px 26px 4px 12px', width: 'auto', borderRadius: 'var(--radius-pill)',
+                cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontWeight: 700,
+                letterSpacing: '0.05em', textTransform: 'uppercase',
+                ...statusStyle(order.status),
+                border: 'none', outline: 'none',
+                appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
+                backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' stroke='${encodeURIComponent(statusStyle(order.status).color)}' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>")`,
+                backgroundRepeat: 'no-repeat', backgroundPosition: 'right 8px center', backgroundSize: '10px 10px',
+              }}>
+              {statuses.map(s => <option key={s} value={s} style={{ background: 'var(--surface)', color: 'var(--ink)', fontWeight: 400 }}>{s}</option>)}
             </select>
+            <span style={{ fontSize: '0.7rem', color: 'var(--ink-faint)' }}>
+              Processing+ locks the customer's add-link.
+            </span>
           </div>
         </div>
       )}
       <style>{`
         .admin-order-header:hover { background: var(--bg-secondary) !important; }
+        .copy-btn:hover { opacity: 0.95 !important; color: var(--accent) !important; }
         @media (max-width: 820px) {
           .admin-order-header { grid-template-columns: auto 1fr !important; row-gap: 8px !important; }
           .admin-order-addresses { grid-template-columns: 1fr !important; }
@@ -2610,28 +2737,74 @@ function AddProductToOrder({ orderId, onClose, onAdded }) {
   );
 }
 
-function Detail({ label, value, mono }) {
+// Small inline copy-to-clipboard button. Lowkey by default; brightens on hover.
+export function CopyButton({ value, label }) {
+  // Span (not button) so it can nest inside another <button> without invalid HTML.
+  const onClick = async (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label || 'Value'} copied`);
+    } catch {
+      toast.error('Copy failed');
+    }
+  };
+  return (
+    <span role="button" tabIndex={0} onClick={onClick}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { onClick(e); } }}
+      title={`Copy ${label?.toLowerCase() || 'value'}`}
+      className="copy-btn"
+      style={{ display: 'inline-flex', cursor: 'pointer', padding: 2, lineHeight: 0, color: 'var(--ink-faint)', opacity: 0.45, transition: 'opacity 0.15s' }}>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+      </svg>
+    </span>
+  );
+}
+
+export function Detail({ label, value, mono, copyable, copyValue }) {
+  const stringValue = typeof value === 'string' ? value : (value != null ? String(value) : '');
   return (
     <div>
       <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 2 }}>{label}</p>
-      <p style={{ fontSize: '0.86rem', fontFamily: mono ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>{value || '—'}</p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <p style={{ fontSize: '0.86rem', fontFamily: mono ? 'monospace' : 'inherit', wordBreak: 'break-all' }}>{value || '—'}</p>
+        {copyable && stringValue && stringValue !== '—' && <CopyButton value={copyValue || stringValue} label={label} />}
+      </div>
     </div>
   );
 }
 
-function AddressBlock({ title, addr, sameAsShipping }) {
+// Accepts either `postalCode` (in-stock orders) or `zipCode` (GB orders) so a single
+// component can render both without prop juggling. Header has a copy button that copies
+// the formatted address as a single block (good for pasting into shipping forms).
+export function AddressBlock({ title, addr, sameAsShipping }) {
+  const cityLine = addr ? [addr.city, addr.province, addr.postalCode || addr.zipCode].filter(Boolean).join(', ') : '';
+  const addressOnly = addr ? [addr.street, cityLine].filter(Boolean).join('\n') : '';
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '14px 16px' }}>
-      <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 8 }}>{title}</p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <p style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>{title}</p>
+        {!sameAsShipping && addr && addressOnly && <CopyButton value={addressOnly} label={`${title} (street only)`} />}
+      </div>
       {sameAsShipping ? (
         <p style={{ fontSize: '0.84rem', color: 'var(--ink-muted)', fontStyle: 'italic' }}>Same as shipping address</p>
       ) : addr ? (
         <>
-          <p style={{ fontSize: '0.9rem', fontWeight: 500 }}>{addr.fullName || '—'}</p>
-          <p style={{ fontSize: '0.82rem', color: 'var(--ink-muted)' }}>{addr.phone || '—'}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <p style={{ fontSize: '0.9rem', fontWeight: 500 }}>{addr.fullName || '—'}</p>
+            {addr.fullName && <CopyButton value={addr.fullName} label="Name" />}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <p style={{ fontSize: '0.82rem', color: 'var(--ink-muted)' }}>{addr.phone || '—'}</p>
+            {addr.phone && <CopyButton value={addr.phone} label="Phone" />}
+          </div>
           <p style={{ fontSize: '0.84rem', marginTop: 6, lineHeight: 1.5 }}>
             {addr.street || '—'}<br />
-            {[addr.city, addr.province, addr.postalCode].filter(Boolean).join(', ') || '—'}
+            {cityLine || '—'}
           </p>
         </>
       ) : (
@@ -2645,6 +2818,34 @@ function AddressBlock({ title, addr, sameAsShipping }) {
 /* ═══════════════════════════════════════════════
    CREATE PRODUCT MODAL
 ═══════════════════════════════════════════════ */
+function CollapsibleSection({ title, summary, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="modal-section" style={{ padding: 0 }}>
+      <button type="button" onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '12px 14px', background: 'none', border: 'none', cursor: 'pointer',
+          fontFamily: "'DM Sans', sans-serif", textAlign: 'left',
+        }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span className="modal-section-title" style={{ margin: 0 }}>{title}</span>
+          {summary && (
+            <span style={{ fontSize: '0.7rem', color: 'var(--ink-faint)', fontWeight: 400 }}>
+              {summary}
+            </span>
+          )}
+        </span>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8"
+          style={{ color: 'var(--ink-muted)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+          <path d="M3 5l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      {open && <div style={{ padding: '0 14px 14px' }}>{children}</div>}
+    </div>
+  );
+}
+
 function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentName }) {
   const [form, setForm] = useState({ name: '', description: '', price: '', stocks: '', category: '' });
   const [images, setImages] = useState([]);
@@ -2653,6 +2854,7 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
   const [urlPreviews, setUrlPreviews] = useState([]);
   const [optionGroups, setOptionGroups] = useState([]);
   const [specs, setSpecs] = useState([]);
+  const [landingPage, setLandingPage] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [descPreview, setDescPreview] = useState(false);
 
@@ -2905,12 +3107,14 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
         return { useVariants: true, variantDimensions, variants };
       };
       const variantPayload = buildVariants();
-      if (optionGroups.length > 0 || filteredSpecs.length > 0 || variantPayload) {
+      const landingPagePayload = serializeLandingPage(landingPage);
+      if (optionGroups.length > 0 || filteredSpecs.length > 0 || variantPayload || landingPagePayload.length > 0) {
         await apiFetch(`/products/${product._id}/update`, {
           method: 'PATCH',
           body: JSON.stringify({
             options: optionGroups,
             specifications: filteredSpecs,
+            landingPage: landingPagePayload,
             ...(variantPayload || {}),
           })
         });
@@ -2982,8 +3186,7 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
           </div>
 
           {/* Images */}
-          <div className="modal-section">
-            <p className="modal-section-title">Images</p>
+          <CollapsibleSection title="Images" summary={(imagePreviews.length + urlPreviews.length) > 0 ? `${imagePreviews.length + urlPreviews.length} added` : 'optional'}>
             <div className="img-upload-zone">
               <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               <p>Click or drag to upload images (max 10MB each)</p>
@@ -3030,11 +3233,10 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
                 ))}
               </div>
             )}
-          </div>
+          </CollapsibleSection>
 
           {/* Specifications */}
-          <div className="modal-section">
-            <p className="modal-section-title">Specifications</p>
+          <CollapsibleSection title="Specifications" summary={specs.filter(s => s.label.trim() && s.value.trim()).length > 0 ? `${specs.filter(s => s.label.trim() && s.value.trim()).length} row${specs.filter(s => s.label.trim() && s.value.trim()).length === 1 ? '' : 's'}` : 'optional'}>
             <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
               Optional. Add custom spec rows shown on the product page (e.g. Layout → 65%, Weight → 1.2kg).
             </p>
@@ -3055,11 +3257,10 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
               style={{ marginTop: '4px', fontSize: '0.78rem', color: 'var(--accent)', background: 'none', border: '1px solid var(--accent)', borderRadius: 'var(--radius-pill)', padding: '5px 14px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
               + Add Specification
             </button>
-          </div>
+          </CollapsibleSection>
 
           {/* Add Options */}
-          <div className="modal-section">
-            <p className="modal-section-title">Add Options</p>
+          <CollapsibleSection title="Add Options" summary={optionGroups.length > 0 ? `${optionGroups.length} group${optionGroups.length === 1 ? '' : 's'}` : 'optional'}>
             <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
               Each option's price is <strong>added on top of the base price</strong> above (e.g. base ₱5,000 + Novelties +₱2,300 = ₱7,300).
               Leave this section empty if the product has a single price.
@@ -3105,28 +3306,25 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addOptGroup(); } }} />
               <button type="button" onClick={addOptGroup} className="config-add-btn">+ Add Group</button>
             </div>
-          </div>
+          </CollapsibleSection>
 
           {/* Variants */}
-          <div className="modal-section">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '8px' }}>
-              <p className="modal-section-title" style={{ margin: 0 }}>Variants</p>
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', overflow: 'hidden', fontSize: '0.7rem' }}>
-                  <button type="button" onClick={() => switchVariantMode('matrix')}
-                    style={{ padding: '4px 10px', background: variantMode === 'matrix' ? 'var(--accent)' : 'transparent', color: variantMode === 'matrix' ? '#fff' : 'var(--ink-muted)', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                    Matrix
-                  </button>
-                  <button type="button" onClick={() => switchVariantMode('list')}
-                    style={{ padding: '4px 10px', background: variantMode === 'list' ? 'var(--accent)' : 'transparent', color: variantMode === 'list' ? '#fff' : 'var(--ink-muted)', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                    List
-                  </button>
-                </div>
-                <button type="button" onClick={() => setShowJsonImport(s => !s)}
-                  style={{ fontSize: '0.72rem', color: 'var(--accent)', background: 'none', border: '1px solid var(--accent)', borderRadius: 'var(--radius-pill)', padding: '4px 12px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-                  {showJsonImport ? 'Cancel import' : '↓ Import JSON'}
+          <CollapsibleSection title="Variants" summary={variantDimensions.length > 0 ? `${variantDimensions.length} dim · ${variantRows.length} SKU${variantRows.length === 1 ? '' : 's'}` : 'optional'}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+              <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', overflow: 'hidden', fontSize: '0.7rem' }}>
+                <button type="button" onClick={() => switchVariantMode('matrix')}
+                  style={{ padding: '4px 10px', background: variantMode === 'matrix' ? 'var(--accent)' : 'transparent', color: variantMode === 'matrix' ? '#fff' : 'var(--ink-muted)', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                  Matrix
+                </button>
+                <button type="button" onClick={() => switchVariantMode('list')}
+                  style={{ padding: '4px 10px', background: variantMode === 'list' ? 'var(--accent)' : 'transparent', color: variantMode === 'list' ? '#fff' : 'var(--ink-muted)', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                  List
                 </button>
               </div>
+              <button type="button" onClick={() => setShowJsonImport(s => !s)}
+                style={{ fontSize: '0.72rem', color: 'var(--accent)', background: 'none', border: '1px solid var(--accent)', borderRadius: 'var(--radius-pill)', padding: '4px 12px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                {showJsonImport ? 'Cancel import' : '↓ Import JSON'}
+              </button>
             </div>
             <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
               {variantMode === 'matrix'
@@ -3271,7 +3469,12 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
                 + Add Variant
               </button>
             )}
-          </div>
+          </CollapsibleSection>
+
+          {/* Landing Page (Amazon A+ style) */}
+          <CollapsibleSection title="Landing Page" summary={landingPage.length > 0 ? `${landingPage.length} block${landingPage.length === 1 ? '' : 's'}` : 'optional'}>
+            <LandingPageEditor value={landingPage} onChange={setLandingPage} />
+          </CollapsibleSection>
 
           <div className="modal-actions">
             <button type="submit" className="btn-dark" disabled={submitting} style={{ flex: 1, justifyContent: 'center' }}>
