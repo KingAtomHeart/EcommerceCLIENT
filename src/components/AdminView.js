@@ -641,7 +641,7 @@ function EditProductCard({ product, fetchData, onClose, inline }) {
     category: product.category
   });
   const [specs, setSpecs] = useState((product.specifications || []).map(s => ({ label: s.label, value: s.value })));
-  const [landingPage, setLandingPage] = useState(() => (product.landingPage || []).map(b => ({ _id: b._id, type: b.type, data: b.data || {} })));
+  const [landingPage, setLandingPage] = useState(() => (product.landingPage || []).map(b => ({ _id: b._id, type: b.type, data: b.data || {}, bg: b.bg || 'none' })));
   const [saving, setSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
