@@ -218,12 +218,17 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
   cursor: pointer; transition: all var(--transition);
   text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
   position: relative; overflow: hidden;
+  /* Isolate the stacking context so ::before can use z-index: -1 without
+     escaping to the page. This keeps the green slide behind plain text
+     content too (previously only span/svg children layered correctly). */
+  isolation: isolate;
 }
 .btn-dark::before {
   content: ''; position: absolute; inset: 0;
   background: var(--accent);
   transform: translateX(-100%);
   transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: -1;
 }
 .btn-dark:hover::before { transform: translateX(0); }
 .btn-dark:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }

@@ -4,6 +4,7 @@ import UserContext from '../context/UserContext';
 import AddToOrderContext from '../context/AddToOrderContext';
 import ProductCard, { computeStockSummary } from '../components/ProductCard';
 import AdminView from '../components/AdminView';
+import { BlockRenderer } from './Home';
 import { apiFetch } from '../utils/api';
 import toast from 'react-hot-toast';
 
@@ -24,11 +25,15 @@ export default function Products() {
     }
   }, [user, addToOrderInfo, navigate]);
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState('default');
+  const [sort, setSort] = useState('newest');
   const [searchParams] = useSearchParams();
   const [category, setCategory] = useState(searchParams.get('cat') || 'all');
   const [hideOutOfStock, setHideOutOfStock] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  // Admin-built blocks rendered above the catalog grid. Fetched once;
+  // catalog filter/search/sort below stays untouched.
+  const [pageContent, setPageContent] = useState(null);
+  const [groupBuys, setGroupBuys] = useState([]);
 
   // Sync category when URL search params change
   useEffect(() => {
@@ -56,6 +61,14 @@ export default function Products() {
     if (userLoading) return;
     fetchProducts();
   }, [userLoading, fetchProducts]);
+
+  // Admin doesn't see the customer-facing blocks (they get the dashboard).
+  // For customers, fetch the configured shop blocks + group buy feed once.
+  useEffect(() => {
+    if (userLoading || isAdmin) return;
+    apiFetch('/page-content/shop').then(setPageContent).catch(() => setPageContent(null));
+    apiFetch('/group-buys/active').then(d => setGroupBuys(Array.isArray(d) ? d : [])).catch(() => setGroupBuys([]));
+  }, [userLoading, isAdmin]);
 
   // Show loading while user context is still verifying token
   if (userLoading) {
@@ -103,8 +116,30 @@ export default function Products() {
 
   const categories = ['all', ...new Set(products.map(p => p.category?.toLowerCase().replace(/\s+/g, '-')).filter(Boolean))];
 
+  // Admin-built blocks render above the catalog. Disabled blocks (enabled === false)
+  // stay hidden client-side. The block list lives on /page-content/shop.
+  const enabledBlocks = (pageContent?.blocks || []).filter(b => b.enabled !== false);
+  const gridAlign = pageContent?.gridAlign || 'left';
+  const gridJustify = gridAlign === 'center' ? 'center' : 'start';
+
   return (
     <div className="page-body">
+      {enabledBlocks.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          {enabledBlocks.map((block, i) => (
+            <BlockRenderer
+              key={block._id || i}
+              block={block}
+              isFirst={i === 0}
+              products={products}
+              groupBuys={groupBuys}
+              loading={loading}
+              countByCategory={(slug) => products.filter(p => p.category?.toLowerCase().replace(/\s+/g, '-') === slug).length}
+            />
+          ))}
+        </div>
+      )}
+
       <div style={{ padding: '56px var(--page-pad) 0', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '24px', flexWrap: 'wrap' }}>
         <div>
           <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.8rem', letterSpacing: '-0.025em', marginBottom: '8px' }}>Shop</h1>
@@ -164,7 +199,17 @@ export default function Products() {
         <div className="loading-center"><div className="spinner" /></div>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '28px', padding: '24px var(--page-pad) 0' }}>
+          <div style={{
+            display: 'grid',
+            // When centered, switch to auto-fit + max-content sizing so the row collapses to
+            // just the cards present and `justifyContent` can actually center them.
+            gridTemplateColumns: gridAlign === 'center'
+              ? 'repeat(auto-fit, 300px)'
+              : 'repeat(auto-fill, minmax(300px, 1fr))',
+            justifyContent: gridJustify,
+            gap: '28px',
+            padding: '24px var(--page-pad) 0',
+          }}>
             {visible.map(p => <ProductCard key={p._id} product={p} />)}
             {filtered.length === 0 && (
               <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '80px 20px', color: 'var(--ink-muted)' }}>
@@ -175,7 +220,7 @@ export default function Products() {
           {visibleCount < filtered.length && (
             <div style={{ textAlign: 'center', padding: '40px var(--page-pad) 80px' }}>
               <button className="btn-dark" onClick={() => setVisibleCount(c => c + PAGE_SIZE)}>
-                Load more ({filtered.length - visibleCount} remaining)
+                <span>Load more ({filtered.length - visibleCount} remaining)</span>
               </button>
             </div>
           )}

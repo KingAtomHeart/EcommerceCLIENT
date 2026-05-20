@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext, useMemo } from 'react';
+import { useState, useEffect, useContext, useMemo, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import UserContext from '../context/UserContext';
 import AddToOrderContext from '../context/AddToOrderContext';
@@ -7,7 +7,8 @@ import { RichText } from '../components/AdminView';
 import { LandingPageRenderer } from '../components/LandingPage';
 import { apiFetch } from '../utils/api';
 import { allowedValuesForTarget } from '../utils/availabilityRules';
-import { resolveImages, findVariant, allowedValuesFor } from '../utils/variants';
+import { resolveImages, findVariant, allowedValuesFor, getAttr } from '../utils/variants';
+import { priceDelta } from '../utils/priceFormat';
 import toast from 'react-hot-toast';
 
 const categoryLabel = (slug) => ({
@@ -85,7 +86,7 @@ export default function ProductView() {
           const variantInitial = {};
           if (best) {
             for (const dim of data.variantDimensions) {
-              const bv = (best.attributes || {})[dim.name];
+              const bv = getAttr(best.attributes, dim.name);
               if (bv) variantInitial[dim.name] = bv;
             }
           } else {
@@ -138,42 +139,109 @@ export default function ProductView() {
 
 
 
-  // Build effective image list
+  // Build effective image list — stable across selections. Every image that could
+  // ever be shown (per-variant image, variantImages appliesTo entries, per-option
+  // image, per-config image, product gallery) is included once, in a deterministic
+  // order. Selecting an option/variant doesn't change THIS list — it just jumps
+  // mainImg to that option's image (see effect below) so the user can also
+  // swipe / arrow-key across the entire gallery freely.
   const effectiveImages = useMemo(() => {
     if (!product) return [];
+    const out = [];
+    const seen = new Set();
+    const push = (url, altText, id) => {
+      if (!url || seen.has(url)) return;
+      seen.add(url);
+      out.push({ url, altText: altText || '', _id: id });
+    };
 
-    // Variant image resolution
     if (product.useVariants) {
-      const variantImgs = resolveImages(product, selectedAttrs);
-      if (variantImgs.length > 0) {
-        const topUrl = variantImgs[0].url;
-        const gallery = product.images || [];
-        const withoutDupe = gallery.filter(img => img.url !== topUrl);
-        return [{ url: topUrl, altText: '', _id: 'vi-top' }, ...variantImgs.slice(1).map((vi, i) => ({ url: vi.url, altText: '', _id: `vi-${i}` })), ...withoutDupe];
-      }
-      return product.images || [];
+      (product.variants || []).forEach((v, i) => {
+        if (v?.image?.url) push(v.image.url, v.image.altText, `vimg-${v._id || i}`);
+      });
+      (product.variantImages || []).forEach((vi, i) => push(vi.url, vi.altText, `vi-${vi._id || i}`));
+    } else {
+      (product.options || []).forEach((grp, gi) => {
+        (grp.values || []).forEach((val, vi) => {
+          if (val?.image?.url) push(val.image.url, val.image.altText || val.value, `opt-${val._id || `${gi}-${vi}`}`);
+        });
+      });
+      (product.configurations || []).forEach((cfg, ci) => {
+        (cfg.options || []).forEach((opt, oi) => {
+          if (opt?.image?.url) push(opt.image.url, opt.image.altText || opt.value, `cfg-${opt._id || `${ci}-${oi}`}`);
+        });
+      });
     }
+    (product.images || []).forEach((img, i) => push(img.url, img.altText, img._id || `g-${i}`));
+    return out;
+  }, [product]);
 
-    let overrideUrl = null;
-    // 1. Config options (last config with image wins)
-    for (const cfg of (product.configurations || [])) {
-      const val = selectedConfigs[cfg.name];
-      if (!val) continue;
-      const opt = cfg.options?.find(o => o.value === val);
-      if (opt?.image?.url) overrideUrl = opt.image.url;
-    }
-    // 2. Selected option value (overrides config)
-    if (selectedOption?.valueId && hasOptions) {
-      for (const grp of (product.options || [])) {
-        const val = grp.values?.find(v => v._id === selectedOption.valueId);
-        if (val?.image?.url) { overrideUrl = val.image.url; break; }
+  // Sync mainImg to the currently selected option/config/variant's image when
+  // that selection changes. The gallery itself stays stable.
+  useEffect(() => {
+    if (!product || effectiveImages.length === 0) return;
+    let targetUrl = null;
+    if (product.useVariants) {
+      const sel = findVariant(product, selectedAttrs);
+      targetUrl = sel?.image?.url || null;
+      if (!targetUrl) targetUrl = resolveImages(product, selectedAttrs)[0]?.url || null;
+    } else {
+      if (selectedOption?.valueId) {
+        for (const grp of (product.options || [])) {
+          const val = grp.values?.find(v => v._id === selectedOption.valueId);
+          if (val?.image?.url) { targetUrl = val.image.url; break; }
+        }
+      }
+      if (!targetUrl) {
+        for (const cfg of (product.configurations || [])) {
+          const val = selectedConfigs[cfg.name];
+          if (!val) continue;
+          const opt = cfg.options?.find(o => o.value === val);
+          if (opt?.image?.url) targetUrl = opt.image.url;
+        }
       }
     }
-    const gallery = product.images || [];
-    if (!overrideUrl) return gallery;
-    const withoutDupe = gallery.filter(img => img.url !== overrideUrl);
-    return [{ url: overrideUrl, altText: '', _id: 'override' }, ...withoutDupe];
-  }, [product, selectedConfigs, selectedOption, hasOptions, selectedAttrs]);
+    if (!targetUrl) return;
+    const idx = effectiveImages.findIndex(im => im.url === targetUrl);
+    if (idx >= 0) setMainImg(idx);
+  }, [product, selectedAttrs, selectedOption, selectedConfigs, effectiveImages]);
+
+  // Arrow-key navigation (PC). Ignore when focus is in an editable field.
+  useEffect(() => {
+    if (effectiveImages.length < 2) return;
+    const onKey = (e) => {
+      const t = e.target;
+      if (t && t.matches && t.matches('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+      if (e.key === 'ArrowRight') { e.preventDefault(); setMainImg(i => Math.min(effectiveImages.length - 1, i + 1)); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); setMainImg(i => Math.max(0, i - 1)); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [effectiveImages.length]);
+
+  // Swipe-to-navigate (mobile). Tracks the starting touch; commits a horizontal
+  // swipe only if dx > 40px AND dominantly horizontal. The `swiped` flag blocks
+  // the lightbox-open click that fires alongside touchend on some browsers.
+  const swipeState = useRef({ x: 0, y: 0, swiped: false });
+  const onCanvasTouchStart = (e) => {
+    const t = e.touches[0];
+    swipeState.current = { x: t.clientX, y: t.clientY, swiped: false };
+  };
+  const onCanvasTouchEnd = (e) => {
+    if (effectiveImages.length < 2) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - swipeState.current.x;
+    const dy = t.clientY - swipeState.current.y;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+      swipeState.current.swiped = true;
+      if (dx < 0) setMainImg(i => Math.min(effectiveImages.length - 1, i + 1));
+      else setMainImg(i => Math.max(0, i - 1));
+    }
+  };
+  const onCanvasClick = () => {
+    if (swipeState.current.swiped) { swipeState.current.swiped = false; return; }
+    if (displayedImage) setLightboxOpen(true);
+  };
 
   const displayedImage = effectiveImages[mainImg]?.url || effectiveImages[0]?.url;
 
@@ -312,7 +380,7 @@ export default function ProductView() {
       const selected = selectedConfigs[cfg.name];
       if (!selected) continue;
       const opt = cfg.options?.find(o => o.value === selected);
-      if (opt?.priceModifier > 0) total += opt.priceModifier;
+      if (opt?.priceModifier) total += Number(opt.priceModifier) || 0;
     }
 
     return total;
@@ -340,13 +408,15 @@ export default function ProductView() {
           {/* ── Images ── */}
           <div>
             <div
-              style={{ width: '100%', aspectRatio: '4/3', borderRadius: '20px', overflow: 'hidden', background: 'var(--accent-light)', marginBottom: '14px', position: 'relative', cursor: displayedImage ? 'zoom-in' : 'default' }}
-              onClick={() => displayedImage && setLightboxOpen(true)}
+              style={{ width: '100%', aspectRatio: '4 / 3', borderRadius: '20px', overflow: 'hidden', background: 'var(--accent-light)', marginBottom: '14px', position: 'relative', cursor: displayedImage ? 'zoom-in' : 'default', touchAction: 'pan-y' }}
+              onClick={onCanvasClick}
+              onTouchStart={onCanvasTouchStart}
+              onTouchEnd={onCanvasTouchEnd}
             >
               {displayedImage ? (
                 <img src={displayedImage} alt={product.name}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s ease' }}
-                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', transition: 'transform 0.3s ease' }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.04)'}
                   onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'} />
               ) : (
                 <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Serif Display', serif", fontSize: '3rem', color: 'var(--accent)' }}>{product.name?.[0]}</div>
@@ -407,6 +477,18 @@ export default function ProductView() {
                         {(dim.values || []).map((val, vi) => {
                           const avail = dimAllowed.has(val);
                           const isSelected = selectedAttrs[dim.name] === val;
+                          // Peek the variant the customer would land on if they clicked this pill,
+                          // using the same auto-snap rules as the click handler. We pin dims 1..dimIdx
+                          // (this and earlier) to the candidate value, pick the highest-stock match,
+                          // and show that variant's price modifier. As the customer drills down,
+                          // the preview narrows from "best variant with this value" to "this exact combo".
+                          const peekNext = { ...selectedAttrs, [dim.name]: val };
+                          const peekFixed = product.variantDimensions.slice(0, dimIdx + 1).map(d => d.name);
+                          const stockValPeek = v => (v.stock === -1 ? Infinity : (v.stock ?? 0));
+                          const peekBest = (product.variants || [])
+                            .filter(v => v.available !== false && peekFixed.every(n => getAttr(v.attributes, n) === peekNext[n]))
+                            .sort((a, b) => stockValPeek(b) - stockValPeek(a))[0];
+                          const peekDelta = priceDelta(peekBest?.price);
                           return (
                             <button key={vi}
                               className={`pill ${isSelected ? 'active' : ''}`}
@@ -417,12 +499,12 @@ export default function ProductView() {
                                 const fixed = product.variantDimensions.slice(0, dimIdx + 1).map(d => d.name);
                                 const stockVal = v => (v.stock === -1 ? Infinity : (v.stock ?? 0));
                                 const best = (product.variants || [])
-                                  .filter(v => v.available !== false && stockVal(v) > 0 && fixed.every(n => (v.attributes || {})[n] === next[n]))
+                                  .filter(v => v.available !== false && stockVal(v) > 0 && fixed.every(n => getAttr(v.attributes, n) === next[n]))
                                   .sort((a, b) => stockVal(b) - stockVal(a))[0];
                                 if (best) {
                                   for (let j = dimIdx + 1; j < product.variantDimensions.length; j++) {
                                     const lname = product.variantDimensions[j].name;
-                                    const bv = (best.attributes || {})[lname];
+                                    const bv = getAttr(best.attributes, lname);
                                     if (bv) next[lname] = bv;
                                   }
                                 }
@@ -431,6 +513,11 @@ export default function ProductView() {
                               }}
                               style={!avail ? { textDecoration: 'line-through', opacity: 0.4 } : {}}>
                               {val}
+                              {peekDelta && (
+                                <span style={{ fontSize: '0.72rem', opacity: 0.7, marginLeft: '4px' }}>
+                                  {peekDelta}
+                                </span>
+                              )}
                             </button>
                           );
                         })}
@@ -472,9 +559,9 @@ export default function ProductView() {
                             style={!avail ? { textDecoration: 'line-through', opacity: 0.4 } : {}}
                           >
                             {val.value}
-                            {val.price > 0 && (
+                            {priceDelta(val.price) && (
                               <span style={{ fontSize: '0.72rem', opacity: 0.7, marginLeft: '4px' }}>
-                                +₱{val.price.toLocaleString()}
+                                {priceDelta(val.price)}
                               </span>
                             )}
                           </button>
@@ -511,9 +598,9 @@ export default function ProductView() {
                               disabled={!avail}
                               style={!avail ? { textDecoration: 'line-through', opacity: 0.4 } : {}}>
                               {opt.value}
-                              {opt.priceModifier > 0 && (
+                              {priceDelta(opt.priceModifier) && (
                                 <span style={{ fontSize: '0.72rem', opacity: 0.7, marginLeft: '4px' }}>
-                                  +₱{opt.priceModifier.toLocaleString()}
+                                  {priceDelta(opt.priceModifier)}
                                 </span>
                               )}
                             </button>

@@ -4,7 +4,8 @@ import UserContext from '../context/UserContext';
 import { apiFetch } from '../utils/api';
 import { statusPaletteKey, StatusBadge, statusStyle } from '../utils/statusColors';
 import toast from 'react-hot-toast';
-import { RichText, AddressBlock, Detail, CopyButton } from '../components/AdminView';
+import { RichText, AddressBlock, Detail, CopyButton, OptionGroupsField } from '../components/AdminView';
+import { priceDelta } from '../utils/priceFormat';
 
 async function uploadOptionImage(file) {
   const fd = new FormData();
@@ -1326,7 +1327,7 @@ function AddItemToOrder({ parentGbId, cartOrderCode, cartCheckoutId, shippingAdd
           <label className="form-label">{cfg.name}</label>
           <select className="form-input" value={configs[cfg.name] || ''} onChange={e => setConfigs(c => ({ ...c, [cfg.name]: e.target.value }))}>
             {(cfg.options || []).filter(o => o.available !== false).map(o => (
-              <option key={o.value} value={o.value}>{o.value}{o.priceModifier > 0 ? ` (+₱${o.priceModifier})` : ''}</option>
+              <option key={o.value} value={o.value}>{o.value}{priceDelta(o.priceModifier) ? ` (${priceDelta(o.priceModifier)})` : ''}</option>
             ))}
           </select>
         </div>
@@ -1356,8 +1357,6 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
   const forcedParent = forcedParentId ? eligibleParents.find(g => g._id === forcedParentId) : null;
   const [optionGroups, setOptionGroups] = useState([]);
   const [configs, setConfigs] = useState([]);
-  const [newOptGroup, setNewOptGroup] = useState({ name: '' });
-  const [newOptValues, setNewOptValues] = useState({});
   const [newCfgGroup, setNewCfgGroup] = useState({ name: '' });
   const [newCfgOpts, setNewCfgOpts] = useState({});
   const [images, setImages] = useState([]);
@@ -1384,21 +1383,6 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
   };
   const removeUrlPreview = (idx) => setUrlPreviews(prev => prev.filter((_, i) => i !== idx));
 
-  const addOptGroup = () => {
-    if (!newOptGroup.name.trim()) return;
-    const idx = optionGroups.length;
-    setOptionGroups(g => [...g, { name: newOptGroup.name.trim(), values: [] }]);
-    setNewOptValues(v => ({ ...v, [idx]: { value: '', price: '', imageUrl: '' } }));
-    setNewOptGroup({ name: '' });
-  };
-  const addOptValue = (gi) => {
-    const nv = newOptValues[gi];
-    if (!nv?.value?.trim() || nv.price === '') return;
-    setOptionGroups(g => g.map((grp, i) => i !== gi ? grp : {
-      ...grp, values: [...grp.values, { value: nv.value.trim(), price: Number(nv.price) || 0, available: true, image: { url: nv.imageUrl?.trim() || '', altText: nv.value.trim() } }]
-    }));
-    setNewOptValues(v => ({ ...v, [gi]: { value: '', price: '', imageUrl: '' } }));
-  };
 
   const addCfgGroup = () => {
     if (!newCfgGroup.name.trim()) return;
@@ -1572,32 +1556,7 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
             <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
               Each option's price is <strong>added on top of the base price</strong> above (e.g. base ₱5,000 + Novelties +₱2,300 = ₱7,300).
             </p>
-            {optionGroups.map((grp, gi) => (
-              <div key={gi} style={{ marginBottom: '10px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{grp.name}</span>
-                  <button type="button" onClick={() => setOptionGroups(g => g.filter((_, i) => i !== gi))} style={{ fontSize: '0.7rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
-                </div>
-                {grp.values.map((v, vi) => (
-                  <div key={vi} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '4px', fontSize: '0.78rem' }}>
-                    <span style={{ flex: 1 }}>{v.value}</span>
-                    <span style={{ color: 'var(--ink-muted)' }}>{v.price > 0 ? `+₱${v.price.toLocaleString()}` : 'base'}</span>
-                    {v.image?.url && <span style={{ color: 'var(--accent)', fontSize: '0.68rem' }}>📷</span>}
-                    <button type="button" onClick={() => setOptionGroups(g => g.map((gg, i) => i !== gi ? gg : { ...gg, values: gg.values.filter((_, j) => j !== vi) }))} style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
-                  </div>
-                ))}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 1fr auto', gap: '5px', marginTop: '6px' }}>
-                  <input className="form-input" style={inputSm} placeholder="Value (e.g. Base Kit)" value={newOptValues[gi]?.value || ''} onChange={e => setNewOptValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), value: e.target.value } }))} />
-                  <input type="number" className="form-input" style={inputSm} placeholder="+ ₱" value={newOptValues[gi]?.price || ''} onChange={e => setNewOptValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), price: e.target.value } }))} />
-                  <input className="form-input" style={inputSm} placeholder="Image URL (optional)" value={newOptValues[gi]?.imageUrl || ''} onChange={e => setNewOptValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), imageUrl: e.target.value } }))} />
-                  <button type="button" onClick={() => addOptValue(gi)} className="config-add-btn">+</button>
-                </div>
-              </div>
-            ))}
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <input className="form-input" style={inputSm} placeholder="Option group name (e.g. Kit)" value={newOptGroup.name} onChange={e => setNewOptGroup({ name: e.target.value })} />
-              <button type="button" onClick={addOptGroup} className="config-add-btn">+ Add Group</button>
-            </div>
+            <OptionGroupsField value={optionGroups} onChange={setOptionGroups} />
           </div>
 
           {/* Add Configs */}
@@ -1615,7 +1574,7 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
                 {cfg.options.map((opt, oi) => (
                   <div key={oi} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '4px', fontSize: '0.78rem' }}>
                     <span style={{ flex: 1 }}>{opt.value}</span>
-                    {opt.priceModifier > 0 && <span style={{ color: 'var(--ink-muted)' }}>+₱{opt.priceModifier}</span>}
+                    {priceDelta(opt.priceModifier) && <span style={{ color: Number(opt.priceModifier) >= 0 ? 'var(--ink-muted)' : '#c0392b' }}>{priceDelta(opt.priceModifier)}</span>}
                     {opt.image?.url && <span style={{ color: 'var(--accent)', fontSize: '0.68rem' }}>📷</span>}
                     <button type="button" onClick={() => setConfigs(c => c.map((cc, i) => i !== ci ? cc : { ...cc, options: cc.options.filter((_, j) => j !== oi) }))} style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
                   </div>

@@ -7,6 +7,7 @@ import toast from 'react-hot-toast';
 import AdminHomepageEditor from './AdminHomepageEditor';
 import GroupBuyAdmin, { UnifiedGBOrderCard } from '../pages/GroupBuyAdmin';
 import { LandingPageEditor, serializeLandingPage } from './LandingPage';
+import { priceDelta } from '../utils/priceFormat';
 
 const VALID_TABS = ['products', 'group-buys', 'orders', 'stats', 'homepage'];
 
@@ -117,7 +118,7 @@ export default function AdminView({ products, fetchData, loading }) {
           <button className={`admin-tab ${tab === 'group-buys' ? 'active' : ''}`} onClick={() => setTab('group-buys')}>Group Buys</button>
           <button className={`admin-tab ${tab === 'orders' ? 'active' : ''}`} onClick={() => setTab('orders')}>Orders</button>
           <button className={`admin-tab ${tab === 'stats' ? 'active' : ''}`} onClick={() => setTab('stats')}>Stats</button>
-          <button className={`admin-tab ${tab === 'homepage' ? 'active' : ''}`} onClick={() => setTab('homepage')}>Homepage</button>
+          <button className={`admin-tab ${tab === 'homepage' ? 'active' : ''}`} onClick={() => setTab('homepage')}>Pages</button>
         </div>
         {tab === 'products' && (
           <div className="admin-actions">
@@ -361,6 +362,12 @@ function ProductCard({ product, fetchData, panel, onTogglePanel, allProducts = [
 
   const toggleActive = async () => {
     const action = product.isActive ? 'archive' : 'activate';
+    if (product.isActive) {
+      const ok = window.confirm(
+        `Archive "${product.name}"?\n\n• It will be hidden from the shop and product page.\n• Any customer carts that still contain it will have it removed.\n• Past orders are unaffected — the product stays visible in order history.\n\nYou can activate it again later.`
+      );
+      if (!ok) return;
+    }
     try {
       await apiFetch(`/products/${product._id}/${action}`, { method: 'PATCH' });
       toast.success(product.isActive ? 'Product archived' : 'Product activated');
@@ -849,30 +856,25 @@ function ImageManager({ product, fetchData, onClose }) {
 
 
 /* ═══════════════════════════════════════════════
-   OPTIONS MANAGER
-   Creates/manages option groups (e.g., Kit: Base Kit ₱7300, Novelties ₱2000)
-   Each option value can have an image URL that replaces the product image when selected.
+   OPTION GROUPS FIELD — shared between create + edit flows so both have the
+   full editor (image URL + upload, stocks, availability toggle, inline editing).
 ═══════════════════════════════════════════════ */
-function OptionsManager({ product, fetchData, onClose }) {
-  const [groups, setGroups] = useState(
-    (product.options || []).map(g => ({
-      ...g,
-      values: (g.values || []).map(v => ({ ...v }))
-    }))
-  );
-  const [saving, setSaving] = useState(false);
+export function OptionGroupsField({ value, onChange }) {
+  const groups = Array.isArray(value) ? value : [];
   const [uploadingImg, setUploadingImg] = useState({});
   const [newGroup, setNewGroup] = useState({ name: '' });
-  const [newValues, setNewValues] = useState({}); // keyed by group index
+  const [newValues, setNewValues] = useState({});
+  const inputSm = { fontSize: '0.72rem', padding: '5px 7px' };
+
+  const setGroups = (updater) => onChange(typeof updater === 'function' ? updater(groups) : updater);
 
   const addGroup = () => {
     if (!newGroup.name.trim()) return;
     const idx = groups.length;
     setGroups(g => [...g, { name: newGroup.name.trim(), values: [] }]);
-    setNewValues(v => ({ ...v, [idx]: { value: '', price: '', imageUrl: '' } }));
+    setNewValues(v => ({ ...v, [idx]: { value: '', price: '', stocks: '', imageUrl: '' } }));
     setNewGroup({ name: '' });
   };
-
   const removeGroup = (gi) => setGroups(g => g.filter((_, i) => i !== gi));
 
   const addValue = (gi) => {
@@ -880,7 +882,7 @@ function OptionsManager({ product, fetchData, onClose }) {
     if (!nv?.value?.trim() || nv.price === '') return;
     setGroups(g => g.map((grp, i) => i !== gi ? grp : {
       ...grp,
-      values: [...grp.values, {
+      values: [...(grp.values || []), {
         value: nv.value.trim(),
         price: Number(nv.price) || 0,
         stocks: nv.stocks !== '' && nv.stocks !== undefined ? Number(nv.stocks) : -1,
@@ -890,21 +892,141 @@ function OptionsManager({ product, fetchData, onClose }) {
     }));
     setNewValues(v => ({ ...v, [gi]: { value: '', price: '', stocks: '', imageUrl: '' } }));
   };
-
   const removeValue = (gi, vi) => setGroups(g => g.map((grp, i) => i !== gi ? grp : {
     ...grp, values: grp.values.filter((_, j) => j !== vi)
   }));
-
   const toggleAvailable = (gi, vi) => setGroups(g => g.map((grp, i) => i !== gi ? grp : {
     ...grp, values: grp.values.map((v, j) => j !== vi ? v : { ...v, available: !v.available })
   }));
-
   const updateValueField = (gi, vi, field, val) => setGroups(g => g.map((grp, i) => i !== gi ? grp : {
     ...grp, values: grp.values.map((v, j) => j !== vi ? v : field === 'imageUrl'
-      ? { ...v, image: { ...v.image, url: val } }
+      ? { ...v, image: { ...(v.image || {}), url: val } }
       : { ...v, [field]: (field === 'price' || field === 'stocks') ? (val === '' || val === '-1' ? -1 : Number(val) || 0) : val }
     )
   }));
+
+  const onUploadFor = async (gi, vi, file) => {
+    const key = `${gi}-${vi == null ? 'new' : vi}`;
+    setUploadingImg(p => ({ ...p, [key]: true }));
+    try {
+      const url = await uploadOptionImage(file);
+      if (vi == null) setNewValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), imageUrl: url } }));
+      else updateValueField(gi, vi, 'imageUrl', url);
+    } catch { toast.error('Upload failed'); }
+    finally { setUploadingImg(p => ({ ...p, [key]: false })); }
+  };
+
+  return (
+    <div>
+      {groups.map((grp, gi) => (
+        <div key={gi} style={{ marginBottom: '12px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <input className="form-input" style={{ ...inputSm, fontWeight: 600, fontSize: '0.82rem', width: 'auto', minWidth: 140 }}
+              value={grp.name}
+              onChange={e => setGroups(g => g.map((gg, i) => i !== gi ? gg : { ...gg, name: e.target.value }))} />
+            <button type="button" onClick={() => removeGroup(gi)} style={{ fontSize: '0.68rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove Group</button>
+          </div>
+
+          {grp.values?.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {grp.values.map((val, vi) => (
+                <div key={vi} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, padding: '6px 8px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', opacity: val.available === false ? 0.55 : 1 }}>
+                  {val.image?.url
+                    ? <img src={val.image.url} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', flexShrink: 0 }} />
+                    : <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink-faint)', fontSize: '0.9rem' }}>🖼</div>}
+                  <input className="form-input" style={{ ...inputSm, flex: '1 1 120px', minWidth: 100 }} value={val.value}
+                    placeholder="Value" onChange={e => updateValueField(gi, vi, 'value', e.target.value)} />
+                  <label style={{ display: 'flex', flexDirection: 'column', fontSize: '0.6rem', color: 'var(--ink-faint)', letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 600 }}>± Price
+                    <input type="number" className="form-input" style={{ ...inputSm, width: 70 }} value={val.price}
+                      onChange={e => updateValueField(gi, vi, 'price', e.target.value)} />
+                    {priceDelta(val.price) && (
+                      <span style={{ fontSize: '0.6rem', textTransform: 'none', letterSpacing: 0, fontWeight: 500, color: Number(val.price) >= 0 ? 'var(--accent)' : '#c0392b' }}>{priceDelta(val.price)}</span>
+                    )}
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', fontSize: '0.6rem', color: 'var(--ink-faint)', letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 600 }}>Stock
+                    <input type="number" className="form-input" style={{ ...inputSm, width: 60 }} placeholder="∞" title="-1 or blank = unlimited"
+                      value={val.stocks === -1 || val.stocks === undefined ? '' : val.stocks}
+                      onChange={e => updateValueField(gi, vi, 'stocks', e.target.value)} />
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 160px', minWidth: 140 }}>
+                    <span style={{ fontSize: '0.6rem', color: 'var(--ink-faint)', letterSpacing: '0.05em', textTransform: 'uppercase', fontWeight: 600 }}>Image</span>
+                    <div style={{ display: 'flex', gap: 3 }}>
+                      <input className="form-input" style={{ ...inputSm, flex: 1, minWidth: 0 }} placeholder="URL or upload"
+                        value={val.image?.url || ''}
+                        onChange={e => updateValueField(gi, vi, 'imageUrl', e.target.value)} />
+                      <label style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: uploadingImg[`${gi}-${vi}`] ? 'wait' : 'pointer', fontSize: '0.72rem' }} title="Upload image">
+                        {uploadingImg[`${gi}-${vi}`] ? '…' : '↑'}
+                        <input type="file" accept="image/*" style={{ display: 'none' }}
+                          onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) await onUploadFor(gi, vi, f); }} />
+                      </label>
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => toggleAvailable(gi, vi)} title="Toggle available"
+                    style={{
+                      fontSize: '0.62rem', padding: '4px 10px', borderRadius: '10px', border: '1px solid',
+                      cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+                      background: val.available !== false ? 'var(--accent-light)' : 'transparent',
+                      color: val.available !== false ? 'var(--accent)' : 'var(--ink-faint)',
+                      borderColor: val.available !== false ? 'var(--accent)' : 'var(--border)',
+                    }}>
+                    {val.available !== false ? 'On' : 'Off'}
+                  </button>
+                  <button type="button" onClick={() => removeValue(gi, vi)}
+                    style={{ fontSize: '0.78rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 8px', cursor: 'pointer' }}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add new value row */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 8, padding: '6px 8px', background: 'var(--surface)', border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)' }}>
+            <input className="form-input" style={{ ...inputSm, flex: '1 1 120px', minWidth: 100, borderStyle: 'dashed' }} placeholder="Value (e.g. Base Kit)"
+              value={newValues[gi]?.value || ''}
+              onChange={e => setNewValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), value: e.target.value } }))} />
+            <input type="number" className="form-input" style={{ ...inputSm, width: 70, borderStyle: 'dashed' }} placeholder="+ ₱"
+              value={newValues[gi]?.price || ''}
+              onChange={e => setNewValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), price: e.target.value } }))} />
+            <input type="number" className="form-input" style={{ ...inputSm, width: 60, borderStyle: 'dashed' }} placeholder="∞"
+              title="Stock (-1 or blank = unlimited)"
+              value={newValues[gi]?.stocks || ''}
+              onChange={e => setNewValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), stocks: e.target.value } }))} />
+            <div style={{ display: 'flex', gap: 3, flex: '1 1 160px', minWidth: 140 }}>
+              <input className="form-input" style={{ ...inputSm, flex: 1, minWidth: 0, borderStyle: 'dashed' }} placeholder="Image URL (opt.)"
+                value={newValues[gi]?.imageUrl || ''}
+                onChange={e => setNewValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), imageUrl: e.target.value } }))} />
+              <label style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 8px', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: uploadingImg[`${gi}-new`] ? 'wait' : 'pointer', fontSize: '0.72rem' }} title="Upload image">
+                {uploadingImg[`${gi}-new`] ? '…' : '↑'}
+                <input type="file" accept="image/*" style={{ display: 'none' }}
+                  onChange={async (e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) await onUploadFor(gi, null, f); }} />
+              </label>
+            </div>
+            <button type="button" onClick={() => addValue(gi)} className="config-add-btn" style={{ fontSize: '0.72rem' }}>+ Add</button>
+          </div>
+        </div>
+      ))}
+
+      {/* New group */}
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input className="form-input" style={inputSm} placeholder="Option group name (e.g. Kit)"
+          value={newGroup.name} onChange={e => setNewGroup({ name: e.target.value })}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addGroup(); } }} />
+        <button type="button" onClick={addGroup} className="config-add-btn">+ Add Group</button>
+      </div>
+    </div>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════
+   OPTIONS MANAGER
+   Creates/manages option groups (e.g., Kit: Base Kit ₱7300, Novelties ₱2000)
+   Each option value can have an image URL that replaces the product image when selected.
+═══════════════════════════════════════════════ */
+function OptionsManager({ product, fetchData, onClose }) {
+  const [groups, setGroups] = useState(
+    (product.options || []).map(g => ({ ...g, values: (g.values || []).map(v => ({ ...v })) }))
+  );
+  const [saving, setSaving] = useState(false);
 
   const save = async () => {
     setSaving(true);
@@ -917,101 +1039,11 @@ function OptionsManager({ product, fetchData, onClose }) {
     } catch (err) { toast.error(err.message); } finally { setSaving(false); }
   };
 
-  const inputSm = { fontSize: '0.72rem', padding: '5px 7px' };
-
   return (
     <div style={{ padding: '16px 24px 20px', borderTop: '1px solid var(--border-subtle)' }}>
       <PanelHeader title="Options — additional-price selectors (added on top of base price)" onClose={onClose} />
-
-      {groups.map((grp, gi) => (
-        <div key={gi} style={{ marginBottom: '12px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontWeight: 600, fontSize: '0.82rem' }}>{grp.name}</span>
-            <button onClick={() => removeGroup(gi)} style={{ fontSize: '0.68rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove Group</button>
-          </div>
-
-          {/* Column headers */}
-          {grp.values.length > 0 && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 50px 1fr 56px 24px', gap: '4px', marginBottom: '4px' }}>
-              {['Value', '+ ₱', 'Stock', 'Image URL (optional)', 'Avail.', ''].map((h, i) => (
-                <span key={i} style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>{h}</span>
-              ))}
-            </div>
-          )}
-
-          {grp.values.map((val, vi) => (
-            <div key={vi} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 50px 1fr 56px 24px', gap: '4px', alignItems: 'center', marginBottom: '4px' }}>
-              <input className="form-input" style={inputSm} value={val.value}
-                onChange={e => updateValueField(gi, vi, 'value', e.target.value)} />
-              <input type="number" className="form-input" style={inputSm} value={val.price}
-                onChange={e => updateValueField(gi, vi, 'price', e.target.value)} />
-              <input type="number" className="form-input" style={inputSm} value={val.stocks === -1 || val.stocks === undefined ? '' : val.stocks}
-                placeholder="∞" title="-1 or empty = unlimited"
-                onChange={e => updateValueField(gi, vi, 'stocks', e.target.value)} />
-              <div style={{ display: 'flex', gap: '3px' }}>
-                <input className="form-input" style={{ ...inputSm, flex: 1, minWidth: 0 }} placeholder="https://..." value={val.image?.url || ''}
-                  onChange={e => updateValueField(gi, vi, 'imageUrl', e.target.value)} />
-                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', cursor: 'pointer', background: 'var(--bg-secondary)', flexShrink: 0, opacity: uploadingImg[`${gi}-${vi}`] ? 0.5 : 1 }} title="Upload image">
-                  {uploadingImg[`${gi}-${vi}`] ? '…' : '↑'}
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
-                    const file = e.target.files?.[0]; if (!file) return;
-                    setUploadingImg(p => ({ ...p, [`${gi}-${vi}`]: true }));
-                    try { updateValueField(gi, vi, 'imageUrl', await uploadOptionImage(file)); }
-                    catch { toast.error('Upload failed'); }
-                    finally { setUploadingImg(p => ({ ...p, [`${gi}-${vi}`]: false })); e.target.value = ''; }
-                  }} />
-                </label>
-              </div>
-              <button onClick={() => toggleAvailable(gi, vi)} style={{
-                fontSize: '0.62rem', padding: '3px 6px', borderRadius: '10px', border: '1px solid',
-                cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", background: val.available ? 'var(--accent-light)' : 'transparent',
-                color: val.available ? 'var(--accent)' : 'var(--ink-faint)', borderColor: val.available ? 'var(--accent)' : 'var(--border)',
-              }}>{val.available ? 'On' : 'Off'}</button>
-              <button onClick={() => removeValue(gi, vi)} style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>✕</button>
-            </div>
-          ))}
-
-          {/* Add new value row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 50px 1fr auto', gap: '4px', alignItems: 'center', marginTop: '6px' }}>
-            <input className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="Value (e.g. Base Kit)"
-              value={newValues[gi]?.value || ''}
-              onChange={e => setNewValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), value: e.target.value } }))} />
-            <input type="number" className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="+ ₱"
-              value={newValues[gi]?.price || ''}
-              onChange={e => setNewValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), price: e.target.value } }))} />
-            <input type="number" className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="∞"
-              title="Stock (-1 or empty = unlimited)"
-              value={newValues[gi]?.stocks || ''}
-              onChange={e => setNewValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), stocks: e.target.value } }))} />
-            <div style={{ display: 'flex', gap: '3px' }}>
-              <input className="form-input" style={{ ...inputSm, borderStyle: 'dashed', flex: 1, minWidth: 0 }} placeholder="Image URL (opt.)"
-                value={newValues[gi]?.imageUrl || ''}
-                onChange={e => setNewValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), imageUrl: e.target.value } }))} />
-              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26, borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border)', cursor: 'pointer', background: 'var(--bg-secondary)', flexShrink: 0, opacity: uploadingImg[`${gi}-new`] ? 0.5 : 1 }} title="Upload image">
-                {uploadingImg[`${gi}-new`] ? '…' : '↑'}
-                <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
-                  const file = e.target.files?.[0]; if (!file) return;
-                  setUploadingImg(p => ({ ...p, [`${gi}-new`]: true }));
-                  try { const url = await uploadOptionImage(file); setNewValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), imageUrl: url } })); }
-                  catch { toast.error('Upload failed'); }
-                  finally { setUploadingImg(p => ({ ...p, [`${gi}-new`]: false })); e.target.value = ''; }
-                }} />
-              </label>
-            </div>
-            <button onClick={() => addValue(gi)} className="admin-card-btn success" style={{ fontSize: '0.68rem', whiteSpace: 'nowrap' }}>+ Add</button>
-          </div>
-        </div>
-      ))}
-
-      {/* Add new group */}
-      <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '10px' }}>
-        <input className="form-input" style={{ fontSize: '0.75rem', padding: '6px 8px' }} placeholder="New group name (e.g. Kit)"
-          value={newGroup.name} onChange={e => setNewGroup({ name: e.target.value })}
-          onKeyDown={e => e.key === 'Enter' && addGroup()} />
-        <button onClick={addGroup} className="admin-card-btn success" style={{ fontSize: '0.72rem', whiteSpace: 'nowrap' }}>+ Add Group</button>
-      </div>
-
-      <div style={{ display: 'flex', gap: '8px' }}>
+      <OptionGroupsField value={groups} onChange={setGroups} />
+      <div style={{ display: 'flex', gap: '8px', marginTop: 12 }}>
         <button onClick={save} disabled={saving} className="btn-dark" style={{ padding: '7px 16px', fontSize: '0.78rem' }}>
           <span>{saving ? 'Saving...' : 'Save Options'}</span>
         </button>
@@ -1351,9 +1383,108 @@ function ProductConfigManager({ product, fetchData, onClose }) {
 /* ═══════════════════════════════════════════════
    VARIANT EDITOR
 ═══════════════════════════════════════════════ */
+// Single variant row in the existing-product variant editor. Wrapping flex
+// layout means even ten dimensions + image + stock + price stay within the
+// current container width — no horizontal scrolling.
+function EditVariantRowCard({ variant, idx, dimensions, onChange, onChangeAttr, onRemove }) {
+  const [uploadingImg, setUploadingImg] = useState(false);
+  const handleImageFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingImg(true);
+    try { onChange({ imageUrl: await uploadOptionImage(file) }); }
+    catch (err) { toast.error(err.message || 'Upload failed'); }
+    finally { setUploadingImg(false); }
+  };
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '10px 12px', display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 10, opacity: variant.available ? 1 : 0.55 }}>
+      {variant.imageUrl
+        ? <img src={variant.imageUrl} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', flexShrink: 0 }} />
+        : <div style={{ width: 48, height: 48, borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink-faint)', fontSize: '1.3rem' }}>🖼</div>}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start', flex: '1 1 280px', minWidth: 0 }}>
+        {dimensions.map(d => (
+          <label key={d.name} style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, minWidth: 90 }}>
+            <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>{d.name}</span>
+            <select className="form-input" style={{ fontSize: '0.78rem', padding: '5px 8px', width: 'auto', minWidth: 90 }}
+              value={variant.attributes[d.name] || ''}
+              onChange={e => onChangeAttr(d.name, e.target.value)}>
+              <option value="">—</option>
+              {d.values.map(val => <option key={val} value={val}>{val}</option>)}
+            </select>
+          </label>
+        ))}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start' }}>
+        <label style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Stock</span>
+          <input type="number" className="form-input" style={{ fontSize: '0.78rem', padding: '5px 8px', width: 70 }}
+            value={variant.stock === '' || variant.stock == null ? '' : variant.stock}
+            placeholder="0" title="Stock count. Blank = 0 (OOS). Type -1 for unlimited."
+            onChange={e => onChange({ stock: e.target.value === '' ? '' : Number(e.target.value) })} />
+        </label>
+        <label style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>± Price</span>
+          <input type="number" className="form-input" style={{ fontSize: '0.78rem', padding: '5px 8px', width: 80 }}
+            value={variant.price ?? ''} placeholder="Base"
+            onChange={e => onChange({ price: e.target.value === '' ? '' : Number(e.target.value) })} />
+          {priceDelta(variant.price) && (
+            <span style={{ fontSize: '0.62rem', color: Number(variant.price) >= 0 ? 'var(--accent)' : '#c0392b' }}>{priceDelta(variant.price)}</span>
+          )}
+        </label>
+        <label style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>SKU</span>
+          <input className="form-input" style={{ fontSize: '0.78rem', padding: '5px 8px', width: 90 }}
+            value={variant.sku} onChange={e => onChange({ sku: e.target.value })} />
+        </label>
+        <label style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, flex: '1 1 200px', minWidth: 160 }}>
+          <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Image</span>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <input type="text" placeholder="URL or upload"
+              className="form-input" style={{ fontSize: '0.78rem', padding: '5px 8px', flex: 1, minWidth: 0 }}
+              value={variant.imageUrl || ''} onChange={e => onChange({ imageUrl: e.target.value })} />
+            <label
+              style={{
+                display: 'inline-flex', alignItems: 'center', padding: '4px 8px',
+                borderRadius: 'var(--radius-sm)', border: '1px solid var(--accent)', background: 'var(--accent-light)',
+                color: 'var(--accent)', cursor: uploadingImg ? 'wait' : 'pointer', fontSize: '0.72rem', whiteSpace: 'nowrap',
+              }}>
+              {uploadingImg ? '…' : '↑'}
+              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImageFile} disabled={uploadingImg} style={{ display: 'none' }} />
+            </label>
+          </div>
+        </label>
+        <button type="button" onClick={() => onChange({ available: !variant.available })} title="Toggle available"
+          style={{
+            alignSelf: 'flex-end', fontSize: '0.66rem', padding: '5px 10px', borderRadius: '10px',
+            border: '1px solid', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+            background: variant.available ? 'var(--accent-light)' : 'transparent',
+            color: variant.available ? 'var(--accent)' : 'var(--ink-faint)',
+            borderColor: variant.available ? 'var(--accent)' : 'var(--border)',
+          }}>
+          {variant.available ? 'On' : 'Off'}
+        </button>
+      </div>
+      <button type="button" onClick={onRemove}
+        style={{ alignSelf: 'flex-start', fontSize: '0.78rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '4px 8px', cursor: 'pointer' }}>
+        ✕
+      </button>
+    </div>
+  );
+}
+
 function VariantEditor({ product, fetchData, onClose, embedded }) {
   const [dims, setDims] = useState((product.variantDimensions || []).map(d => ({ name: d.name, values: [...(d.values || [])] })));
-  const [variants, setVariants] = useState((product.variants || []).map(v => ({ _id: v._id, attributes: { ...(v.attributes || {}) }, stock: v.stock ?? -1, price: v.price ?? '', sku: v.sku || '', available: v.available !== false })));
+  const [variants, setVariants] = useState((product.variants || []).map(v => {
+    // Mongoose Map → plain object for editing
+    const attrs = v.attributes && typeof v.attributes.get === 'function'
+      ? Object.fromEntries(v.attributes) : { ...(v.attributes || {}) };
+    return {
+      _id: v._id, attributes: attrs, stock: v.stock ?? -1, price: v.price ?? '',
+      sku: v.sku || '', available: v.available !== false,
+      imageUrl: v.image?.url || '', imageAlt: v.image?.altText || '',
+    };
+  }));
   const [vImages, setVImages] = useState((product.variantImages || []).map(i => ({ _id: i._id, url: i.url, publicId: i.publicId || '', appliesTo: { ...(i.appliesTo || {}) } })));
   const [saving, setSaving] = useState(false);
   const [newDimName, setNewDimName] = useState('');
@@ -1366,7 +1497,7 @@ function VariantEditor({ product, fetchData, onClose, embedded }) {
     const existing = variants.map(v => JSON.stringify(v.attributes));
     const combos = dims.reduce((acc, d) => acc.flatMap(a => d.values.map(v => ({ ...a, [d.name]: v }))), [{}]);
     const newOnes = combos.filter(c => !existing.includes(JSON.stringify(c)));
-    setVariants(v => [...v, ...newOnes.map(attrs => ({ attributes: attrs, stock: -1, price: '', sku: '', available: true }))]);
+    setVariants(v => [...v, ...newOnes.map(attrs => ({ attributes: attrs, stock: 0, price: '', sku: '', available: true }))]);
   };
 
   const save = async () => {
@@ -1375,7 +1506,19 @@ function VariantEditor({ product, fetchData, onClose, embedded }) {
       const payload = {
         useVariants: true,
         variantDimensions: dims,
-        variants: variants.map(v => ({ ...v, stock: Number(v.stock), price: v.price === '' || v.price == null ? null : Number(v.price) })),
+        variants: variants.map(v => {
+          // Blank stock => 0 (OOS). Unlimited must be explicit (-1).
+          const rawStock = (v.stock === '' || v.stock == null) ? 0 : Number(v.stock);
+          return {
+            _id: v._id,
+            attributes: v.attributes,
+            sku: v.sku,
+            available: v.available,
+            stock: Number.isNaN(rawStock) ? 0 : rawStock,
+            price: v.price === '' || v.price == null ? null : Number(v.price),
+            image: v.imageUrl?.trim() ? { url: v.imageUrl.trim(), altText: v.imageAlt || '' } : { url: '', altText: '' },
+          };
+        }),
         variantImages: vImages
       };
       await apiFetch(`/products/${product._id}/update`, { method: 'PATCH', body: JSON.stringify(payload) });
@@ -1506,63 +1649,17 @@ function VariantEditor({ product, fetchData, onClose, embedded }) {
           Variants ({variants.length})
         </p>
         {variants.length > 0 && (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {dims.map(d => <th key={d.name} style={{ padding: '4px 6px', textAlign: 'left', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--ink-faint)', whiteSpace: 'nowrap' }}>{d.name}</th>)}
-                  <th style={{ padding: '4px 6px', textAlign: 'left', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Stock</th>
-                  <th style={{ padding: '4px 6px', textAlign: 'left', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--ink-faint)' }}>+ Price (₱)</th>
-                  <th style={{ padding: '4px 6px', textAlign: 'left', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--ink-faint)' }}>SKU</th>
-                  <th style={{ padding: '4px 6px', textAlign: 'left', fontSize: '0.65rem', fontWeight: 600, textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Avail</th>
-                  <th style={{ padding: '4px 6px' }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {variants.map((v, vi) => (
-                  <tr key={vi} style={{ borderBottom: '1px solid var(--border-subtle)', opacity: v.available ? 1 : 0.5 }}>
-                    {dims.map(d => (
-                      <td key={d.name} style={{ padding: '3px 4px' }}>
-                        <select className="form-input" style={{ ...inputSm, width: 'auto', minWidth: 80 }}
-                          value={v.attributes[d.name] || ''}
-                          onChange={e => setVariants(p => p.map((vv, i) => i !== vi ? vv : { ...vv, attributes: { ...vv.attributes, [d.name]: e.target.value } }))}>
-                          <option value="">—</option>
-                          {d.values.map(val => <option key={val} value={val}>{val}</option>)}
-                        </select>
-                      </td>
-                    ))}
-                    <td style={{ padding: '3px 4px' }}>
-                      <input type="number" className="form-input" style={{ ...inputSm, width: 55 }} value={v.stock === -1 ? '' : v.stock} placeholder="∞"
-                        onChange={e => setVariants(p => p.map((vv, i) => i !== vi ? vv : { ...vv, stock: e.target.value === '' ? -1 : Number(e.target.value) }))} />
-                    </td>
-                    <td style={{ padding: '3px 4px' }}>
-                      <input type="number" className="form-input" style={{ ...inputSm, width: 70 }} value={v.price ?? ''} placeholder="Base"
-                        onChange={e => setVariants(p => p.map((vv, i) => i !== vi ? vv : { ...vv, price: e.target.value === '' ? '' : Number(e.target.value) }))} />
-                    </td>
-                    <td style={{ padding: '3px 4px' }}>
-                      <input className="form-input" style={{ ...inputSm, width: 80 }} value={v.sku}
-                        onChange={e => setVariants(p => p.map((vv, i) => i !== vi ? vv : { ...vv, sku: e.target.value }))} />
-                    </td>
-                    <td style={{ padding: '3px 4px' }}>
-                      <button onClick={() => setVariants(p => p.map((vv, i) => i !== vi ? vv : { ...vv, available: !vv.available }))}
-                        style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: '10px', border: '1px solid', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
-                          background: v.available ? 'var(--accent-light)' : 'transparent',
-                          color: v.available ? 'var(--accent)' : 'var(--ink-faint)',
-                          borderColor: v.available ? 'var(--accent)' : 'var(--border)' }}>
-                        {v.available ? 'On' : 'Off'}
-                      </button>
-                    </td>
-                    <td style={{ padding: '3px 4px' }}>
-                      <button onClick={() => setVariants(p => p.filter((_, i) => i !== vi))}
-                        style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {variants.map((v, vi) => (
+              <EditVariantRowCard key={vi}
+                variant={v} idx={vi} dimensions={dims}
+                onChange={patch => setVariants(p => p.map((vv, i) => i !== vi ? vv : { ...vv, ...patch }))}
+                onChangeAttr={(name, val) => setVariants(p => p.map((vv, i) => i !== vi ? vv : { ...vv, attributes: { ...vv.attributes, [name]: val } }))}
+                onRemove={() => setVariants(p => p.filter((_, i) => i !== vi))} />
+            ))}
           </div>
         )}
-        <button onClick={() => setVariants(p => [...p, { attributes: Object.fromEntries(dims.map(d => [d.name, d.values[0] || ''])), stock: -1, price: '', sku: '', available: true }])}
+        <button onClick={() => setVariants(p => [...p, { attributes: Object.fromEntries(dims.map(d => [d.name, d.values[0] || ''])), stock: 0, price: '', sku: '', available: true, imageUrl: '', imageAlt: '' }])}
           className="admin-card-btn success" style={{ fontSize: '0.68rem', marginTop: '6px' }}>+ Add Variant</button>
       </div>
 
@@ -1671,6 +1768,12 @@ function TableRow({ product, fetchData }) {
   const hasOptions = (product.options?.length || 0) > 0;
   const toggleActive = async () => {
     const action = product.isActive ? 'archive' : 'activate';
+    if (product.isActive) {
+      const ok = window.confirm(
+        `Archive "${product.name}"?\n\n• It will be hidden from the shop and product page.\n• Any customer carts that still contain it will have it removed.\n• Past orders are unaffected — the product stays visible in order history.\n\nYou can activate it again later.`
+      );
+      if (!ok) return;
+    }
     try { await apiFetch(`/products/${product._id}/${action}`, { method: 'PATCH' }); toast.success(product.isActive ? 'Archived' : 'Activated'); fetchData(); }
     catch (err) { toast.error(err.message); }
   };
@@ -2714,7 +2817,7 @@ function AddProductToOrder({ orderId, onClose, onAdded }) {
           <label className="form-label">{cfg.name}</label>
           <select className="form-input" value={configs[cfg.name] || ''} onChange={e => setConfigs(c => ({ ...c, [cfg.name]: e.target.value }))}>
             {(cfg.options || []).filter(o => o.available !== false).map(o => (
-              <option key={o.value} value={o.value}>{o.value}{o.priceModifier > 0 ? ` (+₱${o.priceModifier})` : ''}</option>
+              <option key={o.value} value={o.value}>{o.value}{priceDelta(o.priceModifier) ? ` (${priceDelta(o.priceModifier)})` : ''}</option>
             ))}
           </select>
         </div>
@@ -2846,6 +2949,103 @@ function CollapsibleSection({ title, summary, defaultOpen = false, children }) {
   );
 }
 
+// Per-row variant editor — wraps to the container width so admins never have
+// to scroll horizontally regardless of how many dimensions exist. Each row owns:
+// dimension selectors (or read-only labels in matrix), stock, price, image URL.
+function VariantRowCard({ row, idx, mode, dimensions, onUpdateAttr, onUpdateField, onRemove }) {
+  const [uploadingImg, setUploadingImg] = useState(false);
+  const handleImageFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingImg(true);
+    try { onUpdateField(idx, 'imageUrl', await uploadOptionImage(file)); }
+    catch (err) { toast.error(err.message || 'Upload failed'); }
+    finally { setUploadingImg(false); }
+  };
+  const isAvailable = row.available !== false;
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '10px 12px', display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: 10, opacity: isAvailable ? 1 : 0.55 }}>
+      {row.imageUrl
+        ? <img src={row.imageUrl} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', flexShrink: 0 }} />
+        : <div style={{ width: 48, height: 48, borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink-faint)', fontSize: '1.3rem' }}>🖼</div>}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start', flex: '1 1 260px', minWidth: 0 }}>
+        {dimensions.map(d => (
+          <label key={d.name} style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, minWidth: 90 }}>
+            <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>{d.name}</span>
+            {mode === 'list' ? (
+              <select className="form-input" style={{ fontSize: '0.78rem', padding: '5px 8px', width: 'auto', minWidth: 90 }}
+                value={row.attrs[d.name] || ''}
+                onChange={e => onUpdateAttr(idx, d.name, e.target.value)}>
+                <option value="">—</option>
+                {d.values.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            ) : (
+              <span style={{ fontSize: '0.84rem', padding: '5px 0' }}>{row.attrs[d.name] || '—'}</span>
+            )}
+          </label>
+        ))}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start' }}>
+        <label style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Stock</span>
+          <input type="number" placeholder="0"
+            className="form-input" style={{ fontSize: '0.78rem', padding: '5px 8px', width: 70 }}
+            title="Stock count. Blank = 0 (OOS). Type -1 for unlimited."
+            value={row.stock} onChange={e => onUpdateField(idx, 'stock', e.target.value)} />
+        </label>
+        <label style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>± Price</span>
+          <input type="number" placeholder="0"
+            className="form-input" style={{ fontSize: '0.78rem', padding: '5px 8px', width: 80 }}
+            value={row.price} onChange={e => onUpdateField(idx, 'price', e.target.value)} />
+          {priceDelta(row.price) && (
+            <span style={{ fontSize: '0.62rem', color: Number(row.price) >= 0 ? 'var(--accent)' : '#c0392b' }}>{priceDelta(row.price)}</span>
+          )}
+        </label>
+        <label style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>SKU</span>
+          <input className="form-input" style={{ fontSize: '0.78rem', padding: '5px 8px', width: 90 }}
+            value={row.sku || ''} onChange={e => onUpdateField(idx, 'sku', e.target.value)} />
+        </label>
+        <label style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, flex: '1 1 180px', minWidth: 160 }}>
+          <span style={{ fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Image</span>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <input type="text" placeholder="URL or upload"
+              className="form-input" style={{ fontSize: '0.78rem', padding: '5px 8px', flex: 1, minWidth: 0 }}
+              value={row.imageUrl || ''} onChange={e => onUpdateField(idx, 'imageUrl', e.target.value)} />
+            <label
+              style={{
+                display: 'inline-flex', alignItems: 'center', padding: '4px 8px',
+                borderRadius: 'var(--radius-sm)', border: '1px solid var(--accent)', background: 'var(--accent-light)',
+                color: 'var(--accent)', cursor: uploadingImg ? 'wait' : 'pointer', fontSize: '0.72rem', whiteSpace: 'nowrap',
+              }}>
+              {uploadingImg ? '…' : '↑'}
+              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleImageFile} disabled={uploadingImg} style={{ display: 'none' }} />
+            </label>
+          </div>
+        </label>
+        <button type="button" onClick={() => onUpdateField(idx, 'available', !isAvailable)} title="Toggle available"
+          style={{
+            alignSelf: 'flex-end', fontSize: '0.66rem', padding: '5px 10px', borderRadius: '10px',
+            border: '1px solid', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+            background: isAvailable ? 'var(--accent-light)' : 'transparent',
+            color: isAvailable ? 'var(--accent)' : 'var(--ink-faint)',
+            borderColor: isAvailable ? 'var(--accent)' : 'var(--border)',
+          }}>
+          {isAvailable ? 'On' : 'Off'}
+        </button>
+      </div>
+      {mode === 'list' && (
+        <button type="button" onClick={() => onRemove(idx)}
+          style={{ alignSelf: 'flex-start', fontSize: '0.78rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '4px 8px', cursor: 'pointer' }}>
+          ✕
+        </button>
+      )}
+    </div>
+  );
+}
+
 function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentName }) {
   const [form, setForm] = useState({ name: '', description: '', price: '', stocks: '', category: '' });
   const [images, setImages] = useState([]);
@@ -2858,15 +3058,11 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
   const [submitting, setSubmitting] = useState(false);
   const [descPreview, setDescPreview] = useState(false);
 
-  // Option group builder state
-  const [newOptGroup, setNewOptGroup] = useState({ name: '' });
-  const [newOptValues, setNewOptValues] = useState({});
-
   // Variants state — dimensions + per-combination stock/price.
   // Two modes:
   //  • matrix → cartesian product auto-generated, bulk-fill helps fill the grid.
   //  • list   → admin manually adds the SKUs that actually exist; no shadow rows.
-  const [variantMode, setVariantMode] = useState('matrix'); // 'matrix' | 'list'
+  const [variantMode, setVariantMode] = useState('list'); // 'matrix' | 'list'
   const [variantDimensions, setVariantDimensions] = useState([]); // [{ name, values: [] }]
   const [newDim, setNewDim] = useState({ name: '', values: '' });
   const [variantRows, setVariantRows] = useState([]); // [{ attrs: {dim:val}, stock, price }]
@@ -2877,12 +3073,24 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
 
   // Auto-generate cartesian product in matrix mode; in list mode, leave rows alone
   // and only prune values that no longer exist on a dimension.
+  // Adding a new dimension preserves existing stock/price by matching against the
+  // subset of dimensions both rows share (so adding "Weight" to Color×Layout rows
+  // expands each existing pair into N rows that all start with the original values).
   useEffect(() => {
     if (variantMode === 'list') {
-      // Drop rows that reference values that no longer exist on a dimension.
-      setVariantRows(prev => prev.filter(r => variantDimensions.every(d =>
-        !r.attrs[d.name] || d.values.includes(r.attrs[d.name])
-      )));
+      setVariantRows(prev => prev.map(r => {
+        const attrs = { ...r.attrs };
+        // Drop attrs whose dimension was removed or whose value no longer exists.
+        for (const k of Object.keys(attrs)) {
+          const d = variantDimensions.find(d => d.name === k);
+          if (!d || !d.values.includes(attrs[k])) delete attrs[k];
+        }
+        // Default any newly-added dimensions to the first available value.
+        for (const d of variantDimensions) {
+          if (attrs[d.name] == null) attrs[d.name] = d.values[0] || '';
+        }
+        return { ...r, attrs };
+      }));
       return;
     }
     if (variantDimensions.length === 0) { setVariantRows([]); return; }
@@ -2891,9 +3099,14 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
       [{}]
     );
     setVariantRows(prev => combos.map(attrs => {
-      const matchKey = JSON.stringify(attrs);
-      const existing = prev.find(r => JSON.stringify(r.attrs) === matchKey);
-      return existing || { attrs, stock: '', price: '' };
+      // Find any prior row whose remaining attrs (after removing dims that no
+      // longer exist) match this combo on the shared keys. The first match wins.
+      const existing = prev.find(r => Object.entries(r.attrs).every(([k, v]) => {
+        const stillExists = variantDimensions.some(d => d.name === k);
+        if (!stillExists) return true;
+        return attrs[k] === v;
+      }));
+      return existing ? { ...existing, attrs } : { attrs, stock: '', price: '' };
     }));
   }, [variantDimensions, variantMode]);
 
@@ -2945,12 +3158,72 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
   const importVariantsJson = () => {
     try {
       const data = JSON.parse(jsonImportText);
+
+      // Top-level metadata fields — all optional. Applied only if present and
+      // non-placeholder. The admin can still hand-edit anything after import.
+      const isPlaceholder = (v) => typeof v === 'string' && /^PLACEHOLDER_/.test(v);
+      const metaPatch = {};
+      if (typeof data.name === 'string' && data.name.trim() && !isPlaceholder(data.name)) metaPatch.name = data.name.trim();
+      if (typeof data.price === 'number' && data.price > 0) metaPatch.price = String(data.price);
+      if (typeof data.stocks === 'number') metaPatch.stocks = data.stocks === -1 ? '' : String(data.stocks);
+      if (typeof data.category === 'string' && data.category.trim() && !isPlaceholder(data.category)) metaPatch.category = data.category.trim();
+      if (Object.keys(metaPatch).length > 0) setForm(f => ({ ...f, ...metaPatch }));
+
+      let importedSpecs = 0;
+      if (Array.isArray(data.specifications) && data.specifications.length > 0) {
+        const cleanedSpecs = data.specifications
+          .filter(s => s && s.label && s.value && !isPlaceholder(s.label) && !isPlaceholder(s.value))
+          .map(s => ({ label: String(s.label).trim(), value: String(s.value).trim() }));
+        if (cleanedSpecs.length > 0) {
+          setSpecs(cleanedSpecs);
+          importedSpecs = cleanedSpecs.length;
+        }
+      }
+
+      // Options: import if present (independent of dimensions/variants).
+      let importedOptions = 0;
+      if (Array.isArray(data.options) && data.options.length > 0) {
+        const cleanedOptions = data.options
+          .filter(g => g && g.name && Array.isArray(g.values) && !isPlaceholder(g.name))
+          .map(g => ({
+            name: String(g.name).trim(),
+            values: g.values.filter(v => v?.value && !isPlaceholder(v.value)).map(v => ({
+              value: String(v.value).trim(),
+              price: Number(v.price) || 0,
+              stocks: v.stocks == null ? -1 : Number(v.stocks),
+              available: v.available !== false,
+              image: { url: v.image?.url?.trim() || '', altText: v.image?.altText || String(v.value).trim() },
+            })),
+          }))
+          .filter(g => g.values.length > 0);
+        if (cleanedOptions.length > 0) {
+          setOptionGroups(cleanedOptions);
+          importedOptions = cleanedOptions.length;
+        }
+      }
+
       const dims = Array.isArray(data.dimensions) ? data.dimensions
-        .filter(d => d && d.name && Array.isArray(d.values))
-        .map(d => ({ name: String(d.name).trim(), values: d.values.map(v => String(v).trim()).filter(Boolean) }))
+        .filter(d => d && d.name && Array.isArray(d.values) && !isPlaceholder(d.name))
+        .map(d => ({
+          name: String(d.name).trim(),
+          values: d.values.map(v => String(v).trim()).filter(v => v && !isPlaceholder(v)),
+        }))
+        .filter(d => d.values.length > 0)
         : [];
+
+      const summary = [];
+      if (Object.keys(metaPatch).length > 0) summary.push(`${Object.keys(metaPatch).length} field${Object.keys(metaPatch).length === 1 ? '' : 's'}`);
+      if (importedSpecs > 0) summary.push(`${importedSpecs} spec${importedSpecs === 1 ? '' : 's'}`);
+      if (importedOptions > 0) summary.push(`${importedOptions} option group${importedOptions === 1 ? '' : 's'}`);
+
       if (dims.length === 0) {
-        toast.error('JSON must include a non-empty "dimensions" array.');
+        if (summary.length === 0) {
+          toast.error('JSON had nothing usable. Include name/price/category, options, or dimensions+variants.');
+          return;
+        }
+        setShowJsonImport(false);
+        setJsonImportText('');
+        toast.success(`Imported ${summary.join(', ')}.`);
         return;
       }
       setVariantDimensions(dims);
@@ -2958,23 +3231,32 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
 
       if (variantMode === 'list') {
         // List mode: only import the SKUs listed; ignore unspecified combinations entirely.
+        // Stock semantics: -1 (unlimited) MUST round-trip — collapsing it to blank
+        // here would silently flip the variant to OOS (since blank now saves as 0).
         const rows = incoming.map(v => {
           const attrs = {};
           for (const d of dims) attrs[d.name] = String(v?.attributes?.[d.name] ?? '');
           return {
             attrs,
-            stock: v.stock === -1 || v.stock == null ? '' : String(v.stock),
+            stock: v.stock == null ? '' : String(v.stock),
             price: v.price == null ? '' : String(v.price),
+            sku: v.sku || '',
+            available: v.available !== false,
+            imageUrl: v.image?.url || '',
           };
         });
         setVariantRows(rows);
         setShowJsonImport(false);
         setJsonImportText('');
-        toast.success(`Imported ${dims.length} dimension${dims.length === 1 ? '' : 's'} and ${rows.length} SKU${rows.length === 1 ? '' : 's'}.`);
+        const tail = [`${dims.length} dimension${dims.length === 1 ? '' : 's'}`, `${rows.length} SKU${rows.length === 1 ? '' : 's'}`];
+        toast.success(`Imported ${[...summary, ...tail].join(', ')}.`);
         return;
       }
 
       // Matrix mode: build full cartesian product and merge incoming values.
+      // CRITICAL: combos missing from the JSON must NOT default to unlimited stock.
+      // If the JSON is sparse (fewer variants than the cartesian product), the user's
+      // intent is "only these SKUs exist" — switch to list mode and keep only those.
       const combos = dims.reduce(
         (acc, d) => acc.flatMap(a => d.values.map(v => ({ ...a, [d.name]: v }))),
         [{}]
@@ -2983,34 +3265,113 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
         const va = v?.attributes || {};
         return dims.every(d => va[d.name] === attrs[d.name]);
       });
+
+      if (incoming.length < combos.length) {
+        // Sparse import → list mode (only the SKUs the human enumerated exist).
+        // Keep -1 as -1 so unlimited round-trips (blank now saves as 0).
+        setVariantMode('list');
+        const rows = incoming.map(v => {
+          const attrs = {};
+          for (const d of dims) attrs[d.name] = String(v?.attributes?.[d.name] ?? '');
+          return {
+            attrs,
+            stock: v.stock == null ? '' : String(v.stock),
+            price: v.price == null ? '' : String(v.price),
+            sku: v.sku || '',
+            available: v.available !== false,
+            imageUrl: v.image?.url || '',
+          };
+        });
+        setVariantRows(rows);
+        setShowJsonImport(false);
+        setJsonImportText('');
+        const tail = [`${dims.length} dimension${dims.length === 1 ? '' : 's'}`, `${rows.length} SKU${rows.length === 1 ? '' : 's'}`, `switched to list mode (${combos.length - incoming.length} combos not declared)`];
+        toast.success(`Imported ${[...summary, ...tail].join(', ')}.`);
+        return;
+      }
+
       setVariantRows(combos.map(attrs => {
         const m = findIncoming(attrs);
+        // Missing combo → blank (saves as 0 OOS). Existing -1 must round-trip.
         if (!m) return { attrs, stock: '', price: '' };
         return {
           attrs,
-          stock: m.stock === -1 || m.stock == null ? '' : String(m.stock),
+          stock: m.stock == null ? '' : String(m.stock),
           price: m.price == null ? '' : String(m.price),
+          sku: m.sku || '',
+          available: m.available !== false,
+          imageUrl: m.image?.url || '',
         };
       }));
       setShowJsonImport(false);
       setJsonImportText('');
-      toast.success(`Imported ${dims.length} dimension${dims.length === 1 ? '' : 's'} and ${combos.length} variant${combos.length === 1 ? '' : 's'}.`);
+      const tail = [`${dims.length} dimension${dims.length === 1 ? '' : 's'}`, `${combos.length} variant${combos.length === 1 ? '' : 's'}`];
+      toast.success(`Imported ${[...summary, ...tail].join(', ')}.`);
     } catch (err) {
       toast.error('Invalid JSON: ' + (err.message || 'parse error'));
     }
   };
 
+  // Full JSON template with embedded instructions for AI. Every PLACEHOLDER_*
+  // value is a stand-in; the AI should replace them based on what the human
+  // describes (dimensions, values, in-stock vs out-of-stock combinations).
   const sampleVariantJson = JSON.stringify({
-    dimensions: [
-      { name: 'Color', values: ['Red', 'Blue'] },
-      { name: 'Size', values: ['S', 'M', 'L'] }
+    "_instructions_for_ai": [
+      "You are converting a product's inventory + metadata into this exact JSON shape so it can be imported into the admin form.",
+      "The human will tell you: (a) optionally the product's name / base price / stocks / category / specifications, (b) the dimension names and their possible values, (c) which combinations exist, and (d) which of those are in stock vs out of stock.",
+      "OUTPUT ONLY the JSON object — no prose, no markdown fences. Remove this _instructions_for_ai field from your final output.",
+      "EVERY TOP-LEVEL FIELD IS OPTIONAL. Include only the ones the human gave you. Omit any field they did not mention — the admin will fill that field in manually.",
+      "NEVER include 'description'. The admin always writes that field by hand. If you generated a description, drop it.",
+      "Top-level fields: 'name' (string), 'price' (number, the product's base price), 'stocks' (top-level product stock — used ONLY when there are no options or variants; -1 unlimited / positive integer / omit for unlimited), 'category' (string, lowercased slug like 'keyboards'), 'specifications' (array of { label, value }).",
+      "Inventory sections: 'options' for price-modifying selectors (e.g. Kit, Edition); 'dimensions' + 'variants' for the variant matrix. Either section may be omitted entirely.",
+      "STOCK semantics — IMPORTANT, two different defaults:",
+      "  - VARIANT 'stock': positive integer = exact count; 0 = out of stock (exists but currently unbuyable); -1 = unlimited (must be explicit); OMITTING 'stock' or leaving it null is treated as 0 (OOS). If the human says a variant is 'in stock' but doesn't give a count, write a number — don't omit.",
+      "  - OPTION-value 'stocks': positive integer = exact count; 0 = OOS; -1 or omit = unlimited (options default to unlimited because they're modifier choices, not inventory units).",
+      "AVAILABLE FIELD on variants/options: true to show, false to hide entirely. A variant with stock 0 still shows (greyed out / OOS); set available:false to hide it completely.",
+      "DOESN'T EXIST AT ALL (combo is impossible): simply omit that combination from the 'variants' array. Importer treats a sparse list as 'these are the only SKUs that exist'.",
+      "PRICE FIELD on variants: null = use product base price; a number = EXTRA on top of base (can be negative to discount). On options it's the EXTRA on top of base too.",
+      "SKU FIELD: leave empty string '' unless the human gives you SKU codes.",
+      "IMAGE FIELD: leave url empty string '' unless the human provides per-variant image URLs.",
+      "Match dimension names and values EXACTLY as the human said them (case + spelling).",
+      "VARIANT COUNT IS NOT FIXED: the example entries below are illustrative only. Your 'variants' array should contain ONE entry per combination the human says exists — could be 1, could be hundreds. With N dimensions of sizes s1, s2, ..., sN, the max possible is s1 × s2 × ... × sN, and you should output every combination the human declares exists. Do not stop at the example length, and do not invent combinations they did not mention.",
+      "READING KEY for the 4 example variants below: row 1 = limited stock (10); row 2 = explicit OOS (0); row 3 = unlimited (-1) with +200 upcharge; row 4 = limited (3) with -150 discount. Together they cover every meaningful (stock, price) combination — your output will mix and match these patterns based on what the human describes.",
+      "If the human says 'all combinations exist' without exclusions, enumerate the full cartesian product (every combo of every value across all dimensions)."
     ],
-    variants: [
-      { attributes: { Color: 'Red', Size: 'S' }, stock: 10, price: 0 },
-      { attributes: { Color: 'Red', Size: 'M' }, stock: 5, price: 0 },
-      { attributes: { Color: 'Blue', Size: 'L' }, stock: 8, price: 50 }
+    "name": "PLACEHOLDER_PRODUCT_NAME",
+    "price": 0,
+    "stocks": -1,
+    "category": "PLACEHOLDER_CATEGORY",
+    "specifications": [
+      { "label": "PLACEHOLDER_SPEC_LABEL", "value": "PLACEHOLDER_SPEC_VALUE" }
+    ],
+    "options": [
+      {
+        "name": "PLACEHOLDER_GROUP_NAME (e.g. Kit, Edition)",
+        "values": [
+          { "value": "PLACEHOLDER_VALUE_1", "price": 0, "stocks": -1, "available": true, "image": { "url": "", "altText": "" } },
+          { "value": "PLACEHOLDER_VALUE_2", "price": 100, "stocks": 10, "available": true, "image": { "url": "", "altText": "" } }
+        ]
+      }
+    ],
+    "dimensions": [
+      { "name": "PLACEHOLDER_DIMENSION_1 (e.g. Color)", "values": ["PLACEHOLDER_VAL_A", "PLACEHOLDER_VAL_B"] },
+      { "name": "PLACEHOLDER_DIMENSION_2 (e.g. Size)",  "values": ["PLACEHOLDER_VAL_X", "PLACEHOLDER_VAL_Y"] }
+    ],
+    "variants": [
+      { "attributes": { "PLACEHOLDER_DIMENSION_1": "PLACEHOLDER_VAL_A", "PLACEHOLDER_DIMENSION_2": "PLACEHOLDER_VAL_X" }, "stock": 10, "price": null, "sku": "", "available": true, "image": { "url": "", "altText": "" } },
+      { "attributes": { "PLACEHOLDER_DIMENSION_1": "PLACEHOLDER_VAL_A", "PLACEHOLDER_DIMENSION_2": "PLACEHOLDER_VAL_Y" }, "stock": 0,  "price": null, "sku": "", "available": true, "image": { "url": "", "altText": "" } },
+      { "attributes": { "PLACEHOLDER_DIMENSION_1": "PLACEHOLDER_VAL_B", "PLACEHOLDER_DIMENSION_2": "PLACEHOLDER_VAL_X" }, "stock": -1, "price": 200,  "sku": "", "available": true, "image": { "url": "", "altText": "" } },
+      { "attributes": { "PLACEHOLDER_DIMENSION_1": "PLACEHOLDER_VAL_B", "PLACEHOLDER_DIMENSION_2": "PLACEHOLDER_VAL_Y" }, "stock": 3,  "price": -150, "sku": "", "available": true, "image": { "url": "", "altText": "" } }
     ]
   }, null, 2);
+
+  const [showJsonFormat, setShowJsonFormat] = useState(false);
+  const copyJsonFormat = async () => {
+    try {
+      await navigator.clipboard.writeText(sampleVariantJson);
+      toast.success('JSON format copied — feed it to your AI');
+    } catch { toast.error('Copy failed'); }
+  };
 
   const handleFormKeyDown = (e) => {
     if (e.key === 'Enter' && e.target.tagName === 'INPUT' && !e.target.dataset.enterAction) {
@@ -3041,26 +3402,6 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
   };
   const removeUrlPreview = (idx) => setUrlPreviews(prev => prev.filter((_, i) => i !== idx));
 
-  // Option group helpers
-  const addOptGroup = () => {
-    if (!newOptGroup.name.trim()) return;
-    const idx = optionGroups.length;
-    setOptionGroups(g => [...g, { name: newOptGroup.name.trim(), values: [] }]);
-    setNewOptValues(v => ({ ...v, [idx]: { value: '', price: '', stocks: '', imageUrl: '' } }));
-    setNewOptGroup({ name: '' });
-  };
-  const addOptValue = (gi) => {
-    const nv = newOptValues[gi];
-    if (!nv?.value?.trim() || nv.price === '' || nv.stocks === '' || nv.stocks == null) return;
-    setOptionGroups(g => g.map((grp, i) => i !== gi ? grp : {
-      ...grp, values: [...grp.values, {
-        value: nv.value.trim(), price: Number(nv.price) || 0, available: true,
-        stocks: Number(nv.stocks),
-        image: { url: nv.imageUrl?.trim() || '', altText: nv.value.trim() }
-      }]
-    }));
-    setNewOptValues(v => ({ ...v, [gi]: { value: '', price: '', stocks: '', imageUrl: '' } }));
-  };
 
   const submitProduct = async (queued) => {
     setSubmitting(true);
@@ -3098,11 +3439,16 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
           ? variantRows.filter(r => variantDimensions.every(d => r.attrs[d.name]))
           : variantRows;
         if (variantMode === 'list' && usable.length === 0) return null;
+        // Blank stock defaults to 0 (OOS), not -1 (unlimited). Unlimited must be
+        // explicit (admin types -1). This prevents the matrix from accidentally
+        // creating unlimited-stock variants when cells are left empty.
         const variants = usable.map(r => ({
           attributes: r.attrs,
-          stock: r.stock === '' ? -1 : Number(r.stock),
+          stock: r.stock === '' || r.stock == null ? 0 : Number(r.stock),
           price: r.price === '' ? null : Number(r.price),
-          available: true,
+          available: r.available !== false,
+          sku: r.sku?.trim() || '',
+          image: r.imageUrl?.trim() ? { url: r.imageUrl.trim(), altText: '' } : undefined,
         }));
         return { useVariants: true, variantDimensions, variants };
       };
@@ -3265,47 +3611,7 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
               Each option's price is <strong>added on top of the base price</strong> above (e.g. base ₱5,000 + Novelties +₱2,300 = ₱7,300).
               Leave this section empty if the product has a single price.
             </p>
-
-            {optionGroups.map((grp, gi) => (
-              <div key={gi} style={{ marginBottom: '10px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{grp.name}</span>
-                  <button type="button" onClick={() => setOptionGroups(g => g.filter((_, i) => i !== gi))} style={{ fontSize: '0.7rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
-                </div>
-                {grp.values.map((v, vi) => (
-                  <div key={vi} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '4px', fontSize: '0.78rem' }}>
-                    <span style={{ flex: 1 }}>{v.value}</span>
-                    <span style={{ color: 'var(--ink-muted)' }}>{v.price > 0 ? `+₱${v.price.toLocaleString()}` : 'base'}</span>
-                    <span style={{ color: 'var(--ink-muted)', fontSize: '0.72rem' }}>· {v.stocks} stock</span>
-                    {v.image?.url && <span style={{ color: 'var(--accent)', fontSize: '0.68rem' }}>📷</span>}
-                    <button type="button" onClick={() => setOptionGroups(g => g.map((gg, i) => i !== gi ? gg : { ...gg, values: gg.values.filter((_, j) => j !== vi) }))} style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
-                  </div>
-                ))}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 70px 1fr auto', gap: '5px', marginTop: '6px' }}>
-                  <input className="form-input" style={inputSm} placeholder="Value (e.g. Base Kit)"
-                    value={newOptValues[gi]?.value || ''}
-                    onChange={e => setNewOptValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), value: e.target.value } }))} />
-                  <input type="number" className="form-input" style={inputSm} placeholder="+ ₱"
-                    value={newOptValues[gi]?.price || ''}
-                    onChange={e => setNewOptValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), price: e.target.value } }))} />
-                  <input type="number" className="form-input" style={inputSm} placeholder="Stock" min="0"
-                    value={newOptValues[gi]?.stocks ?? ''}
-                    onChange={e => setNewOptValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), stocks: e.target.value } }))} />
-                  <input className="form-input" style={inputSm} placeholder="Image URL (optional)"
-                    value={newOptValues[gi]?.imageUrl || ''}
-                    onChange={e => setNewOptValues(v => ({ ...v, [gi]: { ...(v[gi] || {}), imageUrl: e.target.value } }))} />
-                  <button type="button" onClick={() => addOptValue(gi)} className="config-add-btn">+</button>
-                </div>
-              </div>
-            ))}
-
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <input className="form-input" style={inputSm} placeholder="Option group name (e.g. Kit)"
-                value={newOptGroup.name} onChange={e => setNewOptGroup({ name: e.target.value })}
-                data-enter-action="custom"
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addOptGroup(); } }} />
-              <button type="button" onClick={addOptGroup} className="config-add-btn">+ Add Group</button>
-            </div>
+            <OptionGroupsField value={optionGroups} onChange={setOptionGroups} />
           </CollapsibleSection>
 
           {/* Variants */}
@@ -3325,19 +3631,47 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
                 style={{ fontSize: '0.72rem', color: 'var(--accent)', background: 'none', border: '1px solid var(--accent)', borderRadius: 'var(--radius-pill)', padding: '4px 12px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
                 {showJsonImport ? 'Cancel import' : '↓ Import JSON'}
               </button>
+              <button type="button" onClick={() => setShowJsonFormat(s => !s)}
+                style={{ fontSize: '0.72rem', color: 'var(--accent)', background: 'none', border: '1px solid var(--accent)', borderRadius: 'var(--radius-pill)', padding: '4px 12px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                {showJsonFormat ? 'Hide JSON format' : 'Copy JSON Format'}
+              </button>
             </div>
+
+            {/* JSON Format reference — instructions + placeholders for AI to fill in */}
+            {showJsonFormat && (
+              <div style={{ marginBottom: '14px', padding: '12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                  <p style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--ink-faint)', margin: 0 }}>JSON Format — AI instructions embedded</p>
+                  <button type="button" onClick={copyJsonFormat}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.72rem', color: '#fff', background: 'var(--accent)', border: 'none', borderRadius: 'var(--radius-pill)', padding: '4px 12px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                    </svg>
+                    Copy to clipboard
+                  </button>
+                </div>
+                <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: 8, lineHeight: 1.55 }}>
+                  How to use: copy this, paste it into your AI chat, then describe the product. Every top-level field is optional — name, base price, category, specs, options, variant matrix. Anything you skip stays editable in the form. Description is excluded by design; write it by hand. The embedded <code style={{ background: 'var(--surface)', padding: '0 4px', borderRadius: 3 }}>_instructions_for_ai</code> field tells the AI exactly how to fill each field. Paste the AI's reply into <em>Import JSON</em> above. Works with both Matrix and List variant modes (current mode: <strong>{variantMode}</strong>).
+                </p>
+                <pre style={{ fontSize: '0.72rem', fontFamily: 'monospace', background: 'var(--surface)', padding: '10px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', overflow: 'auto', maxHeight: 280, margin: 0, lineHeight: 1.5 }}>
+                  {sampleVariantJson}
+                </pre>
+              </div>
+            )}
             <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
               {variantMode === 'matrix'
-                ? <>Every combination of dimensions auto-generates as a row. Use bulk-fill when most rows share the same value, then override exceptions. Leave stock blank for unlimited; leave price blank for base price.</>
+                ? <>Every combination of dimensions auto-generates as a row. Use bulk-fill when most rows share the same value, then override exceptions.</>
                 : <>List only the SKUs you actually stock. Add a row, pick its dimension values, set stock + price. Combinations not listed simply don't exist for the customer. Best when most combinations don't apply.</>
               }
               {' '}Prices are <strong>added on top of the base price</strong>.
+              {' '}Stock: <strong>blank = 0 (OOS)</strong>; type <strong>-1</strong> for unlimited.
             </p>
 
             {showJsonImport && (
               <div style={{ marginBottom: '14px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
                 <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', margin: '0 0 6px' }}>
-                  Paste JSON with <code>dimensions</code> + <code>variants</code> arrays. Existing rows are replaced.
+                  Paste JSON with any combination of: top-level fields (<code>name</code>, <code>price</code>, <code>category</code>, <code>specifications</code>), <code>options</code>, <code>dimensions + variants</code>. Anything omitted stays as-is in the form. See <em>Copy JSON Format</em> for the schema.
                 </p>
                 <textarea className="form-input" value={jsonImportText}
                   onChange={e => setJsonImportText(e.target.value)}
@@ -3395,7 +3729,7 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
                     Clear stock
                   </button>
                   <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
-                  <input type="number" min="0" placeholder="+ ₱" className="form-input"
+                  <input type="number" placeholder="± ₱" className="form-input"
                     style={{ ...inputSm, width: 80 }}
                     value={bulkPrice} onChange={e => setBulkPrice(e.target.value)}
                     data-enter-action="custom"
@@ -3413,53 +3747,14 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
             )}
 
             {(variantRows.length > 0 || variantMode === 'list') && variantDimensions.length > 0 && (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                      {variantDimensions.map(d => (
-                        <th key={d.name} style={{ textAlign: 'left', padding: '6px 8px', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-faint)' }}>{d.name}</th>
-                      ))}
-                      <th style={{ textAlign: 'left', padding: '6px 8px', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-faint)' }}>Stock</th>
-                      <th style={{ textAlign: 'left', padding: '6px 8px', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink-faint)' }}>+ Price (₱)</th>
-                      {variantMode === 'list' && <th style={{ width: 28 }}></th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {variantRows.map((row, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                        {variantDimensions.map(d => (
-                          <td key={d.name} style={{ padding: '6px 8px' }}>
-                            {variantMode === 'list' ? (
-                              <select className="form-input" style={{ ...inputSm, width: 'auto', minWidth: 90 }}
-                                value={row.attrs[d.name] || ''}
-                                onChange={e => updateListVariantAttr(idx, d.name, e.target.value)}>
-                                <option value="">—</option>
-                                {d.values.map(v => <option key={v} value={v}>{v}</option>)}
-                              </select>
-                            ) : row.attrs[d.name]}
-                          </td>
-                        ))}
-                        <td style={{ padding: '6px 8px' }}>
-                          <input type="number" min="0" placeholder={variantMode === 'list' ? '∞' : 'Use base'} className="form-input" style={{ ...inputSm, width: 80 }}
-                            value={row.stock}
-                            onChange={e => updateVariantField(idx, 'stock', e.target.value)} />
-                        </td>
-                        <td style={{ padding: '6px 8px' }}>
-                          <input type="number" min="0" placeholder="0" className="form-input" style={{ ...inputSm, width: 100 }}
-                            value={row.price}
-                            onChange={e => updateVariantField(idx, 'price', e.target.value)} />
-                        </td>
-                        {variantMode === 'list' && (
-                          <td style={{ padding: '6px 4px', textAlign: 'right' }}>
-                            <button type="button" onClick={() => removeListVariant(idx)}
-                              style={{ fontSize: '0.7rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
-                          </td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {variantRows.map((row, idx) => (
+                  <VariantRowCard key={idx}
+                    row={row} idx={idx} mode={variantMode} dimensions={variantDimensions}
+                    onUpdateAttr={updateListVariantAttr}
+                    onUpdateField={updateVariantField}
+                    onRemove={removeListVariant} />
+                ))}
               </div>
             )}
 
