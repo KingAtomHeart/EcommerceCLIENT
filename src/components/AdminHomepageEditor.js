@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, Fragment } from 'react';
 import { apiFetch } from '../utils/api';
 import { BlockRenderer } from '../pages/Home';
+import { useCategories } from '../utils/categories';
 import toast from 'react-hot-toast';
 
 function relativeTime(dateStr) {
@@ -21,6 +22,9 @@ const BANNER_LAYOUTS = [
   { value: 'fullbleed', label: 'Full Bleed', desc: 'Edge-to-edge image' },
 ];
 
+// Legacy fallback used by sections that haven't loaded the live list yet
+// (server cold-start, etc.). The live list comes from `useCategories` —
+// every place that renders this dropdown calls the hook and merges.
 const CATEGORY_OPTIONS = [
   { value: '', label: 'All categories' },
   { value: 'keyboards', label: 'Keyboards' },
@@ -29,6 +33,13 @@ const CATEGORY_OPTIONS = [
   { value: 'desk-accessories', label: 'Desk Accessories' },
   { value: 'tools-accessories', label: 'Tools & Accessories' },
 ];
+
+// Build category dropdown options from the live list, with "All categories"
+// always pinned at the top.
+function buildCategoryOptions(categories) {
+  const live = (categories || []).map(c => ({ value: c.slug, label: c.name }));
+  return [{ value: '', label: 'All categories' }, ...live];
+}
 
 // Background and alignment options for content-bearing blocks (productGrid,
 // groupBuys, banner). The visual definitions live in Home.js so the editor and
@@ -58,6 +69,10 @@ const BLOCK_META = {
     return d.title || `${src} · ${layout}`;
   } },
   banner:        { label: 'Banner',         icon: '▭', summary: (d) => d.title || 'Untitled banner' },
+  categoriesGrid:{ label: 'Categories Grid', icon: '⊞', summary: (d) => {
+    const n = (d.categorySlugs || []).length;
+    return d.title || (n > 0 ? `${n} categor${n === 1 ? 'y' : 'ies'} pinned` : 'All categories');
+  } },
   // Legacy types — kept here so already-rendered admin rows display correctly
   // before the controller migrates them to `collection`. `hidden: true` keeps
   // them out of the "+ Insert" / "+ Add Section" menus.
@@ -69,6 +84,96 @@ const BLOCK_META = {
   groupBuys:     { hidden: true, label: 'Group Buys (legacy)',   icon: '◍', summary: (d) => d.title || (d.mode === 'interest-check' ? 'Interest checks' : 'Active group buys') },
 };
 
+// CTA visual variants shared by the Hero block and the per-tile ProductHero CTAs.
+// Picked admin-side; rendered in Home.js. Names are intentionally generic so
+// the same set can be reused on future blocks (banner, etc.).
+const CTA_STYLE_OPTIONS = [
+  { value: 'link',    label: 'Link',    desc: 'Underline + arrow (editorial)' },
+  { value: 'filled',  label: 'Filled',  desc: 'Solid pill button (high prominence)' },
+  { value: 'outline', label: 'Outline', desc: 'Transparent + border' },
+  { value: 'text',    label: 'Text',    desc: 'Plain text, no decoration' },
+];
+const CTA_SIZE_OPTIONS = [
+  { value: 'sm', label: 'Small' },
+  { value: 'md', label: 'Medium' },
+  { value: 'lg', label: 'Large' },
+];
+// Icon glyphs are intentionally tiny — they trail the label as a visual cue.
+// '' = no icon; the renderer falls back to '→' for the link variant when the
+// field is undefined (preserves the legacy link look on old data).
+const CTA_ICON_OPTIONS = [
+  { value: '',                label: 'None'      },
+  { value: 'arrow-right',     label: 'Arrow →'   },
+  { value: 'arrow-up-right',  label: 'Diagonal ↗'},
+  { value: 'chevron-right',   label: 'Chevron ›' },
+  { value: 'plus',            label: 'Plus +'    },
+];
+
+// ─── Hero block — layout / positioning / carousel option lists ───
+const HERO_LAYOUT_OPTIONS = [
+  { value: 'overlay', label: 'Overlay', desc: 'Content sits over a full-bleed image (the default cinematic look)' },
+  { value: 'split',   label: 'Split',   desc: 'Two columns — image on one side, content on the other' },
+  { value: 'stacked', label: 'Stacked', desc: 'Image and content in separate horizontal bands' },
+  { value: 'gallery', label: 'Gallery', desc: 'Content above, rolling marquee of featured images below' },
+  { value: 'minimal', label: 'Minimal', desc: 'No image, just typography on a solid background' },
+];
+const HERO_HEIGHT_OPTIONS = [
+  { value: 'compact',  label: 'Compact'  },
+  { value: 'standard', label: 'Standard' },
+  { value: 'tall',     label: 'Tall'     },
+  { value: 'full',     label: 'Full'     },
+];
+const SIDE_LR_OPTIONS = [
+  { value: 'left',  label: 'Left'  },
+  { value: 'right', label: 'Right' },
+];
+const SIDE_AB_OPTIONS = [
+  { value: 'above', label: 'Above' },
+  { value: 'below', label: 'Below' },
+];
+const ALIGN_H_OPTIONS = [
+  { value: 'left',   label: 'Left'   },
+  { value: 'center', label: 'Center' },
+  { value: 'right',  label: 'Right'  },
+];
+const ALIGN_V_OPTIONS = [
+  { value: 'top',    label: 'Top'    },
+  { value: 'middle', label: 'Middle' },
+  { value: 'bottom', label: 'Bottom' },
+];
+const TEXT_COLOR_OPTIONS = [
+  { value: 'light', label: 'Light (white)' },
+  { value: 'dark',  label: 'Dark (ink)'    },
+];
+const SCRIM_DIR_OPTIONS = [
+  { value: 'none',   label: 'None'   },
+  { value: 'bottom', label: '↓ Bottom' },
+  { value: 'top',    label: '↑ Top'    },
+  { value: 'left',   label: '→ Left'   },
+  { value: 'right',  label: '← Right'  },
+  { value: 'full',   label: 'Full'   },
+  { value: 'radial', label: 'Radial' },
+];
+const IMAGE_POSITION_OPTIONS = [
+  { value: 'center', label: 'Center' },
+  { value: 'top',    label: 'Top'    },
+  { value: 'bottom', label: 'Bottom' },
+  { value: 'left',   label: 'Left'   },
+  { value: 'right',  label: 'Right'  },
+];
+const INTERVAL_OPTIONS = [
+  { value: 3,  label: '3s'  },
+  { value: 5,  label: '5s'  },
+  { value: 8,  label: '8s'  },
+  { value: 12, label: '12s' },
+];
+// String-keyed so SegmentedControl's loose value compare (which uses `||`)
+// doesn't fold `false` into the empty-string check.
+const ONOFF_OPTIONS = [
+  { value: 'on',  label: 'On'  },
+  { value: 'off', label: 'Off' },
+];
+
 // Defaults used when admin clicks "+ Add" for a given block type.
 const BLOCK_DEFAULTS = {
   hero: () => ({
@@ -77,21 +182,51 @@ const BLOCK_DEFAULTS = {
     subtitle: '',
     primaryCtaLabel: 'Shop Now',
     primaryCtaLink: '/products',
+    primaryCtaStyle: 'filled',
     secondaryCtaLabel: '',
     secondaryCtaLink: '',
+    secondaryCtaStyle: 'outline',
+    // Hide eyebrow / title / subtitle / CTAs at render time. Useful when the
+    // text is already baked into the image (promo posters, lookbook covers).
+    imageOnly: false,
     images: [],
+    // Layout & sizing
+    layout: 'overlay',          // 'overlay' | 'split' | 'stacked' | 'minimal'
+    height: 'standard',         // 'compact' | 'standard' | 'tall' | 'full'
+    splitImageSide: 'right',    // 'left' | 'right'  (split layout only)
+    splitImageRatio: 0.5,       // 0.3-0.7 — fraction of width given to the image side
+    stackedImageSide: 'below',  // 'above' | 'below' (stacked layout only)
+    stackedImageRatio: 0.55,    // 0.3-0.8 — fraction of height given to the image band
+    // Content positioning
+    contentAlignH: 'left',      // 'left' | 'center' | 'right'
+    contentAlignV: 'bottom',    // 'top' | 'middle' | 'bottom' (overlay only)
+    contentMaxWidth: 660,       // px
+    // Visuals
+    textColor: 'light',         // 'light' | 'dark'
+    scrimStrength: 0.4,         // 0-1 (overlay only)
+    scrimDir: 'bottom',         // 'top' | 'bottom' | 'left' | 'right' | 'full' | 'radial' | 'none'
+    scrimColor: '#000',         // any CSS color for the scrim
+    imagePosition: 'center',    // CSS object-position: 'center'|'top'|'bottom'|'left'|'right'
+    bgColor: '',                // solid fill behind the layout (mainly stacked/minimal)
+    // Carousel
+    autoAdvance: true,
+    interval: 5,                // seconds
+    showDots: true,
+    showScrollIndicator: true,  // the little bouncing chevron at the bottom
   }),
   categoryStrip: () => ({}),
   productGrid: () => ({
     title: 'Products', subtitle: '',
-    category: '', sort: 'featured', limit: 6, viewAllLink: '/products',
+    category: '', sort: 'featured', limit: 6,
+    // viewAllLink intentionally blank — renderer falls back to a category-aware
+    // smart default (e.g., /products?cat=keyboards#products).
   }),
   // Unified collection — defaults to a featured-products carousel, the most
   // common new-section choice. Admin then picks source/layout to vary.
   collection: () => ({
     source: 'products', layout: 'carousel',
     title: 'Featured Products', subtitle: '', eyebrow: '',
-    category: '', sort: 'featured', limit: 6, viewAllLink: '/products',
+    category: '', sort: 'featured', limit: 6,
     align: 'left',
   }),
   productHero: () => ({
@@ -108,13 +243,14 @@ const BLOCK_DEFAULTS = {
     subtitle: '',
     eyebrow: '',
     tiles: [
-      { productId: '', eyebrow: '', subtitle: '', ctaLabel: 'Shop' },
-      { productId: '', eyebrow: '', subtitle: '', ctaLabel: 'Shop' },
+      { productId: '', eyebrow: '', subtitle: '', ctaLabel: 'Shop', ctaStyle: 'link' },
+      { productId: '', eyebrow: '', subtitle: '', ctaLabel: 'Shop', ctaStyle: 'link' },
     ],
   }),
   groupBuys: () => ({
     title: 'Active Group Buys', subtitle: '',
-    mode: 'active', limit: 4, viewAllLink: '/group-buys',
+    mode: 'active', limit: 4,
+    // viewAllLink intentionally blank — renderer defaults to /group-buys#group-buys.
   }),
   banner: () => ({
     eyebrow: 'Limited Drop',
@@ -124,6 +260,21 @@ const BLOCK_DEFAULTS = {
     ctaLink: '/products',
     image: { url: '', altText: '' },
     layout: 'overlay',
+    // Same purpose as the hero `imageOnly` flag — render the banner as a
+    // pure image (clickable if a CTA link is set) with no text overlay.
+    imageOnly: false,
+  }),
+  // Category tile grid. Renders the chosen categories (or all of them if
+  // the pin list is empty) as image-led cards that link to /category/:slug.
+  categoriesGrid: () => ({
+    title: 'Shop by Category',
+    subtitle: '',
+    eyebrow: '',
+    // Specific slugs (in this order) override the default "all categories"
+    // behaviour. Empty array = show every known category sorted by sortOrder.
+    categorySlugs: [],
+    columns: 4,            // 2 | 3 | 4 | 5
+    align: 'left',         // header alignment
   }),
 };
 
@@ -169,6 +320,12 @@ export default function AdminHomepageEditor() {
   const [editingIdx, setEditingIdx] = useState(null);
 
   const fetchContent = () => {
+    // Clear stale state up front so a failed fetch doesn't leave the previous
+    // page's blocks visible (which made it look like switching pages did nothing).
+    setDoc(null);
+    setBlocks([]);
+    setGridAlign('left');
+    setDirty(false);
     apiFetch(endpointFor(pageKey))
       .then(d => {
         setDoc(d);
@@ -176,7 +333,12 @@ export default function AdminHomepageEditor() {
         setGridAlign(d.gridAlign || 'left');
         setDirty(false);
       })
-      .catch(() => toast.error(`Failed to load ${pageMeta.label.toLowerCase()} content`));
+      .catch(err => {
+        toast.error(`Failed to load ${pageMeta.label} content${err?.message ? ` — ${err.message}` : ''}`);
+        // Leave doc as a placeholder so the editor still renders (empty) and the
+        // user can see something is wrong instead of a spinner.
+        setDoc({ blocks: [], gridAlign: 'left' });
+      });
   };
 
   useEffect(() => {
@@ -498,8 +660,103 @@ function BlockEditor({ block, onChange, products = [], groupBuys = [] }) {
     case 'productHero':   return <ProductHeroEditor data={data} onChange={onChange} products={products} />;
     case 'groupBuys':     return <GroupBuysEditor data={data} onChange={onChange} />;
     case 'banner':        return <BannerEditor data={data} onChange={onChange} />;
+    case 'categoriesGrid':return <CategoriesGridEditor data={data} onChange={onChange} />;
     default:              return <p>Unknown block type</p>;
   }
+}
+
+/* ─── Categories Grid editor — picks which categories to show + layout knobs. */
+function CategoriesGridEditor({ data, onChange }) {
+  const { categories } = useCategories();
+  const selected = Array.isArray(data.categorySlugs) ? data.categorySlugs : [];
+  const toggle = (slug) => onChange({
+    categorySlugs: selected.includes(slug)
+      ? selected.filter(s => s !== slug)
+      : [...selected, slug],
+  });
+  const move = (slug, dir) => {
+    const i = selected.indexOf(slug);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= selected.length) return;
+    const next = selected.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange({ categorySlugs: next });
+  };
+  return (
+    <>
+      <Row>
+        <Field label="Eyebrow">
+          <input className="form-input" value={data.eyebrow || ''} onChange={e => onChange({ eyebrow: e.target.value })} />
+        </Field>
+        <Field label="Title">
+          <input className="form-input" value={data.title || ''} onChange={e => onChange({ title: e.target.value })} />
+        </Field>
+      </Row>
+      <Field label="Subtitle">
+        <input className="form-input" value={data.subtitle || ''} onChange={e => onChange({ subtitle: e.target.value })} />
+      </Field>
+      <Row>
+        <Field label="Columns">
+          <SegmentedControl
+            value={String(data.columns || 4)}
+            options={[{ value: '2', label: '2' }, { value: '3', label: '3' }, { value: '4', label: '4' }, { value: '5', label: '5' }]}
+            onChange={v => onChange({ columns: Number(v) })} compact />
+        </Field>
+        <Field label="Header align">
+          <SegmentedControl
+            value={data.align || 'left'}
+            options={[{ value: 'left', label: 'Left' }, { value: 'center', label: 'Center' }]}
+            onChange={v => onChange({ align: v })} compact />
+        </Field>
+      </Row>
+      <Field
+        label={selected.length > 0 ? `Pinned categories · ${selected.length}` : 'Pinned categories'}
+        hint={selected.length > 0
+          ? 'These categories render in this order. Leave empty to show every category sorted by their global order.'
+          : 'Leave empty to show every category. Pick specific ones below to curate.'}>
+        {selected.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+            {selected.map((slug, i) => {
+              const cat = categories.find(c => c.slug === slug);
+              return (
+                <div key={slug} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', background: 'var(--surface)', borderRadius: 4, border: '1px solid var(--border)' }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 3, background: 'var(--bg-secondary)', overflow: 'hidden', flexShrink: 0 }}>
+                    {cat?.image?.url && <img src={cat.image.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                  </div>
+                  <span style={{ flex: 1, fontSize: '0.84rem' }}>{cat?.name || slug}</span>
+                  <button type="button" onClick={() => move(slug, -1)} disabled={i === 0} style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--ink-muted)', cursor: i === 0 ? 'not-allowed' : 'pointer', opacity: i === 0 ? 0.4 : 1, fontSize: '0.7rem' }}>↑</button>
+                  <button type="button" onClick={() => move(slug, 1)} disabled={i === selected.length - 1} style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--ink-muted)', cursor: i === selected.length - 1 ? 'not-allowed' : 'pointer', opacity: i === selected.length - 1 ? 0.4 : 1, fontSize: '0.7rem' }}>↓</button>
+                  <button type="button" onClick={() => toggle(slug)} style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: '#c0392b', cursor: 'pointer', fontSize: '0.78rem' }}>✕</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 6, maxHeight: 220, overflowY: 'auto', padding: 4, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
+          {categories.length === 0 ? (
+            <p style={{ gridColumn: '1 / -1', fontSize: '0.78rem', color: 'var(--ink-faint)', fontStyle: 'italic', textAlign: 'center', padding: '10px 0' }}>No categories yet.</p>
+          ) : categories.map(cat => {
+            const isSelected = selected.includes(cat.slug);
+            return (
+              <button key={cat.slug} type="button" onClick={() => toggle(cat.slug)}
+                style={{
+                  position: 'relative',
+                  display: 'flex', flexDirection: 'column', alignItems: 'stretch', textAlign: 'left',
+                  background: isSelected ? 'var(--accent-light)' : 'var(--bg-secondary)',
+                  border: `2px solid ${isSelected ? 'var(--accent)' : 'var(--border)'}`,
+                  borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer',
+                }}>
+                <div style={{ width: '100%', aspectRatio: '4/3', background: 'var(--surface)', borderRadius: 3, overflow: 'hidden', marginBottom: 4 }}>
+                  {cat.image?.url && <img src={cat.image.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                </div>
+                <span style={{ fontSize: '0.78rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      </Field>
+    </>
+  );
 }
 
 function Field({ label, children, hint }) {
@@ -515,6 +772,87 @@ function Field({ label, children, hint }) {
 const Row = ({ children }) => (
   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>{children}</div>
 );
+
+// Collapsible section — clickable header reveals/hides its children. Used to
+// keep long editors (Hero, etc.) scannable: only essential fields show by
+// default, advanced ones live behind these toggles.
+function Collapsible({ label, summary, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{ borderTop: '1px solid var(--border-subtle)', marginTop: 6 }}>
+      <button type="button" onClick={() => setOpen(s => !s)}
+        style={{
+          width: '100%', padding: '10px 0', background: 'none', border: 'none',
+          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+          textAlign: 'left',
+        }}>
+        <span aria-hidden style={{
+          display: 'inline-block', width: 12, textAlign: 'center',
+          transition: 'transform 0.15s', transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+          color: 'var(--ink-faint)', fontSize: '0.9rem',
+        }}>›</span>
+        <span style={{
+          fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.1em',
+          textTransform: 'uppercase', color: 'var(--ink-faint)',
+        }}>{label}</span>
+        {summary && !open && (
+          <span style={{ fontSize: '0.74rem', color: 'var(--ink-muted)', marginLeft: 'auto' }}>{summary}</span>
+        )}
+      </button>
+      {open && <div style={{ paddingBottom: 8 }}>{children}</div>}
+    </div>
+  );
+}
+
+// Shared View-All field for collection-style block editors. Combines the
+// optional URL override with a hide toggle: when "Show" is off the link is
+// suppressed entirely on the customer page.
+function ViewAllField({ data, onChange, placeholder = '/products' }) {
+  const hidden = !!data.hideViewAll;
+  return (
+    <Row>
+      <Field label="View-all link" hint="Leave blank to use the smart default (e.g., the filtered category).">
+        <input
+          className="form-input"
+          value={data.viewAllLink || ''}
+          placeholder={placeholder}
+          disabled={hidden}
+          onChange={e => onChange({ viewAllLink: e.target.value })}
+          style={{ opacity: hidden ? 0.5 : 1 }}
+        />
+      </Field>
+      <Field label="Show view-all button">
+        <SegmentedControl
+          value={hidden ? 'off' : 'on'}
+          options={ONOFF_OPTIONS}
+          onChange={v => onChange({ hideViewAll: v === 'off' })}
+          compact
+        />
+      </Field>
+    </Row>
+  );
+}
+
+// Native select for fields with many options — saves the vertical space a
+// wrapping SegmentedControl would otherwise eat.
+function Select({ value, options, onChange }) {
+  return (
+    <select className="form-input"
+      value={value ?? ''}
+      onChange={e => {
+        const raw = e.target.value;
+        // Restore non-string values (numbers / booleans) when the option provides them.
+        const opt = options.find(o => String(o.value) === raw);
+        onChange(opt ? opt.value : raw);
+      }}
+      style={{ cursor: 'pointer' }}
+    >
+      {options.map(opt => (
+        <option key={String(opt.value)} value={opt.value}>{opt.label}</option>
+      ))}
+    </select>
+  );
+}
 
 
 function HeroEditor({ data, onChange }) {
@@ -545,16 +883,37 @@ function HeroEditor({ data, onChange }) {
     onChange({ images: imgs });
   };
 
+  // Quick summary strings shown next to each collapsed section header — give
+  // the admin a glance of the current values without expanding the section.
+  const layoutLabel    = (HERO_LAYOUT_OPTIONS.find(o => o.value === (data.layout || 'overlay')) || {}).label;
+  const heightLabel    = (HERO_HEIGHT_OPTIONS.find(o => o.value === (data.height || 'standard')) || {}).label;
+  const alignHLabel    = (ALIGN_H_OPTIONS.find(o => o.value === (data.contentAlignH || 'left')) || {}).label;
+  const alignVLabel    = (ALIGN_V_OPTIONS.find(o => o.value === (data.contentAlignV || 'bottom')) || {}).label;
+  const primaryStyle   = (CTA_STYLE_OPTIONS.find(o => o.value === (data.primaryCtaStyle || 'filled')) || {}).label;
+  const secondaryStyle = (CTA_STYLE_OPTIONS.find(o => o.value === (data.secondaryCtaStyle || 'outline')) || {}).label;
+
   return (
     <>
+      {/* Image-only switch — when on, the renderer skips eyebrow/title/sub/CTAs
+          and shows just the image (clickable if a primary CTA link is set).
+          Useful for promotional posters / lookbook covers where the text is
+          baked into the artwork. */}
+      <Field label="Image only" hint="Hide all text and CTAs — show just the image. The image becomes clickable if a Primary CTA link is set.">
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.84rem', color: 'var(--ink-muted)' }}>
+          <input type="checkbox" checked={!!data.imageOnly} onChange={e => onChange({ imageOnly: e.target.checked })} />
+          {data.imageOnly ? 'Text hidden — image only' : 'Show eyebrow / title / subtitle / CTAs'}
+        </label>
+      </Field>
+
+      {/* ── Essential content (always visible) ── */}
       <Field label="Eyebrow" hint="Small label above the title.">
-        <input className="form-input" value={data.eyebrow || ''} onChange={e => onChange({ eyebrow: e.target.value })} />
+        <input className="form-input" value={data.eyebrow || ''} onChange={e => onChange({ eyebrow: e.target.value })} disabled={!!data.imageOnly} />
       </Field>
       <Field label="Title" hint="Wrap words in *asterisks* to italicize.">
-        <input className="form-input" value={data.title || ''} onChange={e => onChange({ title: e.target.value })} />
+        <input className="form-input" value={data.title || ''} onChange={e => onChange({ title: e.target.value })} disabled={!!data.imageOnly} />
       </Field>
       <Field label="Subtitle">
-        <textarea className="form-input" rows={3} style={{ resize: 'vertical' }} value={data.subtitle || ''} onChange={e => onChange({ subtitle: e.target.value })} />
+        <textarea className="form-input" rows={3} style={{ resize: 'vertical' }} value={data.subtitle || ''} onChange={e => onChange({ subtitle: e.target.value })} disabled={!!data.imageOnly} />
       </Field>
       <Row>
         <Field label="Primary CTA Label">
@@ -572,7 +931,210 @@ function HeroEditor({ data, onChange }) {
           <input className="form-input" value={data.secondaryCtaLink || ''} onChange={e => onChange({ secondaryCtaLink: e.target.value })} />
         </Field>
       </Row>
+      <Field label="Layout" hint="How the hero is structured. Overlay is the cinematic default; minimal drops the image entirely.">
+        <Select value={data.layout || 'overlay'} options={HERO_LAYOUT_OPTIONS} onChange={v => onChange({ layout: v })} />
+      </Field>
 
+      {/* ── Primary CTA appearance (collapsed) ── */}
+      <Collapsible label="Primary CTA appearance" summary={primaryStyle}>
+        <Row>
+          <Field label="Style">
+            <SegmentedControl value={data.primaryCtaStyle || 'filled'} options={CTA_STYLE_OPTIONS} onChange={v => onChange({ primaryCtaStyle: v })} compact />
+          </Field>
+          <Field label="Size">
+            <SegmentedControl value={data.primaryCtaSize || 'md'} options={CTA_SIZE_OPTIONS} onChange={v => onChange({ primaryCtaSize: v })} compact />
+          </Field>
+        </Row>
+        <Field label="Icon" hint="Trailing icon. Link defaults to an arrow.">
+          <Select
+            value={data.primaryCtaIcon ?? ((data.primaryCtaStyle || 'filled') === 'link' ? 'arrow-right' : '')}
+            options={CTA_ICON_OPTIONS}
+            onChange={v => onChange({ primaryCtaIcon: v })}
+          />
+        </Field>
+        <Row>
+          <Field label="Bg color" hint="Blank = automatic.">
+            <input className="form-input" value={data.primaryCtaBg || ''} placeholder="#000" onChange={e => onChange({ primaryCtaBg: e.target.value })} />
+          </Field>
+          <Field label="Text color" hint="Blank = automatic.">
+            <input className="form-input" value={data.primaryCtaFg || ''} placeholder="#fff" onChange={e => onChange({ primaryCtaFg: e.target.value })} />
+          </Field>
+        </Row>
+      </Collapsible>
+
+      {/* ── Secondary CTA appearance (collapsed, only shown if there is a secondary CTA) ── */}
+      {(data.secondaryCtaLabel || '').trim() !== '' && (
+        <Collapsible label="Secondary CTA appearance" summary={secondaryStyle}>
+          <Row>
+            <Field label="Style">
+              <SegmentedControl value={data.secondaryCtaStyle || 'outline'} options={CTA_STYLE_OPTIONS} onChange={v => onChange({ secondaryCtaStyle: v })} compact />
+            </Field>
+            <Field label="Size">
+              <SegmentedControl value={data.secondaryCtaSize || 'md'} options={CTA_SIZE_OPTIONS} onChange={v => onChange({ secondaryCtaSize: v })} compact />
+            </Field>
+          </Row>
+          <Field label="Icon">
+            <Select
+              value={data.secondaryCtaIcon ?? ((data.secondaryCtaStyle || 'outline') === 'link' ? 'arrow-right' : '')}
+              options={CTA_ICON_OPTIONS}
+              onChange={v => onChange({ secondaryCtaIcon: v })}
+            />
+          </Field>
+          <Row>
+            <Field label="Bg color" hint="Blank = automatic.">
+              <input className="form-input" value={data.secondaryCtaBg || ''} placeholder="transparent" onChange={e => onChange({ secondaryCtaBg: e.target.value })} />
+            </Field>
+            <Field label="Text color" hint="Blank = automatic.">
+              <input className="form-input" value={data.secondaryCtaFg || ''} placeholder="#fff" onChange={e => onChange({ secondaryCtaFg: e.target.value })} />
+            </Field>
+          </Row>
+        </Collapsible>
+      )}
+
+      {/* ── Layout & positioning (collapsed) ── */}
+      <Collapsible label="Layout & positioning" summary={`${heightLabel} · ${alignHLabel}${['overlay', 'minimal'].includes(data.layout || 'overlay') ? ' · ' + alignVLabel : ''}`}>
+        <Row>
+          <Field label="Height">
+            <SegmentedControl value={data.height || 'standard'} options={HERO_HEIGHT_OPTIONS} onChange={v => onChange({ height: v })} compact />
+          </Field>
+          {(data.layout || 'overlay') === 'split' && (
+            <Field label="Image side">
+              <SegmentedControl value={data.splitImageSide || 'right'} options={SIDE_LR_OPTIONS} onChange={v => onChange({ splitImageSide: v })} compact />
+            </Field>
+          )}
+          {data.layout === 'stacked' && (
+            <Field label="Image position">
+              <SegmentedControl value={data.stackedImageSide || 'below'} options={SIDE_AB_OPTIONS} onChange={v => onChange({ stackedImageSide: v })} compact />
+            </Field>
+          )}
+        </Row>
+        {/* Image / content proportion — only meaningful for split & stacked layouts. */}
+        {(data.layout === 'split') && (
+          <Field label={`Image width · ${Math.round((data.splitImageRatio ?? 0.5) * 100)}%`}
+            hint="How much of the row the image takes. The rest goes to the content.">
+            <input type="range" min="0.3" max="0.7" step="0.05" value={data.splitImageRatio ?? 0.5}
+              onChange={e => onChange({ splitImageRatio: Number(e.target.value) })} style={{ width: '100%' }} />
+          </Field>
+        )}
+        {(data.layout === 'stacked') && (
+          <Field label={`Image height · ${Math.round((data.stackedImageRatio ?? 0.55) * 100)}%`}
+            hint="How much of the section's height the image band takes.">
+            <input type="range" min="0.3" max="0.8" step="0.05" value={data.stackedImageRatio ?? 0.55}
+              onChange={e => onChange({ stackedImageRatio: Number(e.target.value) })} style={{ width: '100%' }} />
+          </Field>
+        )}
+        {(data.layout === 'gallery') && (
+          <>
+            <Row>
+              <Field label={`Image height · ${data.galleryImageHeight ?? 360}px`}
+                hint="Height of each image tile in the marquee.">
+                <input type="range" min="200" max="560" step="20"
+                  value={data.galleryImageHeight ?? 360}
+                  onChange={e => onChange({ galleryImageHeight: Number(e.target.value) })}
+                  style={{ width: '100%' }} />
+              </Field>
+              <Field label={`Scroll speed · ${data.gallerySpeed ?? 40} px/s`}
+                hint="Pixels per second the strip moves. Hover pauses it.">
+                <input type="range" min="10" max="120" step="5"
+                  value={data.gallerySpeed ?? 40}
+                  onChange={e => onChange({ gallerySpeed: Number(e.target.value) })}
+                  style={{ width: '100%' }} />
+              </Field>
+            </Row>
+            <Field label={`Gap between images · ${data.galleryGap ?? 6}px`}>
+              <input type="range" min="0" max="40" step="2"
+                value={data.galleryGap ?? 6}
+                onChange={e => onChange({ galleryGap: Number(e.target.value) })}
+                style={{ width: '100%' }} />
+            </Field>
+          </>
+        )}
+        <Row>
+          <Field label="Horizontal align">
+            <SegmentedControl value={data.contentAlignH || 'left'} options={ALIGN_H_OPTIONS} onChange={v => onChange({ contentAlignH: v })} compact />
+          </Field>
+          {/* Vertical align matters for overlay AND minimal (both let content float
+              within the section). Split/stacked already center vertically inside their bands. */}
+          {['overlay', 'minimal'].includes(data.layout || 'overlay') && (
+            <Field label="Vertical align">
+              <SegmentedControl value={data.contentAlignV || 'bottom'} options={ALIGN_V_OPTIONS} onChange={v => onChange({ contentAlignV: v })} compact />
+            </Field>
+          )}
+        </Row>
+        <Row>
+          <Field label="Text color">
+            <SegmentedControl value={data.textColor || 'light'} options={TEXT_COLOR_OPTIONS} onChange={v => onChange({ textColor: v })} compact />
+          </Field>
+          <Field label={`Content width · ${data.contentMaxWidth ?? 660}px`}>
+            <input type="range" min="320" max="1200" step="20" value={data.contentMaxWidth ?? 660}
+              onChange={e => onChange({ contentMaxWidth: Number(e.target.value) })} style={{ width: '100%' }} />
+          </Field>
+        </Row>
+      </Collapsible>
+
+      {/* ── Background & scrim (collapsed) ── */}
+      <Collapsible label="Background & scrim"
+        summary={`${data.imagePosition || 'center'}${(data.layout || 'overlay') === 'overlay' ? ` · scrim ${Math.round((data.scrimStrength ?? 0.4) * 100)}%` : ''}`}>
+        <Row>
+          <Field label="Image crop position" hint="Which part of the photo stays in frame.">
+            <Select value={data.imagePosition || 'center'} options={IMAGE_POSITION_OPTIONS} onChange={v => onChange({ imagePosition: v })} />
+          </Field>
+          <Field label="Background color" hint="Solid fill for stacked / minimal layouts.">
+            <input className="form-input" value={data.bgColor || ''} placeholder="#0c0c0a" onChange={e => onChange({ bgColor: e.target.value })} />
+          </Field>
+        </Row>
+        {(data.layout || 'overlay') === 'overlay' && (
+          <>
+            <Field label={`Scrim darkness · ${Math.round(((data.scrimStrength ?? 0.4)) * 100)}%`}>
+              <input type="range" min="0" max="1" step="0.05" value={data.scrimStrength ?? 0.4}
+                onChange={e => onChange({ scrimStrength: Number(e.target.value) })} style={{ width: '100%' }} />
+            </Field>
+            <Row>
+              <Field label="Scrim direction">
+                <Select value={data.scrimDir || 'bottom'} options={SCRIM_DIR_OPTIONS} onChange={v => onChange({ scrimDir: v })} />
+              </Field>
+              <Field label="Scrim color" hint="Default black.">
+                <input className="form-input" value={data.scrimColor || ''} placeholder="#000" onChange={e => onChange({ scrimColor: e.target.value })} />
+              </Field>
+            </Row>
+          </>
+        )}
+      </Collapsible>
+
+      {/* ── Carousel & extras (collapsed) ── */}
+      <Collapsible label="Carousel & extras"
+        summary={`${data.autoAdvance !== false ? `Auto ${Number(data.interval) || 5}s` : 'Manual'}${data.showDots !== false ? ' · Dots' : ''}`}>
+        <Row>
+          <Field label="Auto-advance">
+            <SegmentedControl
+              value={data.autoAdvance !== false ? 'on' : 'off'}
+              options={ONOFF_OPTIONS}
+              onChange={v => onChange({ autoAdvance: v === 'on' })}
+              compact />
+          </Field>
+          <Field label="Interval">
+            <SegmentedControl value={Number(data.interval) || 5} options={INTERVAL_OPTIONS} onChange={v => onChange({ interval: v })} compact />
+          </Field>
+        </Row>
+        <Row>
+          <Field label="Show dots">
+            <SegmentedControl
+              value={data.showDots !== false ? 'on' : 'off'}
+              options={ONOFF_OPTIONS}
+              onChange={v => onChange({ showDots: v === 'on' })}
+              compact />
+          </Field>
+          <Field label="Scroll indicator" hint="The small bouncing chevron near the bottom.">
+            <SegmentedControl
+              value={data.showScrollIndicator !== false ? 'on' : 'off'}
+              options={ONOFF_OPTIONS}
+              onChange={v => onChange({ showScrollIndicator: v === 'on' })}
+              compact />
+          </Field>
+        </Row>
+      </Collapsible>
+
+      {/* ── Images (always visible — content) ── */}
       <Field label="Hero Images" hint="Multiple images cycle as a carousel. Recommended: 2400 × 1200, landscape.">
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
           {(data.images || []).map((img, i) => (
@@ -596,6 +1158,7 @@ function HeroEditor({ data, onChange }) {
   );
 }
 
+
 function miniBtn(disabled) {
   return {
     width: 20, height: 20, borderRadius: 4,
@@ -609,6 +1172,8 @@ function miniBtn(disabled) {
 
 
 function ProductGridEditor({ data, onChange, products = [] }) {
+  const { categories } = useCategories();
+  const categoryOptions = buildCategoryOptions(categories);
   const hasPinned = Array.isArray(data.productIds) && data.productIds.length > 0;
   return (
     <>
@@ -644,7 +1209,7 @@ function ProductGridEditor({ data, onChange, products = [] }) {
         <Row>
           <Field label="Category Filter">
             <select className="form-input" value={data.category || ''} onChange={e => onChange({ category: e.target.value })}>
-              {CATEGORY_OPTIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              {categoryOptions.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </Field>
           <Field label="Sort">
@@ -654,15 +1219,13 @@ function ProductGridEditor({ data, onChange, products = [] }) {
             </select>
           </Field>
         </Row>
-        <Row>
-          <Field label="Limit" hint="Maximum products shown.">
-            <input className="form-input" type="number" min="1" max="50" value={data.limit ?? 6} onChange={e => onChange({ limit: Number(e.target.value) || 6 })} />
-          </Field>
-          <Field label="View-All Link">
-            <input className="form-input" value={data.viewAllLink || ''} onChange={e => onChange({ viewAllLink: e.target.value })} />
-          </Field>
-        </Row>
+        <Field label="Limit" hint="Maximum products shown.">
+          <input className="form-input" type="number" min="1" max="50" value={data.limit ?? 6} onChange={e => onChange({ limit: Number(e.target.value) || 6 })} />
+        </Field>
       </div>
+
+      <ViewAllField data={data} onChange={onChange}
+        placeholder={data.category ? `/products?cat=${data.category}` : '/products'} />
 
       <ProductPresentationFields data={data} onChange={onChange} />
 
@@ -1077,9 +1640,7 @@ function GroupBuysEditor({ data, onChange }) {
           <input className="form-input" type="number" min="1" max="20" value={data.limit ?? 4} onChange={e => onChange({ limit: Number(e.target.value) || 4 })} />
         </Field>
       </Row>
-      <Field label="View-All Link">
-        <input className="form-input" value={data.viewAllLink || ''} onChange={e => onChange({ viewAllLink: e.target.value })} />
-      </Field>
+      <ViewAllField data={data} onChange={onChange} placeholder="/group-buys" />
       <BgAlignFields data={data} onChange={onChange} />
     </>
   );
@@ -1111,6 +1672,14 @@ function BgAlignFields({ data, onChange, showAlign = true }) {
             );
           })}
         </div>
+      </Field>
+      <Field label="Hover zoom" hint="When On, images in this section gently scale up on mouse-over. Turn Off for a flatter, less animated feel.">
+        <SegmentedControl
+          value={data.hoverZoom === false ? 'off' : 'on'}
+          options={ONOFF_OPTIONS}
+          onChange={v => onChange({ hoverZoom: v !== 'off' })}
+          compact
+        />
       </Field>
       {showAlign && (
         <Field label="Header Alignment">
@@ -1167,12 +1736,9 @@ const BANNER_TEXT_COLORS = [
   { value: 'light', label: 'Light' },
   { value: 'dark',  label: 'Dark' },
 ];
-const BANNER_CTA_STYLES = [
-  { value: 'filled',     label: 'Filled button' },
-  { value: 'ghost',      label: 'Ghost button' },
-  { value: 'text-arrow', label: 'Text + arrow' },
-  { value: 'none',       label: 'No CTA' },
-];
+// Banner CTA shares the same style set as hero / product-hero CTAs
+// (CTA_STYLE_OPTIONS). Legacy values (ghost, text-arrow, none) are migrated
+// at render time inside renderSectionCta so old banners keep working.
 const BANNER_SCRIM_DIRS = [
   { value: 'flat',   label: 'Flat' },
   { value: 'bottom', label: 'Gradient from bottom' },
@@ -1252,21 +1818,30 @@ function BannerEditor({ data, onChange }) {
         </button>
       </Field>
 
+      {/* Image-only switch — same purpose as on the hero block. Banner
+          becomes a pure image (clickable when CTA Link is set). */}
+      <Field label="Image only" hint="Hide all text and CTA — show just the image. Click goes to CTA Link.">
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.84rem', color: 'var(--ink-muted)' }}>
+          <input type="checkbox" checked={!!data.imageOnly} onChange={e => onChange({ imageOnly: e.target.checked })} />
+          {data.imageOnly ? 'Text hidden — image only' : 'Show eyebrow / title / subtitle / CTA'}
+        </label>
+      </Field>
+
       {/* ── Text content ── */}
       <Field label="Eyebrow">
-        <input className="form-input" value={data.eyebrow || ''} onChange={e => onChange({ eyebrow: e.target.value })} />
+        <input className="form-input" value={data.eyebrow || ''} onChange={e => onChange({ eyebrow: e.target.value })} disabled={!!data.imageOnly} />
       </Field>
       <Field label="Title" hint="Wrap words in *asterisks* to italicize.">
-        <input className="form-input" value={data.title || ''} onChange={e => onChange({ title: e.target.value })} />
+        <input className="form-input" value={data.title || ''} onChange={e => onChange({ title: e.target.value })} disabled={!!data.imageOnly} />
       </Field>
       <Field label="Subtitle">
-        <textarea className="form-input" rows={2} style={{ resize: 'vertical' }} value={data.subtitle || ''} onChange={e => onChange({ subtitle: e.target.value })} />
+        <textarea className="form-input" rows={2} style={{ resize: 'vertical' }} value={data.subtitle || ''} onChange={e => onChange({ subtitle: e.target.value })} disabled={!!data.imageOnly} />
       </Field>
       <Row>
         <Field label="CTA Label" hint="Leave blank to hide the CTA entirely.">
-          <input className="form-input" value={data.ctaLabel ?? ''} onChange={e => onChange({ ctaLabel: e.target.value })} />
+          <input className="form-input" value={data.ctaLabel ?? ''} onChange={e => onChange({ ctaLabel: e.target.value })} disabled={!!data.imageOnly} />
         </Field>
-        <Field label="CTA Link">
+        <Field label="CTA Link" hint={data.imageOnly ? 'In image-only mode, this is where the banner click goes.' : ''}>
           <input className="form-input" value={data.ctaLink || ''} onChange={e => onChange({ ctaLink: e.target.value })} />
         </Field>
       </Row>
@@ -1308,8 +1883,24 @@ function BannerEditor({ data, onChange }) {
               <Field label="Text color">
                 <SegmentedControl value={data.textColor || ''} options={[{ value: '', label: 'Auto' }, ...BANNER_TEXT_COLORS]} onChange={v => onChange({ textColor: v })} compact />
               </Field>
-              <Field label="CTA style">
-                <SegmentedControl value={data.ctaStyle || ''} options={[{ value: '', label: 'Auto' }, ...BANNER_CTA_STYLES]} onChange={v => onChange({ ctaStyle: v })} compact />
+              <Field label="CTA style" hint="Same style set as hero / product-hero CTAs.">
+                <SegmentedControl value={data.ctaStyle || ''} options={[{ value: '', label: 'Auto' }, ...CTA_STYLE_OPTIONS]} onChange={v => onChange({ ctaStyle: v })} compact />
+              </Field>
+            </Row>
+            <Row>
+              <Field label="CTA size">
+                <SegmentedControl value={data.ctaSize || 'md'} options={CTA_SIZE_OPTIONS} onChange={v => onChange({ ctaSize: v })} compact />
+              </Field>
+              <Field label="CTA icon">
+                <SegmentedControl value={data.ctaIcon ?? ''} options={CTA_ICON_OPTIONS} onChange={v => onChange({ ctaIcon: v })} compact />
+              </Field>
+            </Row>
+            <Row>
+              <Field label="CTA bg color" hint="CSS color. Blank = automatic.">
+                <input className="form-input" value={data.ctaBg || ''} placeholder="#000 or var(--accent)" onChange={e => onChange({ ctaBg: e.target.value })} />
+              </Field>
+              <Field label="CTA text color" hint="CSS color. Blank = automatic.">
+                <input className="form-input" value={data.ctaFg || ''} placeholder="#fff" onChange={e => onChange({ ctaFg: e.target.value })} />
               </Field>
             </Row>
             <Row>
@@ -1376,7 +1967,7 @@ function BannerEditor({ data, onChange }) {
 const HERO_LAYOUTS = [
   { value: 'single', label: 'Single',   desc: '1 tile, full-width' },
   { value: 'pair',   label: 'Pair',     desc: '2 tiles side-by-side' },
-  { value: 'triple', label: 'Triple',   desc: '1 big + 2 small stacked' },
+  { value: 'triple', label: 'Triple',   desc: '3 tiles side-by-side' },
 ];
 const HERO_HEIGHTS = [
   { value: 'medium',     label: 'Medium',     desc: '480px' },
@@ -1492,7 +2083,6 @@ function ProductHeroEditor({ data, onChange, products }) {
             tile={t}
             products={products}
             onChange={patch => updateTile(i, patch)}
-            isBig={layout === 'triple' && i === 0}
           />
         ))}
       </div>
@@ -1502,7 +2092,7 @@ function ProductHeroEditor({ data, onChange, products }) {
   );
 }
 
-function ProductHeroTileEditor({ index, tile, products, onChange, isBig }) {
+function ProductHeroTileEditor({ index, tile, products, onChange }) {
   const [expanded, setExpanded] = useState(false);
   const [search, setSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
@@ -1530,7 +2120,7 @@ function ProductHeroTileEditor({ index, tile, products, onChange, isBig }) {
           color: 'var(--ink-muted)', fontWeight: 600, padding: '2px 8px',
           background: 'var(--surface)', borderRadius: 4, flexShrink: 0,
         }}>
-          Tile {index + 1}{isBig ? ' · Big' : ''}
+          Tile {index + 1}
         </span>
 
         {/* Product selector — collapsed chip when picked, search dropdown when empty */}
@@ -1627,6 +2217,30 @@ function ProductHeroTileEditor({ index, tile, products, onChange, isBig }) {
             </Field>
           </Row>
           <Row>
+            <Field label="CTA style" hint="How the CTA looks. Default is a subtle underlined link.">
+              <SegmentedControl value={tile.ctaStyle || 'link'} options={CTA_STYLE_OPTIONS} onChange={v => onChange({ ctaStyle: v })} compact />
+            </Field>
+            <Field label="CTA size">
+              <SegmentedControl value={tile.ctaSize || 'md'} options={CTA_SIZE_OPTIONS} onChange={v => onChange({ ctaSize: v })} compact />
+            </Field>
+          </Row>
+          <Field label="CTA icon" hint="A trailing icon. Link defaults to an arrow.">
+            <SegmentedControl
+              value={tile.ctaIcon ?? ((tile.ctaStyle || 'link') === 'link' ? 'arrow-right' : '')}
+              options={CTA_ICON_OPTIONS}
+              onChange={v => onChange({ ctaIcon: v })}
+              compact
+            />
+          </Field>
+          <Row>
+            <Field label="CTA bg color" hint="CSS color. Blank = automatic.">
+              <input className="form-input" value={tile.ctaBg || ''} placeholder="#000 or var(--accent)" onChange={e => onChange({ ctaBg: e.target.value })} />
+            </Field>
+            <Field label="CTA text color" hint="CSS color. Blank = automatic.">
+              <input className="form-input" value={tile.ctaFg || ''} placeholder="#fff" onChange={e => onChange({ ctaFg: e.target.value })} />
+            </Field>
+          </Row>
+          <Row>
             <Field label="Text color override">
               <SegmentedControl value={tile.textColor || ''} options={[
                 { value: '',      label: 'Inherit' },
@@ -1679,6 +2293,8 @@ const GB_MODE_OPTIONS = [
 ];
 
 function CollectionEditor({ data, onChange, products, groupBuys = [] }) {
+  const { categories } = useCategories();
+  const categoryOptions = buildCategoryOptions(categories);
   const source = data.source || 'products';
   const layout = data.layout || 'carousel';
   const hasPinnedProducts = source === 'products' && layout !== 'hero'
@@ -1686,15 +2302,7 @@ function CollectionEditor({ data, onChange, products, groupBuys = [] }) {
   const hasPinnedGbs = source === 'group-buys' && layout !== 'hero'
     && Array.isArray(data.gbIds) && data.gbIds.length > 0;
 
-  // Mixed source doesn't support hero (tile editor expects a single productId).
-  // Hide the hero option when source is mixed; flip back to carousel if needed.
-  const layoutOptions = source === 'mixed'
-    ? COLLECTION_LAYOUT_OPTIONS.filter(o => o.value !== 'hero')
-    : COLLECTION_LAYOUT_OPTIONS;
-  useEffect(() => {
-    if (source === 'mixed' && layout === 'hero') onChange({ layout: 'carousel' });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source]);
+  const layoutOptions = COLLECTION_LAYOUT_OPTIONS;
 
   return (
     <>
@@ -1744,7 +2352,7 @@ function CollectionEditor({ data, onChange, products, groupBuys = [] }) {
             <Row>
               <Field label="Category filter">
                 <select className="form-input" value={data.category || ''} onChange={e => onChange({ category: e.target.value })}>
-                  {CATEGORY_OPTIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  {categoryOptions.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </Field>
               <Field label="Sort">
@@ -1754,14 +2362,11 @@ function CollectionEditor({ data, onChange, products, groupBuys = [] }) {
                 </select>
               </Field>
             </Row>
-            <Row>
-              <Field label="Limit" hint="Maximum products shown.">
-                <input className="form-input" type="number" min="1" max="50" value={data.limit ?? 6} onChange={e => onChange({ limit: Number(e.target.value) || 6 })} />
-              </Field>
-              <Field label="View-All Link">
-                <input className="form-input" value={data.viewAllLink || ''} onChange={e => onChange({ viewAllLink: e.target.value })} />
-              </Field>
-            </Row>
+            <Field label="Limit" hint="Maximum products shown.">
+              <input className="form-input" type="number" min="1" max="50" value={data.limit ?? 6} onChange={e => onChange({ limit: Number(e.target.value) || 6 })} />
+            </Field>
+            <ViewAllField data={data} onChange={onChange}
+              placeholder={data.category ? `/products?cat=${data.category}` : '/products'} />
           </div>
         </>
       )}
@@ -1799,9 +2404,7 @@ function CollectionEditor({ data, onChange, products, groupBuys = [] }) {
                   onChange={e => onChange({ limit: Number(e.target.value) || 4 })} />
               </Field>
             </Row>
-            <Field label="View-All Link">
-              <input className="form-input" value={data.viewAllLink || ''} onChange={e => onChange({ viewAllLink: e.target.value })} />
-            </Field>
+            <ViewAllField data={data} onChange={onChange} placeholder="/group-buys" />
           </div>
         </>
       )}
@@ -1815,7 +2418,9 @@ function CollectionEditor({ data, onChange, products, groupBuys = [] }) {
       {source === 'mixed' && (
         <Field
           label={`Pinned items · ${(data.mixedItems || []).length}`}
-          hint="Pin any combination of products and group buys. They render in the order shown. Mixed sections don't have an auto-fill — only pinned items appear.">
+          hint={layout === 'hero'
+            ? "Pin any combination of products and group buys. In hero layout, the first 1/2/3 pinned items fill the tiles (matching the arrangement below)."
+            : "Pin any combination of products and group buys. They render in the order shown. Mixed sections don't have an auto-fill — only pinned items appear."}>
           <MixedPicker
             value={data.mixedItems || []}
             products={products}
@@ -2023,7 +2628,6 @@ function CollectionHeroTilesField({ data, onChange, products }) {
           tile={t}
           products={products}
           onChange={patch => updateTile(i, patch)}
-          isBig={variant === 'triple' && i === 0}
         />
       ))}
     </div>

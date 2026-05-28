@@ -4,7 +4,8 @@ import UserContext from '../context/UserContext';
 import { apiFetch } from '../utils/api';
 import { statusPaletteKey, StatusBadge, statusStyle } from '../utils/statusColors';
 import toast from 'react-hot-toast';
-import { RichText, AddressBlock, Detail, CopyButton, OptionGroupsField } from '../components/AdminView';
+import { RichText, AddressBlock, Detail, CopyButton, OptionGroupsField, CategoryPicker, DraggableThumbList, MarkdownEditor, CustomHtmlEditor, PinnedProductsPicker } from '../components/AdminView';
+import { LandingPageEditor, serializeLandingPage } from '../components/LandingPage';
 import { priceDelta } from '../utils/priceFormat';
 
 async function uploadOptionImage(file) {
@@ -83,7 +84,7 @@ export default function GroupBuyAdmin({
       {!embedded && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '28px', flexWrap: 'wrap', gap: '16px' }}>
           <div>
-            <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.4rem', letterSpacing: '-0.025em', marginBottom: '8px' }}>Group Buys</h1>
+            <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(1.6rem, 5vw, 2.4rem)', letterSpacing: '-0.025em', marginBottom: '8px' }}>Group Buys</h1>
             <p style={{ color: 'var(--ink-muted)', fontSize: '0.9rem' }}>Manage group buys, interest checks, and orders.</p>
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -355,15 +356,30 @@ function EditGBCard({ gb, gbs, fetchGbs, onClose, inline }) {
   });
   const eligibleParents = (gbs || []).filter(g => g._id !== gb._id && !g.parentGroupBuyId);
   const [saving, setSaving] = useState(false);
-  const [descPreview, setDescPreview] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+  const knownCategories = Array.from(new Set((gbs || []).map(g => (g.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  // Pre-load existing sections so admins can tweak them in place.
+  const [landingPage, setLandingPage] = useState(Array.isArray(gb.landingPage) ? gb.landingPage : []);
+  const [customPageHtml, setCustomPageHtml] = useState(gb.customPageHtml || '');
+  const [pinnedAddOnIds, setPinnedAddOnIds] = useState(Array.isArray(gb.pinnedAddOnIds) ? gb.pinnedAddOnIds : []);
+  const [pinnedRelatedIds, setPinnedRelatedIds] = useState(Array.isArray(gb.pinnedRelatedIds) ? gb.pinnedRelatedIds : []);
 
   const save = async () => {
     setSaving(true);
     try {
       await apiFetch(`/group-buys/${gb._id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ ...form, basePrice: Number(form.basePrice), moq: Number(form.moq), maxOrders: Number(form.maxOrders), parentGroupBuyId: form.parentGroupBuyId || null })
+        body: JSON.stringify({
+          ...form,
+          basePrice: Number(form.basePrice),
+          moq: Number(form.moq),
+          maxOrders: Number(form.maxOrders),
+          parentGroupBuyId: form.parentGroupBuyId || null,
+          landingPage: serializeLandingPage(landingPage),
+          customPageHtml,
+          pinnedAddOnIds,
+          pinnedRelatedIds,
+        })
       });
       toast.success('Updated'); onClose(); fetchGbs();
     } catch (err) { toast.error(err.message); } finally { setSaving(false); }
@@ -390,27 +406,15 @@ function EditGBCard({ gb, gbs, fetchGbs, onClose, inline }) {
         </div>
       )}
 
-      {/* Rich text description */}
+      {/* Short description for the buy section. Long-form marketing content
+          goes in Product Page Sections below. */}
       <div className="form-group">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-          <label className="form-label" style={{ margin: 0 }}>Description</label>
-          <button type="button" onClick={() => setDescPreview(p => !p)} style={{ fontSize: '0.7rem', color: 'var(--ink-muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
-            {descPreview ? 'Edit' : 'Preview'}
-          </button>
-        </div>
-        {descPreview ? (
-          <div style={{ minHeight: 60, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-secondary)', fontSize: '0.88rem', lineHeight: 1.7 }}>
-            {form.description ? <RichText content={form.description} /> : <span style={{ color: 'var(--ink-faint)' }}>No description yet.</span>}
-          </div>
-        ) : (
-          <>
-            <textarea className="form-input" value={form.description} onChange={set('description')}
-              style={{ minHeight: 80, resize: 'vertical', fontFamily: 'monospace', fontSize: '0.82rem' }} />
-            <p style={{ fontSize: '0.68rem', color: 'var(--ink-faint)', marginTop: '3px' }}>
-              Markdown: **bold** · *italic* · # Heading · - bullet · blank line = new paragraph
-            </p>
-          </>
-        )}
+        <label className="form-label">Description</label>
+        <MarkdownEditor
+          value={form.description}
+          onChange={v => setForm(f => ({ ...f, description: v }))}
+          minHeight={110}
+          placeholder="A short blurb shown next to the buy button. Use Product Page Sections below for long-form content." />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px' }}>
@@ -419,6 +423,62 @@ function EditGBCard({ gb, gbs, fetchGbs, onClose, inline }) {
         <div className="form-group"><label className="form-label">Start</label><input type="date" className="form-input" value={form.startDate} onChange={set('startDate')} /></div>
         <div className="form-group"><label className="form-label">End</label><input type="date" className="form-input" value={form.endDate} onChange={set('endDate')} /></div>
       </div>
+      <div className="form-group">
+        <label className="form-label">Category</label>
+        <CategoryPicker value={form.category} onChange={v => setForm(f => ({ ...f, category: v }))} options={knownCategories} />
+      </div>
+
+      {/* Product Page Sections — same editor as the in-stock product modal so
+          GB product pages look consistent with regular product pages. */}
+      <div className="form-group">
+        <label className="form-label">
+          Product Page Sections <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>(optional)</span>
+        </label>
+        <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
+          Rendered below the buy section. Add a Hero image, Banner text, Text+Image split, Gallery, or Feature grid.
+        </p>
+        <LandingPageEditor value={landingPage} onChange={setLandingPage} />
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">
+          Custom HTML{' '}
+          <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>
+            {customPageHtml.trim() ? `(${customPageHtml.length.toLocaleString()} chars — overrides sections)` : '(optional)'}
+          </span>
+        </label>
+        <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
+          Paste raw HTML + CSS. Replaces Product Page Sections when set.
+        </p>
+        <CustomHtmlEditor value={customPageHtml} onChange={setCustomPageHtml} previewProduct={gb} />
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">
+          Add-ons{' '}
+          <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>
+            {pinnedAddOnIds.length > 0 ? `(${pinnedAddOnIds.length} pinned)` : '(auto)'}
+          </span>
+        </label>
+        <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
+          Pin specific products / group buys. Empty = auto-show GBs tagged with this as their parent.
+        </p>
+        <PinnedProductsPicker value={pinnedAddOnIds} onChange={setPinnedAddOnIds} />
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">
+          You might also like{' '}
+          <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>
+            {pinnedRelatedIds.length > 0 ? `(${pinnedRelatedIds.length} pinned)` : '(auto)'}
+          </span>
+        </label>
+        <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
+          Pin specific items. Empty = auto-pick from the same category.
+        </p>
+        <PinnedProductsPicker value={pinnedRelatedIds} onChange={setPinnedRelatedIds} />
+      </div>
+
       <div style={{ display: 'flex', gap: '8px' }}>
         <button className="btn-dark" disabled={saving} onClick={save} style={{ padding: '9px 22px' }}><span>{saving ? 'Saving...' : 'Save'}</span></button>
         <button className="btn-outline" onClick={onClose} style={{ padding: '9px 22px' }}>Cancel</button>
@@ -439,11 +499,21 @@ function ImagePanel({ gbId, images, fetchGbs, onClose }) {
   const [dragOverIdx, setDragOverIdx] = useState(null);
 
   const upload = async (e) => {
-    const files = e.target.files; if (!files?.length) return;
-    const fd = new FormData(); for (let i = 0; i < files.length; i++) fd.append('images', files[i]);
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
     setUploading(true);
-    try { await apiFetch(`/group-buys/${gbId}/images`, { method: 'POST', body: fd }); toast.success('Uploaded'); fetchGbs(); }
-    catch (err) { toast.error(err.message); } finally { setUploading(false); e.target.value = ''; }
+    try {
+      // Chunked to 20 per request — see batch comment in CreateProductModal.
+      const BATCH = 20;
+      for (let i = 0; i < files.length; i += BATCH) {
+        const slice = files.slice(i, i + BATCH);
+        const fd = new FormData();
+        slice.forEach(f => fd.append('images', f));
+        await apiFetch(`/group-buys/${gbId}/images`, { method: 'POST', body: fd });
+      }
+      toast.success('Uploaded'); fetchGbs();
+    } catch (err) { toast.error(err.message); }
+    finally { setUploading(false); e.target.value = ''; }
   };
 
   const handleAddUrl = async () => {
@@ -700,8 +770,10 @@ function GBConfigManager({ gb, fetchGbs, onClose }) {
 
       {configs.map((cfg, ci) => (
         <div key={ci} style={{ marginBottom: '12px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-            <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{cfg.name}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', gap: 8 }}>
+            <input className="form-input" style={{ ...inputSm, fontWeight: 600, fontSize: '0.82rem', width: 'auto', minWidth: 140 }}
+              value={cfg.name}
+              onChange={e => setConfigs(p => p.map((c, i) => i !== ci ? c : { ...c, name: e.target.value }))} />
             <button onClick={() => removeConfig(ci)} style={{ fontSize: '0.7rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
           </div>
           {cfg.options.length > 0 && (
@@ -713,7 +785,9 @@ function GBConfigManager({ gb, fetchGbs, onClose }) {
           )}
           {cfg.options.map((opt, oi) => (
             <div key={oi} style={{ display: 'grid', gridTemplateColumns: '1fr 55px 1fr 44px 22px', gap: '4px', alignItems: 'center', marginBottom: '3px' }}>
-              <span style={{ fontSize: '0.78rem', fontWeight: 500, padding: '4px 2px', textDecoration: opt.available ? 'none' : 'line-through', opacity: opt.available ? 1 : 0.45 }}>{opt.value}</span>
+              <input className="form-input" style={{ ...inputSm, textDecoration: opt.available ? 'none' : 'line-through', opacity: opt.available ? 1 : 0.55 }}
+                value={opt.value}
+                onChange={e => updateOptField(ci, oi, 'value', e.target.value)} />
               <input type="number" className="form-input" style={inputSm} value={opt.priceModifier} onChange={e => updateOptField(ci, oi, 'priceModifier', e.target.value)} />
               <div style={{ display: 'flex', gap: '3px' }}>
                 <input className="form-input" style={{ ...inputSm, flex: 1, minWidth: 0 }} placeholder="https://..." value={opt.image?.url || ''} onChange={e => updateOptField(ci, oi, 'imageUrl', e.target.value)} />
@@ -1363,9 +1437,24 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
   const [imagePreviews, setImagePreviews] = useState([]);
   const [urlInputCreate, setUrlInputCreate] = useState('');
   const [urlPreviews, setUrlPreviews] = useState([]);
+  // Long-form marketing content rendered below the buy section. Optional.
+  const [landingPage, setLandingPage] = useState([]);
+  const [customPageHtml, setCustomPageHtml] = useState('');
+  const [pinnedAddOnIds, setPinnedAddOnIds] = useState([]);
+  const [pinnedRelatedIds, setPinnedRelatedIds] = useState([]);
   const [sub, setSub] = useState(false);
-  const [descPreview, setDescPreview] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  // Esc closes — backdrop click is intentionally disabled to protect in-progress
+  // form work from a stray click outside the modal body.
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // Known categories from existing group buys — fuels the category combobox.
+  const knownCategories = Array.from(new Set((gbs || []).map(g => (g.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 
   const handleImageChange = (e) => {
     const files = Array.from(e.target.files);
@@ -1382,6 +1471,22 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
     setUrlPreviews(prev => [...prev, { url }]); setUrlInputCreate('');
   };
   const removeUrlPreview = (idx) => setUrlPreviews(prev => prev.filter((_, i) => i !== idx));
+
+  // Drag-drop reorder for the two image preview rows — uploads and URL-added
+  // entries shuffle independently. Files + previews move together so the
+  // underlying File[] stays in sync with what the admin sees.
+  const moveItem = (arr, from, to) => {
+    const next = [...arr]; const [m] = next.splice(from, 1); next.splice(to, 0, m); return next;
+  };
+  const reorderUploads = (from, to) => {
+    if (from === to) return;
+    setImages(prev => moveItem(prev, from, to));
+    setImagePreviews(prev => moveItem(prev, from, to));
+  };
+  const reorderUrls = (from, to) => {
+    if (from === to) return;
+    setUrlPreviews(prev => moveItem(prev, from, to));
+  };
 
 
   const addCfgGroup = () => {
@@ -1403,6 +1508,8 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
   const submitGB = async (queued) => {
     setSub(true);
     try {
+      const lpBlocks = serializeLandingPage(landingPage);
+      const trimmedCustomHtml = (customPageHtml || '').trim();
       const created = await apiFetch('/group-buys/create', {
         method: 'POST',
         body: JSON.stringify({
@@ -1414,12 +1521,22 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
           options: optionGroups, configurations: configs,
           parentGroupBuyId: form.parentGroupBuyId || null,
           isQueued: !!queued,
+          ...(lpBlocks.length > 0 ? { landingPage: lpBlocks } : {}),
+          ...(trimmedCustomHtml.length > 0 ? { customPageHtml } : {}),
+          ...(pinnedAddOnIds.length > 0 ? { pinnedAddOnIds } : {}),
+          ...(pinnedRelatedIds.length > 0 ? { pinnedRelatedIds } : {}),
         })
       });
       if (images.length > 0) {
-        const fd = new FormData();
-        images.forEach(f => fd.append('images', f));
-        await apiFetch(`/group-buys/${created._id}/images`, { method: 'POST', body: fd });
+        // Chunked to 20 per request — multer's per-request file cap
+        // rejects the 21st file with a misleading "Unexpected field" error.
+        const BATCH = 20;
+        for (let i = 0; i < images.length; i += BATCH) {
+          const slice = images.slice(i, i + BATCH);
+          const fd = new FormData();
+          slice.forEach(f => fd.append('images', f));
+          await apiFetch(`/group-buys/${created._id}/images`, { method: 'POST', body: fd });
+        }
       }
       for (const up of urlPreviews) {
         await apiFetch(`/group-buys/${created._id}/images/add-url`, {
@@ -1431,39 +1548,38 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
   };
   const submit = async (e) => { e.preventDefault(); await submitGB(false); };
 
+  // Enter on a plain text input advances to the next form element instead of
+  // submitting (matches CreateProductModal). Inputs that need to handle Enter
+  // themselves (Add URL, Add Config) opt out via data-enter-action="custom".
+  const handleFormKeyDown = (e) => {
+    if (e.key === 'Enter' && e.target.tagName === 'INPUT' && !e.target.dataset.enterAction) {
+      e.preventDefault();
+      const formElements = Array.from(e.currentTarget.querySelectorAll('input, textarea, select'));
+      const idx = formElements.indexOf(e.target);
+      if (idx > -1 && idx < formElements.length - 1) formElements[idx + 1].focus();
+    }
+  };
+
   const inputSm = { fontSize: '0.78rem', padding: '7px 9px' };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-body" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <div className="modal-body">
         <h2 className="modal-title">New Group Buy</h2>
         <p className="modal-subtitle">Create a new group buy or interest check.</p>
 
-        <form onSubmit={submit}>
+        <form onSubmit={submit} onKeyDown={handleFormKeyDown}>
           <div className="form-group"><label className="form-label">Name</label><input className="form-input" required value={form.name} onChange={set('name')} placeholder="e.g. GMK Rorschach" /></div>
 
-          {/* Rich text description */}
+          {/* Short blurb only — long-form content lives in Product Page
+              Sections at the bottom of this modal. */}
           <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <label className="form-label" style={{ margin: 0 }}>Description</label>
-              <button type="button" onClick={() => setDescPreview(p => !p)} style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
-                {descPreview ? 'Edit' : 'Preview'}
-              </button>
-            </div>
-            {descPreview ? (
-              <div style={{ minHeight: 72, padding: '12px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-secondary)', fontSize: '0.9rem', lineHeight: 1.75 }}>
-                {form.description ? <RichText content={form.description} /> : <span style={{ color: 'var(--ink-faint)' }}>No description yet.</span>}
-              </div>
-            ) : (
-              <>
-                <textarea className="form-input" value={form.description} onChange={set('description')}
-                  style={{ minHeight: 80, resize: 'vertical', fontFamily: 'monospace', fontSize: '0.82rem' }}
-                  placeholder="Describe the group buy...&#10;&#10;Use **bold**, *italic*, # Heading, or - bullet points for formatting." />
-                <p style={{ fontSize: '0.7rem', color: 'var(--ink-faint)', marginTop: '3px' }}>
-                  Markdown: **bold** · *italic* · # Heading · - bullet · blank line = new paragraph
-                </p>
-              </>
-            )}
+            <label className="form-label">Description</label>
+            <MarkdownEditor
+              value={form.description}
+              onChange={v => setForm(f => ({ ...f, description: v }))}
+              minHeight={110}
+              placeholder="A short blurb shown next to the buy button. Use Product Page Sections below for long-form content." />
           </div>
 
           <div className="modal-row-3">
@@ -1472,7 +1588,10 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
             <div className="form-group"><label className="form-label">Max Orders</label><input type="number" className="form-input" value={form.maxOrders} onChange={set('maxOrders')} placeholder="0 = unlimited" /></div>
           </div>
           <div className="modal-row-4">
-            <div className="form-group"><label className="form-label">Category</label><input className="form-input" value={form.category} onChange={set('category')} /></div>
+            <div className="form-group">
+              <label className="form-label">Category</label>
+              <CategoryPicker value={form.category} onChange={v => setForm(f => ({ ...f, category: v }))} options={knownCategories} />
+            </div>
             <div className="form-group"><label className="form-label">Status</label>
               <select className="form-input" value={form.status} onChange={set('status')}>
                 <option value="interest-check">Interest Check</option>
@@ -1508,45 +1627,35 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
               <p>Click or drag to upload images (max 10MB each)</p>
               <input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={handleImageChange} />
             </div>
-            {imagePreviews.length > 0 && (
-              <div className="img-preview-row">
-                {imagePreviews.map((p, i) => (
-                  <div key={i} className="img-preview-thumb" style={{ position: 'relative' }}>
-                    <img src={p.url} alt={p.name} />
-                    <button type="button" onClick={() => removeImagePreview(i)} style={{
-                      position: 'absolute', top: 3, right: 3, width: 18, height: 18,
-                      borderRadius: '50%', background: 'rgba(0,0,0,0.6)', color: '#fff',
-                      border: 'none', cursor: 'pointer', display: 'flex',
-                      alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', lineHeight: 1
-                    }}>✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <DraggableThumbList
+              items={imagePreviews}
+              getSrc={p => p.url}
+              getAlt={p => p.name}
+              onReorder={reorderUploads}
+              onRemove={removeImagePreview}
+            />
             <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
               <input className="form-input" style={{ fontSize: '0.78rem', padding: '6px 9px', flex: 1 }}
                 placeholder="Or paste image URL..." value={urlInputCreate}
                 onChange={e => setUrlInputCreate(e.target.value)}
+                data-enter-action="custom"
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addUrlPreview(); } }} />
               <button type="button" onClick={addUrlPreview} disabled={!urlInputCreate.trim()}
                 style={{ padding: '6px 14px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.75rem', fontFamily: "'DM Sans', sans-serif", opacity: !urlInputCreate.trim() ? 0.5 : 1 }}>
                 + Add URL
               </button>
             </div>
-            {urlPreviews.length > 0 && (
-              <div className="img-preview-row" style={{ marginTop: '8px' }}>
-                {urlPreviews.map((p, i) => (
-                  <div key={i} className="img-preview-thumb" style={{ position: 'relative' }}>
-                    <img src={p.url} alt="" />
-                    <button type="button" onClick={() => removeUrlPreview(i)} style={{
-                      position: 'absolute', top: 3, right: 3, width: 18, height: 18,
-                      borderRadius: '50%', background: 'rgba(0,0,0,0.6)', color: '#fff',
-                      border: 'none', cursor: 'pointer', display: 'flex',
-                      alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem'
-                    }}>✕</button>
-                  </div>
-                ))}
-              </div>
+            <DraggableThumbList
+              items={urlPreviews}
+              getSrc={p => p.url}
+              onReorder={reorderUrls}
+              onRemove={removeUrlPreview}
+              extraStyle={{ marginTop: '8px' }}
+            />
+            {(imagePreviews.length + urlPreviews.length) > 1 && (
+              <p style={{ fontSize: '0.68rem', color: 'var(--ink-faint)', marginTop: '6px' }}>
+                Drag thumbnails to reorder. The first image is the main/cover image. Uploads and URL-added images keep their own order; uploads come first on save.
+              </p>
             )}
           </div>
 
@@ -1567,30 +1676,95 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
             </p>
             {configs.map((cfg, ci) => (
               <div key={ci} style={{ marginBottom: '10px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{cfg.name}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: 8 }}>
+                  <input className="form-input" style={{ ...inputSm, fontWeight: 600, fontSize: '0.82rem', width: 'auto', minWidth: 140 }}
+                    value={cfg.name}
+                    onChange={e => setConfigs(c => c.map((cc, i) => i !== ci ? cc : { ...cc, name: e.target.value }))} />
                   <button type="button" onClick={() => setConfigs(c => c.filter((_, i) => i !== ci))} style={{ fontSize: '0.7rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
                 </div>
                 {cfg.options.map((opt, oi) => (
-                  <div key={oi} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '4px', fontSize: '0.78rem' }}>
-                    <span style={{ flex: 1 }}>{opt.value}</span>
-                    {priceDelta(opt.priceModifier) && <span style={{ color: Number(opt.priceModifier) >= 0 ? 'var(--ink-muted)' : '#c0392b' }}>{priceDelta(opt.priceModifier)}</span>}
-                    {opt.image?.url && <span style={{ color: 'var(--accent)', fontSize: '0.68rem' }}>📷</span>}
-                    <button type="button" onClick={() => setConfigs(c => c.map((cc, i) => i !== ci ? cc : { ...cc, options: cc.options.filter((_, j) => j !== oi) }))} style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+                  <div key={oi} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 1fr auto', gap: '5px', alignItems: 'center', marginBottom: '4px' }}>
+                    <input className="form-input" style={inputSm}
+                      value={opt.value}
+                      onChange={e => setConfigs(c => c.map((cc, i) => i !== ci ? cc : { ...cc, options: cc.options.map((oo, j) => j !== oi ? oo : { ...oo, value: e.target.value }) }))} />
+                    <input type="number" className="form-input" style={inputSm} placeholder="+₱"
+                      value={opt.priceModifier ?? ''}
+                      onChange={e => setConfigs(c => c.map((cc, i) => i !== ci ? cc : { ...cc, options: cc.options.map((oo, j) => j !== oi ? oo : { ...oo, priceModifier: Number(e.target.value) || 0 }) }))} />
+                    <input className="form-input" style={inputSm} placeholder="Image URL"
+                      value={opt.image?.url || ''}
+                      onChange={e => setConfigs(c => c.map((cc, i) => i !== ci ? cc : { ...cc, options: cc.options.map((oo, j) => j !== oi ? oo : { ...oo, image: { ...(oo.image || {}), url: e.target.value } }) }))} />
+                    <button type="button" onClick={() => setConfigs(c => c.map((cc, i) => i !== ci ? cc : { ...cc, options: cc.options.filter((_, j) => j !== oi) }))} style={{ fontSize: '0.78rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 8px', cursor: 'pointer' }}>✕</button>
                   </div>
                 ))}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 1fr auto', gap: '5px', marginTop: '6px' }}>
-                  <input className="form-input" style={inputSm} placeholder="Option value" value={newCfgOpts[ci]?.value || ''} onChange={e => setNewCfgOpts(v => ({ ...v, [ci]: { ...(v[ci] || {}), value: e.target.value } }))} />
-                  <input type="number" className="form-input" style={inputSm} placeholder="+₱" value={newCfgOpts[ci]?.priceModifier || ''} onChange={e => setNewCfgOpts(v => ({ ...v, [ci]: { ...(v[ci] || {}), priceModifier: e.target.value } }))} />
-                  <input className="form-input" style={inputSm} placeholder="Image URL (optional)" value={newCfgOpts[ci]?.imageUrl || ''} onChange={e => setNewCfgOpts(v => ({ ...v, [ci]: { ...(v[ci] || {}), imageUrl: e.target.value } }))} />
+                  <input className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="Option value" value={newCfgOpts[ci]?.value || ''} onChange={e => setNewCfgOpts(v => ({ ...v, [ci]: { ...(v[ci] || {}), value: e.target.value } }))} />
+                  <input type="number" className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="+₱" value={newCfgOpts[ci]?.priceModifier || ''} onChange={e => setNewCfgOpts(v => ({ ...v, [ci]: { ...(v[ci] || {}), priceModifier: e.target.value } }))} />
+                  <input className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="Image URL (optional)" value={newCfgOpts[ci]?.imageUrl || ''} onChange={e => setNewCfgOpts(v => ({ ...v, [ci]: { ...(v[ci] || {}), imageUrl: e.target.value } }))} />
                   <button type="button" onClick={() => addCfgOpt(ci)} className="config-add-btn">+</button>
                 </div>
               </div>
             ))}
             <div style={{ display: 'flex', gap: '6px' }}>
-              <input className="form-input" style={inputSm} placeholder="Config group name (e.g. Layout)" value={newCfgGroup.name} onChange={e => setNewCfgGroup({ name: e.target.value })} />
+              <input className="form-input" style={inputSm} placeholder="Config group name (e.g. Layout)" value={newCfgGroup.name} onChange={e => setNewCfgGroup({ name: e.target.value })}
+                data-enter-action="custom"
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCfgGroup(); } }} />
               <button type="button" onClick={addCfgGroup} className="config-add-btn">+ Add Config</button>
             </div>
+          </div>
+
+          {/* Product Page Sections — block-based marketing content rendered
+              under the buy section on the customer product page. */}
+          <div className="modal-section">
+            <p className="modal-section-title">
+              Product Page Sections{' '}
+              <span style={{ fontWeight: 400, color: 'var(--ink-faint)', textTransform: 'none', letterSpacing: 0 }}>
+                {landingPage.length > 0 ? `· ${landingPage.length} section${landingPage.length === 1 ? '' : 's'}` : '(optional)'}
+              </span>
+            </p>
+            <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
+              Rendered below the buy section. Add a Hero image, Banner text, Text+Image split, Gallery, or Feature grid.
+            </p>
+            <LandingPageEditor value={landingPage} onChange={setLandingPage} />
+          </div>
+
+          {/* Custom HTML override — replaces Product Page Sections when set. */}
+          <div className="modal-section">
+            <p className="modal-section-title">
+              Custom HTML{' '}
+              <span style={{ fontWeight: 400, color: 'var(--ink-faint)', textTransform: 'none', letterSpacing: 0 }}>
+                {customPageHtml.trim() ? `· ${customPageHtml.length.toLocaleString()} chars — overrides sections` : '(optional)'}
+              </span>
+            </p>
+            <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
+              Paste raw HTML + CSS for a hand-coded flagship page. Replaces Product Page Sections when set.
+            </p>
+            <CustomHtmlEditor value={customPageHtml} onChange={setCustomPageHtml} />
+          </div>
+
+          <div className="modal-section">
+            <p className="modal-section-title">
+              Add-ons{' '}
+              <span style={{ fontWeight: 400, color: 'var(--ink-faint)', textTransform: 'none', letterSpacing: 0 }}>
+                {pinnedAddOnIds.length > 0 ? `· ${pinnedAddOnIds.length} pinned` : '(auto)'}
+              </span>
+            </p>
+            <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
+              Pin items shown in the Add-ons section. Empty = auto-show GBs tagged with this as their parent.
+            </p>
+            <PinnedProductsPicker value={pinnedAddOnIds} onChange={setPinnedAddOnIds} />
+          </div>
+
+          <div className="modal-section">
+            <p className="modal-section-title">
+              You might also like{' '}
+              <span style={{ fontWeight: 400, color: 'var(--ink-faint)', textTransform: 'none', letterSpacing: 0 }}>
+                {pinnedRelatedIds.length > 0 ? `· ${pinnedRelatedIds.length} pinned` : '(auto)'}
+              </span>
+            </p>
+            <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
+              Pin items shown at the bottom of the page. Empty = auto-pick from the same category.
+            </p>
+            <PinnedProductsPicker value={pinnedRelatedIds} onChange={setPinnedRelatedIds} />
           </div>
 
           <div className="modal-actions">

@@ -1,5 +1,5 @@
 import { useState, useEffect, useContext } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
 import GroupBuyCard from '../components/GroupBuyCard';
 import AddToOrderContext from '../context/AddToOrderContext';
@@ -15,6 +15,19 @@ export default function GroupBuys() {
   const [products, setProducts] = useState([]);
   const { info: addToOrderInfo } = useContext(AddToOrderContext);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // /group-buys#group-buys scrolls past admin-built blocks and lands on the
+  // catalog. Mirrors the same hash convention used by Products.js.
+  useEffect(() => {
+    if (!location.hash || loading) return;
+    const id = location.hash.replace(/^#/, '');
+    const t = setTimeout(() => {
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+    return () => clearTimeout(t);
+  }, [location.key, location.hash, loading]);
 
   // Lock customers with an active gb-cart add-link to their original group buy.
   useEffect(() => {
@@ -55,9 +68,9 @@ export default function GroupBuys() {
         </div>
       )}
 
-      <div style={{ padding: '56px var(--page-pad) 80px' }}>
+      <div id="group-buys" style={{ scrollMarginTop: 'var(--nav-h, 64px)', padding: '56px var(--page-pad) 80px' }}>
         <div style={{ marginBottom: '40px' }}>
-          <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.8rem', letterSpacing: '-0.025em', marginBottom: '8px' }}>Group Buys</h1>
+          <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(1.7rem, 5.5vw, 2.8rem)', letterSpacing: '-0.025em', marginBottom: '8px' }}>Group Buys</h1>
           <p style={{ color: 'var(--ink-muted)', fontSize: '0.95rem', maxWidth: 520 }}>
             Join a group buy to get exclusive keyboards at production pricing. Orders are collected, then manufactured together.
           </p>

@@ -211,6 +211,18 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
 }
 .btn-ghost:hover { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.55); transform: translateY(-2px); }
 
+/* Admin-driven CTA sizes for the Hero block. Match the small/medium/large
+   scale used by inline CTAs in Home.js. Without these, btn-primary / btn-ghost
+   would ignore the size picker for default-color CTAs. */
+.btn-primary[data-cta-size="sm"], .btn-ghost[data-cta-size="sm"] { padding: 10px 22px; font-size: 0.82rem; }
+.btn-primary[data-cta-size="lg"], .btn-ghost[data-cta-size="lg"] { padding: 18px 38px; font-size: 1.05rem; }
+
+/* Shared hover behaviour for every section-level CTA (hero, banner,
+   product-hero tile, etc.). The renderer in Home.js (renderSectionCta)
+   tags every CTA with `.section-cta` so they share one hover treatment. */
+.section-cta { transition: transform 0.18s ease, box-shadow 0.18s ease, gap 0.18s ease; }
+.section-cta:hover { transform: translateY(-2px); }
+
 .btn-dark {
   background: var(--ink); color: #fff; border: none;
   border-radius: var(--radius-pill); padding: 14px 32px;
@@ -333,22 +345,27 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
 }
 .hero-dot.active { background: #fff; transform: scale(1.3); }
 .hero-dot:hover { background: rgba(255,255,255,0.7); }
-.hero-bg::after {
-  content: ''; position: absolute; inset: 0;
-  background:
-    linear-gradient(to top, rgba(10,10,8,0.80) 0%, rgba(10,10,8,0.25) 50%, transparent 100%),
-    linear-gradient(to right, rgba(10,10,8,0.32) 0%, transparent 60%);
-}
+/* Scrim is now an admin-controlled inline overlay rendered by HeroCarousel,
+   so the hardcoded ::after gradient was removed. */
 .hero-content { position: relative; z-index: 2; padding: 0 var(--page-pad) 90px; }
+/* Collapse the split layout to a single column on phones so the text isn't
+   crushed into a 50% slice next to the image. The image pane has no
+   intrinsic height (absolute-positioned children) so it'd collapse to 0px
+   in the single-column flow — pin a sensible min-height and let the section
+   grow with its content. */
+@media (max-width: 720px) {
+  .hero-split {
+    grid-template-columns: 1fr !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+  .hero-split-img { min-height: 320px; }
+}
 .hero-text { max-width: 660px; }
 .hero-eyebrow {
-  display: inline-flex; align-items: center; gap: 12px;
+  display: inline-flex; align-items: center;
   font-size: 0.72rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
   color: rgba(255,255,255,0.55); margin-bottom: 22px;
-}
-.hero-eyebrow::before {
-  content: ''; display: block; width: 32px; height: 1.5px;
-  background: var(--accent-light); border-radius: 2px; flex-shrink: 0;
 }
 .hero-title {
   font-family: 'DM Serif Display', serif;
@@ -364,59 +381,34 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
 .hero-cta { display: flex; gap: 14px; flex-wrap: wrap; }
 
 /* ══════════════════════════════════
-   CATEGORIES (clean strip)
+   CATEGORIES (apple-style: typography + whitespace)
 ══════════════════════════════════ */
 .cat-strip {
-  border-bottom: 1px solid var(--border);
-  padding: 0 var(--page-pad);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 22px var(--page-pad);
 }
 .cat-strip-inner {
-  display: flex; align-items: stretch;
+  display: flex; justify-content: center; align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 44px;
+  max-width: 1200px; margin: 0 auto;
 }
 .cat-link {
-  display: flex; align-items: center; gap: 10px;
-  padding: 20px 28px;
-  font-size: 0.9rem; font-weight: 400; color: var(--ink-muted);
+  display: inline-flex; align-items: center;
+  padding: 8px 0;
+  font-size: 0.84rem; font-weight: 400;
+  letter-spacing: 0.005em;
+  color: var(--ink-muted);
   text-decoration: none; white-space: nowrap;
-  border-right: 1px solid var(--border);
-  transition: color var(--transition), background var(--transition);
+  transition: color 0.22s ease;
   position: relative;
 }
-.cat-link:first-child { padding-left: 0; }
-.cat-link:last-child { border-right: none; }
-.cat-link::after {
-  content: ''; position: absolute; bottom: 0; left: 0; right: 0;
-  height: 2px; background: var(--accent);
-  transform: scaleX(0); transform-origin: left;
-  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.cat-link:hover::after { transform: scaleX(1); }
 .cat-link:hover { color: var(--ink); }
-.cat-link-label {
-  transition: letter-spacing var(--transition);
-}
-.cat-link:hover .cat-link-label { letter-spacing: 0.01em; }
-.cat-link-count {
-  font-size: 0.68rem; font-weight: 600;
-  color: var(--ink-faint); background: var(--bg-secondary);
-  padding: 2px 7px; border-radius: 10px;
-  min-width: 22px; text-align: center;
-  transition: all var(--transition);
-}
-.cat-link:hover .cat-link-count {
-  background: var(--accent-light); color: var(--accent);
-}
-.cat-link-arrow {
-  opacity: 0; transform: translateX(-6px);
-  transition: opacity var(--transition), transform var(--transition);
-  flex-shrink: 0; color: var(--accent);
-}
-.cat-link:hover .cat-link-arrow { opacity: 1; transform: translateX(0); }
+/* The active item has slightly more weight than its siblings so users can
+   tell where they are without resorting to an underline or pill background. */
 .cat-link-all {
-  margin-left: auto; border-right: none; border-left: 1px solid var(--border);
-  font-weight: 500; color: var(--accent);
+  color: var(--ink); font-weight: 500;
 }
-.cat-link-all:hover { color: var(--accent-hover); }
 
 
 /* ══════════════════════════════════
@@ -427,7 +419,10 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
 .section-title { font-family: 'DM Serif Display', serif; font-size: 2.1rem; letter-spacing: -0.025em; }
 .section-link {
   font-size: 0.875rem; color: var(--accent); text-decoration: none; font-weight: 500;
-  display: flex; align-items: center; gap: 4px;
+  /* inline-flex (not flex) so the pill obeys parent text-align when used in
+     SectionFooter under a centered header — otherwise it would left-align as a
+     block element inside text-align: center. */
+  display: inline-flex; align-items: center; gap: 4px;
   transition: gap var(--transition); white-space: nowrap;
   padding: 6px 14px; border-radius: 20px; background: var(--accent-light);
 }
@@ -478,14 +473,9 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
 .banner-content { padding: 72px 64px; position: relative; z-index: 1; }
 .banner-eyebrow {
   font-size: 0.72rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
-  color: var(--accent-light); margin-bottom: 18px; display: flex; align-items: center; gap: 8px;
+  color: var(--accent-light); margin-bottom: 18px; display: flex; align-items: center;
 }
 [data-theme="dark"] .banner-eyebrow { color: var(--accent); }
-.banner-eyebrow::before {
-  content: ''; display: block; width: 20px; height: 1.5px;
-  background: var(--accent-light); border-radius: 2px;
-}
-[data-theme="dark"] .banner-eyebrow::before { background: var(--accent); }
 .banner-title {
   font-family: 'DM Serif Display', serif;
   font-size: clamp(1.9rem, 3.2vw, 2.8rem); line-height: 1.08;
@@ -567,7 +557,6 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
   text-align: center; padding: 48px 24px;
 }
 .banner--stacked-content .banner-eyebrow { justify-content: center; }
-.banner--stacked-content .banner-eyebrow::before { display: none; }
 .banner--stacked-content .banner-sub { color: var(--ink-muted); }
 
 /* ── Banner fullbleed layout ── */
@@ -1022,29 +1011,59 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
 }
 @media (max-width: 1024px) {
   :root { --page-pad: 40px; }
-  .cat-strip-inner { flex-wrap: wrap; }
-  .cat-link { padding: 16px 22px; }
+  .cat-strip-inner { gap: 4px 32px; }
   .footer-grid { grid-template-columns: 1fr 1fr; gap: 40px; }
   .footer-brand { grid-column: 1 / -1; }
 }
 @media (max-width: 768px) {
   :root { --page-pad: 20px; --nav-h: 58px; }
-  .ok-nav { padding: 0 20px; gap: 0; }
+  .ok-nav { padding: 0 16px; gap: 0; }
   .nav-links { display: none; }
   /* FIX #7: Show hamburger, hide desktop logout, enable drawer */
   .mobile-menu-btn { display: flex; }
   .mobile-drawer-overlay { display: block; }
   .mobile-drawer { display: block; }
   .nav-icon-btn-desktop { display: none; }
+
+  /* Strip the action cluster down to essentials on phones — the dark-mode
+     toggle and the long "Sign In / Register" text get moved into the drawer
+     (the toggle override below re-enables it there). Cart becomes a circular
+     icon button so the bar can't push the logo off-screen. */
+  .ok-nav > .nav-actions { gap: 6px; }
+  .ok-nav > .nav-actions > .dark-toggle { display: none; }
+  .ok-nav > .nav-actions > .nav-auth-link { display: none; }
+  .nav-cart-btn {
+    padding: 0; width: 40px; height: 40px;
+    border-radius: 50%; gap: 0; justify-content: center;
+  }
+  .nav-cart-btn span { display: none; }
+  /* Re-enable the toggle when it lives inside the drawer. */
+  .mobile-drawer .dark-toggle { display: flex; }
   .hero { min-height: 100svh; }
   .hero-content { padding: 0 20px 80px; }
   .categories-section { padding: 24px 20px; }
-  .cat-strip { padding: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* On phones the cat strip becomes a smooth horizontal rail with faded
+     edges (mask) so the "more items just off-screen" cue is implicit
+     rather than relying on a visible scrollbar. */
+  .cat-strip {
+    padding: 16px 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
+            mask-image: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
+  }
   .cat-strip::-webkit-scrollbar { display: none; }
-  .cat-strip-inner { padding: 0 20px; }
-  .cat-link { padding: 14px 18px; font-size: 0.84rem; }
-  .cat-link-count { display: none; }
-  .cat-link-all { margin-left: 0; border-left: none; }
+  .cat-strip-inner {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 28px;
+    padding: 0 28px;
+    max-width: none;
+  }
+  .cat-link { flex-shrink: 0; padding: 6px 2px; font-size: 0.84rem; scroll-snap-align: start; }
   .carousel-track { grid-template-columns: repeat(2, minmax(200px,1fr)); gap: 14px; }
   .banner { grid-template-columns: 1fr; margin: 0 20px 60px; }
   .banner-content { padding: 48px 32px; }
@@ -1065,6 +1084,9 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
 }
 @media (max-width: 480px) {
   .carousel-track { grid-template-columns: 1fr; }
+  /* On the narrowest phones, drop the wordmark so the icon stands alone
+     and the right-hand action cluster has room to breathe. */
+  .nav-logo .nav-logo-text { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
@@ -1474,4 +1496,82 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
 /* ── Generic table → horizontal scroll wrapper on small screens ── */
 @media (max-width: 768px) {
   .table-scroll-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+
+/* ── Customer shop header — title + search/sort/toggle tools ──
+   On phones the tools row goes full-width below the title and the search
+   input expands to fill rather than staying pinned at 210px. */
+@media (max-width: 640px) {
+  .shop-header { gap: 14px !important; padding-top: 28px !important; }
+  .shop-header-title, .shop-header-tools { width: 100%; }
+  .shop-search-wrap { flex: 1 1 100%; }
+  .shop-search-input { width: 100% !important; }
+}
+
+/* ── Per-block hover zoom toggle ──
+   Admin adds the `no-hover-zoom` class on the block wrapper (via the
+   "Hover zoom" segmented control in BgAlignFields). This neutralizes every
+   image-scale transform inside the section without each block component
+   needing to thread the toggle through its render. Targets the specific
+   image elements that ship with a hover scale today. */
+.no-hover-zoom .card-img-primary,
+.no-hover-zoom .card-img-secondary,
+.no-hover-zoom .ph-tile-img,
+.no-hover-zoom .banner-img img,
+.no-hover-zoom .banner--overlay-img,
+.no-hover-zoom .banner-img-tag,
+.no-hover-zoom .banner--stacked-img img {
+  transform: none !important;
+}
+
+/* ── Collection blocks (productGrid / collection / mixed / groupBuys grid
+   layout) — admin can set up to 6 columns. That works on desktop but
+   crushes cards into 70-80px slivers on phones. Force a 2-column max
+   on tablets and a single column on phones, regardless of admin setting.
+   The carousel uses its own .carousel-track rules (see above). */
+@media (max-width: 768px) {
+  .collection-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 14px !important;
+  }
+}
+@media (max-width: 480px) {
+  .collection-grid {
+    grid-template-columns: 1fr !important;
+    gap: 18px !important;
+  }
+}
+
+/* The carousel-track media queries already shrink to 2 then 1 columns,
+   but the auto-scroll grid uses `repeat(2, minmax(200px,1fr))` which
+   still crowds cards. Bump min width on mobile so cards stay readable
+   and the user scrolls one card at a time. */
+@media (max-width: 640px) {
+  .carousel-track { grid-template-columns: repeat(auto-fill, minmax(82vw, 1fr)) !important; gap: 14px !important; }
+}
+
+/* ── Admin product/group-buy row on mobile ──
+   The row has 4 lanes on desktop: thumbnail, name/meta, status pill,
+   action pills. On phones flex-wrap pushes status into a weird middle
+   column and the 6-pill action cluster forms a tall wall. Restructure to:
+     [thumb] [name/meta — fills][status]
+     [action pills — full width]
+   so the status sits next to the name and the actions get their own band. */
+@media (max-width: 768px) {
+  .admin-product-row > :nth-child(2) { /* name + meta column */
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+  }
+  .admin-product-row .status-select {
+    font-size: 0.62rem !important;
+    padding: 3px 9px !important;
+    flex-shrink: 0;
+  }
+  .admin-product-actions {
+    gap: 6px !important;
+  }
+  .admin-product-actions > * {
+    font-size: 0.72rem !important;
+    padding: 5px 11px !important;
+  }
 }

@@ -3,11 +3,13 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import UserContext from '../context/UserContext';
 import AddToOrderContext from '../context/AddToOrderContext';
 import ProductCard from '../components/ProductCard';
+import GroupBuyCard from '../components/GroupBuyCard';
 import { RichText } from '../components/AdminView';
 import { LandingPageRenderer } from '../components/LandingPage';
+import { renderCustomPageTokens } from '../utils/customPage';
 import { apiFetch } from '../utils/api';
 import { allowedValuesForTarget } from '../utils/availabilityRules';
-import { resolveImages, findVariant, allowedValuesFor, getAttr } from '../utils/variants';
+import { resolveImages, findVariant, allowedValuesFor, getAttr, getDimValues, sumValueModifiers } from '../utils/variants';
 import { priceDelta } from '../utils/priceFormat';
 import toast from 'react-hot-toast';
 
@@ -30,6 +32,9 @@ export default function ProductView() {
     }
   }, [addToOrderInfo, navigate]);
   const [product, setProduct] = useState(null);
+  // Two card lists with mixed product / group-buy items. Each entry is
+  // { kind: 'product' | 'gb', item: ... } so the render can pick the right card.
+  const [addOns, setAddOns] = useState([]);
   const [related, setRelated] = useState([]);
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
@@ -101,10 +106,54 @@ export default function ProductView() {
         }
 
         try {
-          const all = await apiFetch('/products/active');
-          if (!cancelled && Array.isArray(all)) {
-            setRelated(all.filter(p => p.category === data.category && p._id !== data._id).slice(0, 4));
+          // Fetch products (incl. add-ons so child lookup works) + group buys
+          // in parallel — addons / related can mix both via pinnedAddOnIds /
+          // pinnedRelatedIds. Each card-list entry carries its kind so the
+          // renderer can dispatch to ProductCard vs GroupBuyCard.
+          const [allProducts, allGbs] = await Promise.all([
+            apiFetch('/products/active?includeAddOns=true').then(r => Array.isArray(r) ? r : []),
+            apiFetch('/group-buys/active').then(r => Array.isArray(r) ? r : []).catch(() => []),
+          ]);
+          if (cancelled) return;
+
+          // Resolver: pinned id list → ordered [{ kind, item }]. Unknown ids
+          // are skipped so a deleted reference doesn't crash the page.
+          const resolvePinned = (ids) => (ids || []).map(id => {
+            const p = allProducts.find(x => x._id === id);
+            if (p) return { kind: 'product', item: p };
+            const g = allGbs.find(x => x._id === id);
+            if (g) return { kind: 'gb', item: g };
+            return null;
+          }).filter(Boolean);
+
+          // Add-ons: pinned list wins; otherwise auto-show children that point
+          // back at this product via parentProductId.
+          let addOnList;
+          if (Array.isArray(data.pinnedAddOnIds) && data.pinnedAddOnIds.length > 0) {
+            addOnList = resolvePinned(data.pinnedAddOnIds);
+          } else {
+            addOnList = allProducts
+              .filter(p => String(p.parentProductId) === String(data._id))
+              .map(item => ({ kind: 'product', item }));
           }
+          setAddOns(addOnList);
+
+          // Related: pinned wins; otherwise same-category siblings (top-level
+          // products only, exclude self + addons of self).
+          let relatedList;
+          if (Array.isArray(data.pinnedRelatedIds) && data.pinnedRelatedIds.length > 0) {
+            relatedList = resolvePinned(data.pinnedRelatedIds);
+          } else {
+            relatedList = allProducts
+              .filter(p =>
+                p.category === data.category &&
+                p._id !== data._id &&
+                !p.parentProductId
+              )
+              .slice(0, 4)
+              .map(item => ({ kind: 'product', item }));
+          }
+          setRelated(relatedList);
         } catch {}
       } catch { if (!cancelled) toast.error('Product not found'); }
       finally { if (!cancelled) setLoading(false); }
@@ -139,12 +188,22 @@ export default function ProductView() {
 
 
 
-  // Build effective image list — stable across selections. Every image that could
-  // ever be shown (per-variant image, variantImages appliesTo entries, per-option
-  // image, per-config image, product gallery) is included once, in a deterministic
-  // order. Selecting an option/variant doesn't change THIS list — it just jumps
-  // mainImg to that option's image (see effect below) so the user can also
-  // swipe / arrow-key across the entire gallery freely.
+  // Build effective image list, narrowed to what's relevant to the current
+  // selection so the thumbnail strip doesn't sprawl across many rows when a
+  // product has 6+ colorways × 4 weights × angle shots.
+  //
+  // For variant products: include the selected variant's own image, every
+  // variantImages entry whose `appliesTo` is compatible with selectedAttrs
+  // (resolveImages already handles "Any" wildcards via empty appliesTo), and
+  // the generic product gallery. Other variants' images stay out of the
+  // strip — the variant picker pills above handle switching between them.
+  //
+  // For non-variant products with options/configurations: keep all option /
+  // config / gallery images (the per-option pills are the only way to see
+  // them).
+  //
+  // For products without any tagged variantImages: fall back to showing
+  // everything (so a product that only has a flat gallery still works).
   const effectiveImages = useMemo(() => {
     if (!product) return [];
     const out = [];
@@ -156,10 +215,20 @@ export default function ProductView() {
     };
 
     if (product.useVariants) {
-      (product.variants || []).forEach((v, i) => {
-        if (v?.image?.url) push(v.image.url, v.image.altText, `vimg-${v._id || i}`);
-      });
-      (product.variantImages || []).forEach((vi, i) => push(vi.url, vi.altText, `vi-${vi._id || i}`));
+      const taggedVariantImages = (product.variantImages || []).length > 0;
+      if (taggedVariantImages) {
+        // Selection-aware: only the matching variant + its tagged shots + gallery.
+        const sel = findVariant(product, selectedAttrs);
+        if (sel?.image?.url) push(sel.image.url, sel.image.altText, `vimg-${sel._id || 'sel'}`);
+        resolveImages(product, selectedAttrs).forEach((vi, i) =>
+          push(vi.url, vi.altText, `vi-${vi._id || i}`)
+        );
+      } else {
+        // No tagging — keep legacy behaviour so older products don't lose images.
+        (product.variants || []).forEach((v, i) => {
+          if (v?.image?.url) push(v.image.url, v.image.altText, `vimg-${v._id || i}`);
+        });
+      }
     } else {
       (product.options || []).forEach((grp, gi) => {
         (grp.values || []).forEach((val, vi) => {
@@ -174,7 +243,7 @@ export default function ProductView() {
     }
     (product.images || []).forEach((img, i) => push(img.url, img.altText, img._id || `g-${i}`));
     return out;
-  }, [product]);
+  }, [product, selectedAttrs]);
 
   // Sync mainImg to the currently selected option/config/variant's image when
   // that selection changes. The gallery itself stays stable.
@@ -205,6 +274,15 @@ export default function ProductView() {
     const idx = effectiveImages.findIndex(im => im.url === targetUrl);
     if (idx >= 0) setMainImg(idx);
   }, [product, selectedAttrs, selectedOption, selectedConfigs, effectiveImages]);
+
+  // Safeguard — when the filtered effectiveImages shrinks (variant switch
+  // hid some shots), the previously-selected index may now be out of range.
+  // Snap back to 0 instead of rendering a blank canvas.
+  useEffect(() => {
+    if (mainImg >= effectiveImages.length && effectiveImages.length > 0) {
+      setMainImg(0);
+    }
+  }, [effectiveImages.length, mainImg]);
 
   // Arrow-key navigation (PC). Ignore when focus is in an editable field.
   useEffect(() => {
@@ -370,10 +448,20 @@ export default function ProductView() {
   const { soldOut: outOfStock, max: maxQty } = computeStockStatus();
 
   // Calculate displayed price: product.price is the base, option/variant/config prices add on top.
+  // Variant pricing now flows from each selected DIMENSION VALUE's priceModifier
+  // (so e.g. Silver weight contributes +₱3,300 once, not echoed across every
+  // pill). The legacy per-variant `price` field is treated as an additional
+  // override modifier on top — useful for one-off "Limited Edition" combos
+  // without rewriting the per-value modifiers.
   const computeDisplayPrice = () => {
     let total = product.price || 0;
     if (hasOptions && selectedOption) total += (selectedOption.price || 0);
-    if (currentVariant) total += (currentVariant.price || 0);
+    if (product.useVariants) {
+      total += sumValueModifiers(product, selectedAttrs);
+      if (currentVariant?.price != null && currentVariant.price !== '') {
+        total += Number(currentVariant.price) || 0;
+      }
+    }
 
     // Add config price modifiers
     for (const cfg of (product.configurations || [])) {
@@ -405,8 +493,12 @@ export default function ProductView() {
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '64px', alignItems: 'start' }} className="product-layout">
 
-          {/* ── Images ── */}
-          <div>
+          {/* ── Images (sticky on desktop so the gallery stays in view while
+                  the customer scrolls the info column on the right) ── */}
+          <div
+            className="product-image-col"
+            style={{ position: 'sticky', top: 'calc(var(--nav-h) + 16px)', alignSelf: 'start' }}
+          >
             <div
               style={{ width: '100%', aspectRatio: '4 / 3', borderRadius: '20px', overflow: 'hidden', background: 'var(--accent-light)', marginBottom: '14px', position: 'relative', cursor: displayedImage ? 'zoom-in' : 'default', touchAction: 'pan-y' }}
               onClick={onCanvasClick}
@@ -414,10 +506,28 @@ export default function ProductView() {
               onTouchEnd={onCanvasTouchEnd}
             >
               {displayedImage ? (
-                <img src={displayedImage} alt={product.name}
-                  style={{ width: '100%', height: '100%', objectFit: 'contain', transition: 'transform 0.3s ease' }}
-                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.04)'}
-                  onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'} />
+                <>
+                  {/* Blurred copy of the active image — fills any aspect-ratio gap
+                      with the photo's own colors instead of a flat bar. */}
+                  <img
+                    src={displayedImage}
+                    alt=""
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute', inset: 0,
+                      width: '100%', height: '100%',
+                      objectFit: 'cover',
+                      filter: 'blur(40px) saturate(1.1)',
+                      transform: 'scale(1.25)',
+                      opacity: 0.75,
+                      pointerEvents: 'none',
+                    }}
+                  />
+                  <img src={displayedImage} alt={product.name}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', transition: 'transform 0.3s ease' }}
+                    onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.04)'}
+                    onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'} />
+                </>
               ) : (
                 <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Serif Display', serif", fontSize: '3rem', color: 'var(--accent)' }}>{product.name?.[0]}</div>
               )}
@@ -426,16 +536,40 @@ export default function ProductView() {
               )}
             </div>
             {effectiveImages.length > 1 && (
-              <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
-                {effectiveImages.map((img, i) => (
-                  <button key={img._id || i} onClick={() => setMainImg(i)} style={{
-                    width: 76, height: 76, borderRadius: 'var(--radius-sm)', overflow: 'hidden',
-                    border: i === mainImg ? '2px solid var(--accent)' : '2px solid transparent',
-                    cursor: 'pointer', flexShrink: 0, padding: 0, background: 'none',
+              // Single-row horizontal carousel. Previously wrapped onto 3+ rows
+              // for products with many colorway shots. Snap + edge fade hint
+              // at scrollability without showing a fat scrollbar.
+              <div style={{ position: 'relative' }}>
+                <div
+                  className="pv-thumb-strip"
+                  style={{
+                    display: 'flex', gap: '10px',
+                    overflowX: 'auto', overflowY: 'hidden',
+                    scrollSnapType: 'x mandatory',
+                    paddingBottom: '4px',
+                    scrollbarWidth: 'thin',
                   }}>
-                    <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  </button>
-                ))}
+                  {effectiveImages.map((img, i) => (
+                    <button key={img._id || i} onClick={() => setMainImg(i)} style={{
+                      width: 72, height: 72, borderRadius: 'var(--radius-sm)', overflow: 'hidden',
+                      border: i === mainImg ? '2px solid var(--accent)' : '2px solid transparent',
+                      cursor: 'pointer', flexShrink: 0, padding: 0, background: 'none',
+                      scrollSnapAlign: 'start',
+                    }}>
+                      <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </button>
+                  ))}
+                </div>
+                {/* Right edge fade — hints there's more to scroll. Only shows
+                    when the row actually overflows (≥ 7 thumbs at 72+10 px). */}
+                {effectiveImages.length > 6 && (
+                  <div aria-hidden="true" style={{
+                    position: 'absolute', top: 0, right: 0, bottom: 4, width: 40,
+                    background: 'linear-gradient(to right, transparent, var(--bg))',
+                    pointerEvents: 'none',
+                  }} />
+                )}
+                <style>{`.pv-thumb-strip::-webkit-scrollbar{height:6px}.pv-thumb-strip::-webkit-scrollbar-thumb{background:var(--border);border-radius:6px}`}</style>
               </div>
             )}
           </div>
@@ -470,25 +604,19 @@ export default function ProductView() {
                     if (selectedAttrs[n]) priorAttrs[n] = selectedAttrs[n];
                   }
                   const dimAllowed = allowedValuesFor(product, dim.name, priorAttrs);
+                  const dimValues = getDimValues(dim);
                   return (
                     <div key={dim._id || dim.name} style={{ marginBottom: '16px' }}>
                       <p style={{ fontSize: '0.75rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '8px' }}>{dim.name}</p>
                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                        {(dim.values || []).map((val, vi) => {
+                        {dimValues.map(({ value: val, priceModifier }, vi) => {
                           const avail = dimAllowed.has(val);
                           const isSelected = selectedAttrs[dim.name] === val;
-                          // Peek the variant the customer would land on if they clicked this pill,
-                          // using the same auto-snap rules as the click handler. We pin dims 1..dimIdx
-                          // (this and earlier) to the candidate value, pick the highest-stock match,
-                          // and show that variant's price modifier. As the customer drills down,
-                          // the preview narrows from "best variant with this value" to "this exact combo".
-                          const peekNext = { ...selectedAttrs, [dim.name]: val };
-                          const peekFixed = product.variantDimensions.slice(0, dimIdx + 1).map(d => d.name);
-                          const stockValPeek = v => (v.stock === -1 ? Infinity : (v.stock ?? 0));
-                          const peekBest = (product.variants || [])
-                            .filter(v => v.available !== false && peekFixed.every(n => getAttr(v.attributes, n) === peekNext[n]))
-                            .sort((a, b) => stockValPeek(b) - stockValPeek(a))[0];
-                          const peekDelta = priceDelta(peekBest?.price);
+                          // Pills now show their OWN value's modifier instead of the
+                          // selected variant's full price delta — so the +₱3,300 on
+                          // Silver only appears on the Silver pill, not echoed across
+                          // every other dimension's pills.
+                          const valDelta = priceDelta(priceModifier);
                           return (
                             <button key={vi}
                               className={`pill ${isSelected ? 'active' : ''}`}
@@ -513,9 +641,9 @@ export default function ProductView() {
                               }}
                               style={!avail ? { textDecoration: 'line-through', opacity: 0.4 } : {}}>
                               {val}
-                              {peekDelta && (
+                              {valDelta && (
                                 <span style={{ fontSize: '0.72rem', opacity: 0.7, marginLeft: '4px' }}>
-                                  {peekDelta}
+                                  {valDelta}
                                 </span>
                               )}
                             </button>
@@ -659,10 +787,41 @@ export default function ProductView() {
         </div>
       </div>
 
-      {Array.isArray(product.landingPage) && product.landingPage.length > 0 && (
-        <div style={{ borderTop: '1px solid var(--border)' }}>
-          <LandingPageRenderer blocks={product.landingPage} />
-        </div>
+      {/* Marketing surface below the buy section.
+          customPageHtml takes precedence — when an admin pastes raw markup,
+          the block-based landing page is hidden so the two don't fight for
+          the same vertical space. Trusted-admin input; rendered as-is. */}
+      {product.customPageHtml && product.customPageHtml.trim()
+        ? (
+          <div
+            style={{ borderTop: '1px solid var(--border)' }}
+            dangerouslySetInnerHTML={{ __html: renderCustomPageTokens(product.customPageHtml, product) }}
+          />
+        )
+        : Array.isArray(product.landingPage) && product.landingPage.length > 0 && (
+          <div style={{ borderTop: '1px solid var(--border)' }}>
+            <LandingPageRenderer blocks={product.landingPage} />
+          </div>
+        )
+      }
+
+      {/* Add-ons — pinned-or-auto. Each entry carries its kind so we can mix
+          products and group buys in the same grid using the matching card. */}
+      {addOns.length > 0 && (
+        <section style={{ padding: '56px var(--page-pad) 8px', borderTop: '1px solid var(--border)' }}>
+          <div className="section-header">
+            <h2 className="section-title">Add-ons</h2>
+          </div>
+          <p style={{ color: 'var(--ink-muted)', fontSize: '0.92rem', marginBottom: '28px' }}>
+            Optional extras paired with {product.name}.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' }}>
+            {addOns.map(({ kind, item }) => kind === 'gb'
+              ? <GroupBuyCard key={`gb-${item._id}`} gb={item} />
+              : <ProductCard key={`p-${item._id}`} product={item} />
+            )}
+          </div>
+        </section>
       )}
 
       {related.length > 0 && (
@@ -672,12 +831,22 @@ export default function ProductView() {
             <Link to="/products" className="section-link">View all →</Link>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' }}>
-            {related.map(p => <ProductCard key={p._id} product={p} />)}
+            {related.map(({ kind, item }) => kind === 'gb'
+              ? <GroupBuyCard key={`gb-${item._id}`} gb={item} />
+              : <ProductCard key={`p-${item._id}`} product={item} />
+            )}
           </div>
         </section>
       )}
 
-      <style>{`@media (max-width: 960px) { .product-layout { grid-template-columns: 1fr !important; gap: 40px !important; } }`}</style>
+      <style>{`
+        @media (max-width: 960px) {
+          .product-layout { grid-template-columns: 1fr !important; gap: 40px !important; }
+          /* Stacked layout — sticky has no headroom and would pin the image
+             at the top while the user is reading the info underneath. */
+          .product-image-col { position: static !important; }
+        }
+      `}</style>
 
       {lightboxOpen && displayedImage && (
         <div onClick={() => setLightboxOpen(false)}

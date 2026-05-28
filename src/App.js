@@ -10,6 +10,7 @@ import Footer from './components/Footer';
 import ErrorBoundary from './components/ErrorBoundary';
 import Home from './pages/Home';
 import Products from './pages/Products';
+import CategoryPage from './pages/CategoryPage';
 import ProductView from './pages/ProductView';
 import CartView from './pages/CartView';
 import Checkout from './pages/Checkout';
@@ -60,6 +61,7 @@ export default function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/products" element={<Products />} />
                 <Route path="/products/:productId" element={<ProductView />} />
+                <Route path="/category/:slug" element={<CategoryPage />} />
                 <Route path="/cart" element={<CartView />} />
                 <Route path="/checkout" element={<Checkout />} />
                 <Route path="/login" element={<Login />} />

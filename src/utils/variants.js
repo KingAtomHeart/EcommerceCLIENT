@@ -57,3 +57,39 @@ export function allowedValuesFor(product, dimensionName, selectedAttrs) {
     }
     return allowed;
 }
+
+// Dimension values used to be bare strings (["Red", "Blue"]) and now carry a
+// price modifier ([{ value: "Red", priceModifier: 0 }, ...]). Normalise either
+// shape to the object form so the rest of the UI can read .value /
+// .priceModifier without conditionals scattered everywhere.
+export function getDimValues(dim) {
+    if (!dim || !Array.isArray(dim.values)) return [];
+    return dim.values.map(v => {
+        if (typeof v === 'string') return { value: v, priceModifier: 0 };
+        if (v && typeof v === 'object') {
+            return { value: String(v.value ?? ''), priceModifier: Number(v.priceModifier) || 0 };
+        }
+        return null;
+    }).filter(v => v && v.value);
+}
+
+// Look up the priceModifier for a specific value on a specific dimension.
+// Returns 0 for unknown values so the price calc can always sum without nulls.
+export function getValueModifier(dim, value) {
+    if (!dim || value == null) return 0;
+    const found = getDimValues(dim).find(v => v.value === value);
+    return found ? found.priceModifier : 0;
+}
+
+// Sum the price modifiers contributed by the current selection across every
+// dimension. Used by the customer page to show base + variant additions.
+export function sumValueModifiers(product, selectedAttrs) {
+    const sel = selectedAttrs || {};
+    let total = 0;
+    for (const dim of (product?.variantDimensions || [])) {
+        const v = sel[dim.name];
+        if (!v) continue;
+        total += getValueModifier(dim, v);
+    }
+    return total;
+}

@@ -256,7 +256,7 @@ export default function ContactAdmin() {
       {/* ── Page header ── */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.2rem', letterSpacing: '-0.025em', marginBottom: 4 }}>
+          <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(1.5rem, 4.5vw, 2.2rem)', letterSpacing: '-0.025em', marginBottom: 4 }}>
             Messages
           </h1>
           <p style={{ color: 'var(--ink-muted)', fontSize: '0.88rem' }}>

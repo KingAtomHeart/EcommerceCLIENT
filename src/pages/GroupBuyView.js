@@ -3,7 +3,10 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import UserContext from '../context/UserContext';
 import AddToOrderContext from '../context/AddToOrderContext';
 import { RichText } from '../components/AdminView';
+import { LandingPageRenderer } from '../components/LandingPage';
+import { renderCustomPageTokens } from '../utils/customPage';
 import GroupBuyCard from '../components/GroupBuyCard';
+import ProductCard from '../components/ProductCard';
 import { apiFetch } from '../utils/api';
 import { priceDelta } from '../utils/priceFormat';
 import toast from 'react-hot-toast';
@@ -21,6 +24,10 @@ export default function GroupBuyView() {
   const [gb, setGb] = useState(null);
   const [loading, setLoading] = useState(true);
   const [mainImg, setMainImg] = useState(0);
+  // Mixed product/GB lists for the addons + related sections, each entry is
+  // { kind: 'product' | 'gb', item: ... }.
+  const [pinnedAddOnList, setPinnedAddOnList] = useState(null); // null = not loaded / use gb.addOns
+  const [relatedList, setRelatedList] = useState([]);
 
   // Selected option: { groupId, groupName, valueId, value, price }
   const [selectedOption, setSelectedOption] = useState(null);
@@ -33,8 +40,11 @@ export default function GroupBuyView() {
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
   useEffect(() => {
-    apiFetch(`/group-buys/${id}`)
-      .then(data => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiFetch(`/group-buys/${id}`);
+        if (cancelled) return;
         setGb(data);
 
         // Auto-select first available option value
@@ -59,9 +69,57 @@ export default function GroupBuyView() {
           if (first) initial[c.name] = first.value;
         });
         setConfigs(initial);
-      })
-      .catch(() => toast.error('Group buy not found'))
-      .finally(() => setLoading(false));
+
+        // Cross-sell. Skip the catalog fetch entirely when no pinning is set
+        // AND no related auto-derive is needed — but the page benefits from
+        // showing related GBs regardless, so always fetch and decide here.
+        try {
+          const [allProducts, allGbs] = await Promise.all([
+            apiFetch('/products/active?includeAddOns=true').then(r => Array.isArray(r) ? r : []).catch(() => []),
+            apiFetch('/group-buys/active?includeAddOns=true').then(r => Array.isArray(r) ? r : []),
+          ]);
+          if (cancelled) return;
+
+          const resolvePinned = (ids) => (ids || []).map(rawId => {
+            const sid = String(rawId);
+            const p = allProducts.find(x => String(x._id) === sid);
+            if (p) return { kind: 'product', item: p };
+            const g = allGbs.find(x => String(x._id) === sid);
+            if (g) return { kind: 'gb', item: g };
+            return null;
+          }).filter(Boolean);
+
+          // Pinned add-ons override the server-populated gb.addOns. When no
+          // pins are set we leave pinnedAddOnList=null so the JSX falls back
+          // to rendering gb.addOns (preserves current behavior).
+          if (Array.isArray(data.pinnedAddOnIds) && data.pinnedAddOnIds.length > 0) {
+            setPinnedAddOnList(resolvePinned(data.pinnedAddOnIds));
+          }
+
+          // Related: pinned wins, otherwise same-category siblings (skip self
+          // + any GB that is an add-on of something else).
+          let rel;
+          if (Array.isArray(data.pinnedRelatedIds) && data.pinnedRelatedIds.length > 0) {
+            rel = resolvePinned(data.pinnedRelatedIds);
+          } else {
+            rel = allGbs
+              .filter(g =>
+                g.category === data.category &&
+                String(g._id) !== String(data._id) &&
+                !g.parentGroupBuyId
+              )
+              .slice(0, 4)
+              .map(item => ({ kind: 'gb', item }));
+          }
+          setRelatedList(rel);
+        } catch { /* silent */ }
+      } catch {
+        if (!cancelled) toast.error('Group buy not found');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [id]);
 
   const hasOptions = (gb?.options?.length || 0) > 0;
@@ -276,8 +334,12 @@ export default function GroupBuyView() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '64px', alignItems: 'start' }} className="product-layout">
 
-        {/* ── Images ── */}
-        <div>
+        {/* ── Images (sticky on desktop — keeps gallery in view while the
+                info column scrolls). Matches ProductView. ── */}
+        <div
+          className="product-image-col"
+          style={{ position: 'sticky', top: 'calc(var(--nav-h) + 16px)', alignSelf: 'start' }}
+        >
           <div
             style={{ width: '100%', aspectRatio: '4 / 3', borderRadius: '20px', overflow: 'hidden', background: 'var(--accent-light)', marginBottom: '14px', position: 'relative', cursor: displayedImage ? 'zoom-in' : 'default', touchAction: 'pan-y' }}
             onClick={() => {
@@ -288,10 +350,28 @@ export default function GroupBuyView() {
             onTouchEnd={onCanvasTouchEnd}
           >
             {displayedImage ? (
-              <img src={displayedImage} alt={gb.name}
-                style={{ width: '100%', height: '100%', objectFit: 'contain', transition: 'transform 0.3s ease' }}
-                onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.04)'}
-                onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'} />
+              <>
+                {/* Blurred copy of the active image — fills any aspect-ratio gap
+                    with the photo's own colors instead of a flat bar. */}
+                <img
+                  src={displayedImage}
+                  alt=""
+                  aria-hidden="true"
+                  style={{
+                    position: 'absolute', inset: 0,
+                    width: '100%', height: '100%',
+                    objectFit: 'cover',
+                    filter: 'blur(40px) saturate(1.1)',
+                    transform: 'scale(1.25)',
+                    opacity: 0.75,
+                    pointerEvents: 'none',
+                  }}
+                />
+                <img src={displayedImage} alt={gb.name}
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', transition: 'transform 0.3s ease' }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.04)'}
+                  onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'} />
+              </>
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Serif Display', serif", fontSize: '3rem', color: 'var(--accent)' }}>{gb.name?.[0]}</div>
             )}
@@ -300,14 +380,36 @@ export default function GroupBuyView() {
             )}
           </div>
           {effectiveImages.length > 1 && (
-            <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
-              {effectiveImages.map((img, i) => (
-                <button key={img._id || i} onClick={() => setMainImg(i)} style={{
-                  width: 76, height: 76, borderRadius: 'var(--radius-sm)', overflow: 'hidden',
-                  border: i === mainImg ? '2px solid var(--accent)' : '2px solid transparent',
-                  cursor: 'pointer', padding: 0, background: 'none', flexShrink: 0,
-                }}><img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></button>
-              ))}
+            // Single-row horizontal carousel (matches ProductView). Replaces
+            // the previous wrap-onto-3-rows layout that sprawled with many
+            // colorway shots.
+            <div style={{ position: 'relative' }}>
+              <div
+                className="pv-thumb-strip"
+                style={{
+                  display: 'flex', gap: '10px',
+                  overflowX: 'auto', overflowY: 'hidden',
+                  scrollSnapType: 'x mandatory',
+                  paddingBottom: '4px',
+                  scrollbarWidth: 'thin',
+                }}>
+                {effectiveImages.map((img, i) => (
+                  <button key={img._id || i} onClick={() => setMainImg(i)} style={{
+                    width: 72, height: 72, borderRadius: 'var(--radius-sm)', overflow: 'hidden',
+                    border: i === mainImg ? '2px solid var(--accent)' : '2px solid transparent',
+                    cursor: 'pointer', padding: 0, background: 'none', flexShrink: 0,
+                    scrollSnapAlign: 'start',
+                  }}><img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></button>
+                ))}
+              </div>
+              {effectiveImages.length > 6 && (
+                <div aria-hidden="true" style={{
+                  position: 'absolute', top: 0, right: 0, bottom: 4, width: 40,
+                  background: 'linear-gradient(to right, transparent, var(--bg))',
+                  pointerEvents: 'none',
+                }} />
+              )}
+              <style>{`.pv-thumb-strip::-webkit-scrollbar{height:6px}.pv-thumb-strip::-webkit-scrollbar-thumb{background:var(--border);border-radius:6px}`}</style>
             </div>
           )}
         </div>
@@ -493,16 +595,55 @@ export default function GroupBuyView() {
         </div>
       </div>
 
-      <style>{`@media (max-width: 960px) { .product-layout { grid-template-columns: 1fr !important; gap: 40px !important; } }`}</style>
+      <style>{`
+        @media (max-width: 960px) {
+          .product-layout { grid-template-columns: 1fr !important; gap: 40px !important; }
+          .product-image-col { position: static !important; }
+        }
+      `}</style>
 
-      {gb.addOns?.length > 0 && (
+      {/* Optional marketing page rendered below the buy section. Mirrors
+          ProductView so GB pages and product pages share the same surface.
+          customPageHtml wins over landingPage when both exist. */}
+      {gb.customPageHtml && gb.customPageHtml.trim()
+        ? <div dangerouslySetInnerHTML={{ __html: renderCustomPageTokens(gb.customPageHtml, gb) }} />
+        : Array.isArray(gb.landingPage) && gb.landingPage.length > 0 && (
+          <LandingPageRenderer blocks={gb.landingPage} />
+        )
+      }
+
+      {(() => {
+        // Pinned list (when set) replaces the server-populated gb.addOns. The
+        // legacy gb.addOns is GroupBuy-only, so wrap each in the same { kind,
+        // item } shape so the renderer below stays uniform.
+        const list = pinnedAddOnList != null
+          ? pinnedAddOnList
+          : (gb.addOns || []).map(item => ({ kind: 'gb', item }));
+        if (list.length === 0) return null;
+        return (
+          <div style={{ marginTop: '64px' }}>
+            <h2 className="section-title" style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(1.5rem, 2.4vw, 1.9rem)', letterSpacing: '-0.02em', marginBottom: '8px' }}>Add-ons</h2>
+            <p style={{ color: 'var(--ink-muted)', fontSize: '0.92rem', marginBottom: '28px' }}>
+              Optional extras for this group buy. Only available alongside {gb.name}.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
+              {list.map(({ kind, item }) => kind === 'product'
+                ? <ProductCard key={`p-${item._id}`} product={item} />
+                : <GroupBuyCard key={`gb-${item._id}`} gb={item} />
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {relatedList.length > 0 && (
         <div style={{ marginTop: '64px' }}>
-          <h2 className="section-title" style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(1.5rem, 2.4vw, 1.9rem)', letterSpacing: '-0.02em', marginBottom: '8px' }}>Add-ons</h2>
-          <p style={{ color: 'var(--ink-muted)', fontSize: '0.92rem', marginBottom: '28px' }}>
-            Optional extras for this group buy. Only available alongside {gb.name}.
-          </p>
+          <h2 className="section-title" style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(1.5rem, 2.4vw, 1.9rem)', letterSpacing: '-0.02em', marginBottom: '8px' }}>You might also like</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
-            {gb.addOns.map(ao => <GroupBuyCard key={ao._id} gb={ao} />)}
+            {relatedList.map(({ kind, item }) => kind === 'product'
+              ? <ProductCard key={`p-${item._id}`} product={item} />
+              : <GroupBuyCard key={`gb-${item._id}`} gb={item} />
+            )}
           </div>
         </div>
       )}

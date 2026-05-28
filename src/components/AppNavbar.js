@@ -34,11 +34,13 @@ export default function AppNavbar() {
         <ul className="nav-links">
           {isAdmin ? (
             <>
+              <li><NavLink to="/" end className={({ isActive }) => isActive ? 'active' : ''}>Home</NavLink></li>
               <li><NavLink to="/products" className={({ isActive }) => isActive ? 'active' : ''}>Dashboard</NavLink></li>
               <li><NavLink to="/contact/admin" className={({ isActive }) => isActive ? 'active' : ''}>Messages</NavLink></li>
             </>
           ) : (
             <>
+              <li><NavLink to="/" end className={({ isActive }) => isActive ? 'active' : ''}>Home</NavLink></li>
               {/* Shop dropdown */}
               <li className="nav-dropdown-wrap">
                 <Link
@@ -102,11 +104,13 @@ export default function AppNavbar() {
           <div className="mobile-drawer-links">
             {isAdmin ? (
               <>
+                <NavLink to="/" end className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Home</NavLink>
                 <NavLink to="/products" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Dashboard</NavLink>
                 <NavLink to="/contact/admin" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Messages</NavLink>
               </>
             ) : (
               <>
+                <NavLink to="/" end className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Home</NavLink>
                 <NavLink to="/products" className={({ isActive }) => `mobile-link ${isActive && !location.search ? 'active' : ''}`}>Shop All</NavLink>
                 <Link to="/products?cat=keyboards" className={`mobile-link ${location.search.includes('keyboards') ? 'active' : ''}`} style={{ paddingLeft: 32 }}>Keyboards</Link>
                 <Link to="/products?cat=desk-accessories" className={`mobile-link ${location.search.includes('desk-accessories') ? 'active' : ''}`} style={{ paddingLeft: 32 }}>Desk Accessories</Link>
@@ -128,6 +132,25 @@ export default function AppNavbar() {
             ) : (
               <NavLink to="/login" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Sign In</NavLink>
             )}
+          </div>
+
+          {/* Theme toggle — lives in the drawer on mobile since it doesn't
+              fit comfortably in the top bar without crowding the logo. */}
+          <div className="mobile-drawer-divider" />
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '8px 16px',
+          }}>
+            <span style={{ fontSize: '0.95rem', color: 'var(--ink-muted)' }}>
+              {theme === 'dark' ? 'Dark mode' : 'Light mode'}
+            </span>
+            <button onClick={toggleTheme} className="dark-toggle" aria-label="Toggle dark mode" style={{ width: 36, height: 36 }}>
+              {theme === 'dark' ? (
+                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              ) : (
+                <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+              )}
+            </button>
           </div>
         </div>
       </div>

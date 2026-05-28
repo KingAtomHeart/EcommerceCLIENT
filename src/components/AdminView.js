@@ -1,21 +1,80 @@
 import { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
 import { StatusBadge, statusStyle } from '../utils/statusColors';
 import { useTheme } from '../context/ThemeContext';
 import toast from 'react-hot-toast';
 import AdminHomepageEditor from './AdminHomepageEditor';
 import GroupBuyAdmin, { UnifiedGBOrderCard } from '../pages/GroupBuyAdmin';
+// Description stays short; the long-form marketing content lives in
+// LandingPageEditor below the description as a section-based editor (Hero /
+// Banner / Text+Image / Gallery / Feature grid). Renderer stays wired in
+// ProductView.js so customer-side renders the assembled page.
 import { LandingPageEditor, serializeLandingPage } from './LandingPage';
+import { CUSTOM_PAGE_SKELETON, renderCustomPageTokens } from '../utils/customPage';
 import { priceDelta } from '../utils/priceFormat';
+import { getDimValues } from '../utils/variants';
 
-const VALID_TABS = ['products', 'group-buys', 'orders', 'stats', 'homepage'];
+const VALID_TABS = ['products', 'group-buys', 'orders', 'stats', 'homepage', 'categories'];
 
 async function uploadOptionImage(file) {
   const fd = new FormData();
   fd.append('image', file);
   const data = await apiFetch('/upload/single', { method: 'POST', body: fd });
   return data.url;
+}
+
+/* Move an array element from `from` to `to` and return the new array. Used
+   by every reorder-by-drag UI here (image previews, etc.). */
+function arrayMove(arr, from, to) {
+  const next = [...arr];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
+/* Generic drag-to-reorder thumbnail row. Used by the create-product modal so
+   admins can reshuffle uploaded files and URL-added images before the product
+   is saved. After save, the dedicated ImageManager handles reorder server-side.
+   `items` is the array, `getSrc/getAlt` pull display fields, `onReorder(from,to)`
+   commits the move, `onRemove(idx)` deletes one. */
+export function DraggableThumbList({ items, getSrc, getAlt = () => '', onReorder, onRemove, extraStyle }) {
+  const [dragSrc, setDragSrc] = useState(null);
+  const [dragOver, setDragOver] = useState(null);
+  if (!items || items.length === 0) return null;
+  return (
+    <div className="img-preview-row" style={extraStyle}>
+      {items.map((it, i) => (
+        <div key={i} draggable
+          onDragStart={() => setDragSrc(i)}
+          onDragOver={e => { e.preventDefault(); setDragOver(i); }}
+          onDragLeave={() => setDragOver(null)}
+          onDrop={() => { if (dragSrc !== null) onReorder(dragSrc, i); setDragSrc(null); setDragOver(null); }}
+          onDragEnd={() => { setDragSrc(null); setDragOver(null); }}
+          className="img-preview-thumb"
+          style={{
+            position: 'relative',
+            cursor: 'grab',
+            opacity: dragSrc === i ? 0.4 : 1,
+            outline: dragOver === i && dragSrc !== i ? '2px dashed var(--accent)' : 'none',
+            outlineOffset: -2,
+            transition: 'opacity 0.12s, outline-color 0.12s',
+          }}>
+          <img src={getSrc(it)} alt={getAlt(it)} style={{ pointerEvents: 'none' }} />
+          <button type="button" onClick={() => onRemove(i)} style={{
+            position: 'absolute', top: 3, right: 3, width: 18, height: 18,
+            borderRadius: '50%', background: 'rgba(0,0,0,0.6)', color: '#fff',
+            border: 'none', cursor: 'pointer', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', lineHeight: 1,
+          }}>✕</button>
+          {i === 0 && <span style={{
+            position: 'absolute', bottom: 3, left: 3, fontSize: '0.5rem', fontWeight: 700,
+            background: 'var(--accent)', color: '#fff', padding: '1px 4px', borderRadius: '4px',
+          }}>MAIN</span>}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function AdminView({ products, fetchData, loading }) {
@@ -119,6 +178,7 @@ export default function AdminView({ products, fetchData, loading }) {
           <button className={`admin-tab ${tab === 'orders' ? 'active' : ''}`} onClick={() => setTab('orders')}>Orders</button>
           <button className={`admin-tab ${tab === 'stats' ? 'active' : ''}`} onClick={() => setTab('stats')}>Stats</button>
           <button className={`admin-tab ${tab === 'homepage' ? 'active' : ''}`} onClick={() => setTab('homepage')}>Pages</button>
+          <button className={`admin-tab ${tab === 'categories' ? 'active' : ''}`} onClick={() => setTab('categories')}>Categories</button>
         </div>
         {tab === 'products' && (
           <div className="admin-actions">
@@ -182,7 +242,7 @@ export default function AdminView({ products, fetchData, loading }) {
         )}
       </div>
 
-      {showCreate && <CreateProductModal onClose={() => setShowCreate(false)} onCreated={() => { fetchData(); setShowCreate(false); }} />}
+      {showCreate && <CreateProductModal products={products} onClose={() => setShowCreate(false)} onCreated={() => { fetchData(); setShowCreate(false); }} />}
 
       {tab === 'products' && (
         <>
@@ -235,6 +295,8 @@ export default function AdminView({ products, fetchData, loading }) {
       {tab === 'stats' && <StatsPanel orders={orders} loading={ordersLoading} />}
 
       {tab === 'homepage' && <AdminHomepageEditor />}
+
+      {tab === 'categories' && <CategoriesPanel />}
 
       <style>{`
         .admin-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 28px; }
@@ -491,7 +553,7 @@ function ProductCard({ product, fetchData, panel, onTogglePanel, allProducts = [
           <Pill onClick={toggleActive}>{product.isActive ? 'Archive' : 'Activate'}</Pill>
         </div>
       </div>
-      {panel === 'details' && <EditProductCard product={product} fetchData={fetchData} onClose={closePanel} inline />}
+      {panel === 'details' && <EditProductCard product={product} fetchData={fetchData} onClose={closePanel} inline allProducts={allProducts} />}
       {panel === 'images' && <ImageManager product={product} fetchData={fetchData} onClose={closePanel} />}
       {panel === 'options' && <OptionsManager product={product} fetchData={fetchData} onClose={closePanel} />}
       {panel === 'variants-config' && <ProductConfigManager product={product} fetchData={fetchData} onClose={closePanel} />}
@@ -626,6 +688,7 @@ function ProductAddonsPanel({ parent, allProducts, fetchData, orders, ordersLoad
         <CreateProductModal
           forcedParentId={parent._id}
           forcedParentName={parent.name}
+          products={allProducts}
           onClose={() => setShowCreate(false)}
           onCreated={() => { fetchData(); setShowCreate(false); }}
         />
@@ -638,7 +701,7 @@ function ProductAddonsPanel({ parent, allProducts, fetchData, orders, ordersLoad
 /* ═══════════════════════════════════════════════
    EDIT PRODUCT
 ═══════════════════════════════════════════════ */
-function EditProductCard({ product, fetchData, onClose, inline }) {
+function EditProductCard({ product, fetchData, onClose, inline, allProducts = [] }) {
   const [form, setForm] = useState({
     name: product.name,
     description: product.description,
@@ -647,10 +710,15 @@ function EditProductCard({ product, fetchData, onClose, inline }) {
     stocks: product.stocks === -1 || product.stocks == null ? '' : product.stocks,
     category: product.category
   });
+  const knownCategories = Array.from(new Set((allProducts || []).map(p => (p.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   const [specs, setSpecs] = useState((product.specifications || []).map(s => ({ label: s.label, value: s.value })));
-  const [landingPage, setLandingPage] = useState(() => (product.landingPage || []).map(b => ({ _id: b._id, type: b.type, data: b.data || {}, bg: b.bg || 'none' })));
+  // Edit landing-page sections in place. Pre-existing blocks keep their _id so
+  // serializeLandingPage knows which ones to preserve vs. allocate fresh.
+  const [landingPage, setLandingPage] = useState(Array.isArray(product.landingPage) ? product.landingPage : []);
+  const [customPageHtml, setCustomPageHtml] = useState(product.customPageHtml || '');
+  const [pinnedAddOnIds, setPinnedAddOnIds] = useState(Array.isArray(product.pinnedAddOnIds) ? product.pinnedAddOnIds : []);
+  const [pinnedRelatedIds, setPinnedRelatedIds] = useState(Array.isArray(product.pinnedRelatedIds) ? product.pinnedRelatedIds : []);
   const [saving, setSaving] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
 
   const save = async () => {
     setSaving(true);
@@ -660,6 +728,9 @@ function EditProductCard({ product, fetchData, onClose, inline }) {
         stocks: form.stocks === '' || form.stocks == null ? -1 : Number(form.stocks),
         specifications: specs.filter(s => s.label.trim() && s.value.trim()),
         landingPage: serializeLandingPage(landingPage),
+        customPageHtml,
+        pinnedAddOnIds,
+        pinnedRelatedIds,
       };
       await apiFetch(`/products/${product._id}/update`, {
         method: 'PATCH',
@@ -681,27 +752,16 @@ function EditProductCard({ product, fetchData, onClose, inline }) {
           <input className="form-input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
         </div>
 
-        {/* Rich text description */}
+        {/* Description — short blurb shown next to the buy button. Marketing
+            content lives in Product Page Sections below; keeping description
+            small prevents it from pushing the buy/options below the fold. */}
         <div className="form-group">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-            <label className="form-label" style={{ margin: 0 }}>Description</label>
-            <button type="button" onClick={() => setShowPreview(p => !p)} style={{ fontSize: '0.7rem', color: 'var(--ink-muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
-              {showPreview ? 'Edit' : 'Preview'}
-            </button>
-          </div>
-          {showPreview ? (
-            <div style={{ minHeight: 80, padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-secondary)', fontSize: '0.88rem', lineHeight: 1.7 }}>
-              <RichText content={form.description} />
-            </div>
-          ) : (
-            <>
-              <textarea className="form-input" style={{ minHeight: 100, resize: 'vertical', fontFamily: 'monospace', fontSize: '0.82rem' }}
-                value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
-              <p style={{ fontSize: '0.68rem', color: 'var(--ink-faint)', marginTop: '4px' }}>
-                Markdown: **bold** · *italic* · # Heading · - bullet · blank line = new paragraph
-              </p>
-            </>
-          )}
+          <label className="form-label">Description</label>
+          <MarkdownEditor
+            value={form.description}
+            onChange={v => setForm(f => ({ ...f, description: v }))}
+            minHeight={110}
+            placeholder="A short blurb shown next to the buy button. Use Product Page Sections below for long-form content." />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -713,8 +773,9 @@ function EditProductCard({ product, fetchData, onClose, inline }) {
             <input type="number" className="form-input" min="0" value={form.stocks} onChange={e => setForm(f => ({ ...f, stocks: e.target.value }))} placeholder="Blank = unlimited / set per option or variant" />
           </div>
         </div>
-        <div className="form-group"><label className="form-label">Category</label>
-          <input className="form-input" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} />
+        <div className="form-group">
+          <label className="form-label">Category</label>
+          <CategoryPicker value={form.category} onChange={v => setForm(f => ({ ...f, category: v }))} options={knownCategories} />
         </div>
 
         {/* Specifications editor */}
@@ -722,30 +783,63 @@ function EditProductCard({ product, fetchData, onClose, inline }) {
           <label className="form-label">Specifications <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>(optional)</span></label>
           <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
             Custom rows shown on the product page (e.g. Layout → 65%, Weight → 1.2kg).
+            <span style={{ display: 'block', marginTop: 4, color: 'var(--ink-faint)' }}>Tip: press Enter to jump from Label → Value, and again on Value to add the next row.</span>
           </p>
-          {specs.map((spec, i) => (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '6px', marginBottom: '6px' }}>
-              <input className="form-input" style={{ fontSize: '0.78rem', padding: '7px 9px' }} placeholder="Label"
-                value={spec.label}
-                onChange={e => setSpecs(s => s.map((r, j) => j !== i ? r : { ...r, label: e.target.value }))} />
-              <input className="form-input" style={{ fontSize: '0.78rem', padding: '7px 9px' }} placeholder="Value"
-                value={spec.value}
-                onChange={e => setSpecs(s => s.map((r, j) => j !== i ? r : { ...r, value: e.target.value }))} />
-              <button type="button" onClick={() => setSpecs(s => s.filter((_, j) => j !== i))}
-                style={{ padding: '0 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: '#c0392b', cursor: 'pointer', fontSize: '0.8rem', lineHeight: 1 }}>✕</button>
-            </div>
-          ))}
-          <button type="button"
-            onClick={() => setSpecs(s => [...s, { label: '', value: '' }])}
-            style={{ fontSize: '0.75rem', color: 'var(--accent)', background: 'none', border: '1px solid var(--accent)', borderRadius: 'var(--radius-pill)', padding: '4px 12px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-            + Add Specification
-          </button>
+          <SpecsEditor value={specs} onChange={setSpecs} />
         </div>
 
-        {/* Landing page editor — collapsible to keep the inline edit panel compact */}
-        <CollapsibleSection title="Landing Page" summary={landingPage.length > 0 ? `${landingPage.length} block${landingPage.length === 1 ? '' : 's'}` : 'optional'}>
+        {/* Product Page Sections — matches the create modal so customers see
+            the same shape regardless of when a section was added. */}
+        <div className="form-group">
+          <label className="form-label">
+            Product Page Sections <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>(optional)</span>
+          </label>
+          <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
+            Rendered below the buy section. Add a Hero image, Banner text, Text+Image split, Gallery, or Feature grid.
+          </p>
           <LandingPageEditor value={landingPage} onChange={setLandingPage} />
-        </CollapsibleSection>
+        </div>
+
+        {/* Custom HTML override — overrides Product Page Sections when set. */}
+        <div className="form-group">
+          <label className="form-label">
+            Custom HTML{' '}
+            <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>
+              {customPageHtml.trim() ? `(${customPageHtml.length.toLocaleString()} chars — overrides sections)` : '(optional)'}
+            </span>
+          </label>
+          <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
+            Paste raw HTML + CSS. Replaces Product Page Sections when set. Use it for hand-coded flagship pages.
+          </p>
+          <CustomHtmlEditor value={customPageHtml} onChange={setCustomPageHtml} previewProduct={product} />
+        </div>
+
+        {/* Cross-sell pickers — empty = auto-derive on the customer page. */}
+        <div className="form-group">
+          <label className="form-label">
+            Add-ons{' '}
+            <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>
+              {pinnedAddOnIds.length > 0 ? `(${pinnedAddOnIds.length} pinned)` : '(auto)'}
+            </span>
+          </label>
+          <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
+            Pin specific products. Empty = auto-show this product's child add-ons.
+          </p>
+          <PinnedProductsPicker value={pinnedAddOnIds} onChange={setPinnedAddOnIds} />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">
+            You might also like{' '}
+            <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>
+              {pinnedRelatedIds.length > 0 ? `(${pinnedRelatedIds.length} pinned)` : '(auto)'}
+            </span>
+          </label>
+          <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
+            Pin specific products. Empty = auto-pick from the same category.
+          </p>
+          <PinnedProductsPicker value={pinnedRelatedIds} onChange={setPinnedRelatedIds} />
+        </div>
 
         <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
           <button className="btn-dark" disabled={saving} onClick={save} style={{ padding: '10px 24px' }}><span>{saving ? 'Saving...' : 'Save'}</span></button>
@@ -768,13 +862,19 @@ function ImageManager({ product, fetchData, onClose }) {
   const [dragSrcIdx, setDragSrcIdx] = useState(null);
 
   const handleUpload = async (e) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    const formData = new FormData();
-    for (let i = 0; i < files.length; i++) formData.append('images', files[i]);
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
     setUploading(true);
     try {
-      await apiFetch(`/products/${product._id}/images`, { method: 'POST', body: formData });
+      // Chunked to 20 per request (multer cap). Selecting more than 20 files
+      // at once would otherwise fail with "Unexpected field".
+      const BATCH = 20;
+      for (let i = 0; i < files.length; i += BATCH) {
+        const slice = files.slice(i, i + BATCH);
+        const formData = new FormData();
+        slice.forEach(f => formData.append('images', f));
+        await apiFetch(`/products/${product._id}/images`, { method: 'POST', body: formData });
+      }
       toast.success('Images uploaded'); fetchData();
     } catch (err) { toast.error(err.message); } finally { setUploading(false); e.target.value = ''; }
   };
@@ -850,6 +950,785 @@ function ImageManager({ product, fetchData, onClose }) {
         {(!product.images || product.images.length === 0) && <p style={{ fontSize: '0.78rem', color: 'var(--ink-faint)', padding: '8px 0' }}>No images yet.</p>}
       </div>
       <p style={{ fontSize: '0.68rem', color: 'var(--ink-faint)', marginTop: '6px' }}>Drag thumbnails to reorder. First image is the main/cover image.</p>
+    </div>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════
+   CATEGORY PICKER — combobox over existing categories with free-text fallback.
+   Renders a native <datalist> so admins can pick an existing tag (avoiding
+   typo-driven duplicates like "keyboards" vs "Keyboards") OR type a brand-new
+   category inline. No extra buttons; typing a fresh value creates it on submit.
+═══════════════════════════════════════════════ */
+let __catListCounter = 0;
+export function CategoryPicker({ value, onChange, options = [], placeholder = 'Pick existing or type new...', required }) {
+  // Stable id per mount — avoids datalist collisions when multiple pickers render.
+  const [listId] = useState(() => `cat-list-${++__catListCounter}`);
+  return (
+    <>
+      <input
+        className="form-input"
+        list={listId}
+        required={required}
+        value={value || ''}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+      />
+      <datalist id={listId}>
+        {options.map(c => <option key={c} value={c} />)}
+      </datalist>
+    </>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════
+   MARKDOWN EDITOR — single textarea with a formatting toolbar (Bold / Italic /
+   H1 / H2 / Bullet list / Link). Used for product + group-buy descriptions.
+
+   Images live in Product Page Sections (LandingPageEditor) rather than the
+   description, since stuffing a tall image into the description pushed the
+   buy/options below the fold on the customer product page. Preview swaps the
+   textarea for the rendered RichText — same renderer the customer page uses.
+═══════════════════════════════════════════════ */
+export function MarkdownEditor({ value, onChange, minHeight = 120, placeholder, required }) {
+  const [preview, setPreview] = useState(false);
+  const textareaRef = useRef(null);
+
+  const wrap = (before, after = before, placeholderText = 'text') => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    const v = el.value;
+    const selected = v.slice(start, end);
+    const inner = selected || placeholderText;
+    const next = v.slice(0, start) + before + inner + after + v.slice(end);
+    onChange(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      const newStart = start + before.length;
+      el.setSelectionRange(newStart, newStart + inner.length);
+    });
+  };
+  const linePrefix = (prefix, placeholderText = 'item') => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    const v = el.value;
+    const lineStart = v.lastIndexOf('\n', start - 1) + 1;
+    const block = v.slice(lineStart, end);
+    const lines = block.length === 0 ? [placeholderText] : block.split('\n');
+    const prefixed = lines.map(l => `${prefix}${l}`).join('\n');
+    const next = v.slice(0, lineStart) + prefixed + v.slice(end);
+    onChange(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(lineStart, lineStart + prefixed.length);
+    });
+  };
+  const insertLink = () => {
+    const url = window.prompt('Link URL:');
+    if (!url) return;
+    wrap('[', `](${url})`, 'link text');
+  };
+
+  const btn = {
+    fontSize: '0.72rem', fontWeight: 600,
+    padding: '4px 9px', borderRadius: 4,
+    border: '1px solid var(--border)', background: 'var(--surface)',
+    color: 'var(--ink)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif",
+    minWidth: 24, lineHeight: 1,
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5, gap: 6, flexWrap: 'wrap' }}>
+        {!preview ? (
+          <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+            <button type="button" onClick={() => wrap('**', '**', 'bold')} title="Bold" style={{ ...btn, fontWeight: 700 }}>B</button>
+            <button type="button" onClick={() => wrap('*', '*', 'italic')} title="Italic" style={{ ...btn, fontStyle: 'italic' }}>I</button>
+            <button type="button" onClick={() => linePrefix('# ', 'Heading')} title="Heading 1" style={btn}>H1</button>
+            <button type="button" onClick={() => linePrefix('## ', 'Heading')} title="Heading 2" style={btn}>H2</button>
+            <button type="button" onClick={() => linePrefix('- ', 'item')} title="Bullet list" style={btn}>• List</button>
+            <button type="button" onClick={insertLink} title="Insert link" style={btn}>🔗 Link</button>
+          </div>
+        ) : <span />}
+        <button type="button" onClick={() => setPreview(p => !p)}
+          style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+          {preview ? 'Edit' : 'Preview'}
+        </button>
+      </div>
+      {preview ? (
+        <div style={{ minHeight, padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-secondary)', fontSize: '0.92rem', lineHeight: 1.75 }}>
+          {value?.trim() ? <RichText content={value} /> : <span style={{ color: 'var(--ink-faint)' }}>Nothing to preview yet.</span>}
+        </div>
+      ) : (
+        <textarea ref={textareaRef} className="form-input" value={value || ''} onChange={e => onChange(e.target.value)}
+          placeholder={placeholder} required={required}
+          style={{ minHeight, resize: 'vertical', fontSize: '0.9rem', lineHeight: 1.6, width: '100%' }} />
+      )}
+    </div>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════
+   CUSTOM HTML EDITOR — escape hatch for admins who want a hand-coded landing
+   page. Pastes raw HTML/CSS into a textarea; rendered customer-side via
+   dangerouslySetInnerHTML below the buy section. Toggle Preview to see the
+   token-substituted output rendered inline. Trusted-admin input only.
+═══════════════════════════════════════════════ */
+export function CustomHtmlEditor({ value, onChange, previewProduct }) {
+  const [preview, setPreview] = useState(false);
+  const loadSkeleton = () => {
+    if (value && !window.confirm('Replace existing HTML with the Oblique-style skeleton?')) return;
+    onChange(CUSTOM_PAGE_SKELETON);
+  };
+  const clearAll = () => {
+    if (!value) return;
+    if (!window.confirm('Clear all custom HTML?')) return;
+    onChange('');
+  };
+  // Preview substitutes tokens against the current product so admins can sanity
+  // check the layout with real data before saving. Falls back to a minimal
+  // fake product when no preview source is passed (e.g. CreateProductModal).
+  const previewHtml = renderCustomPageTokens(value || '', previewProduct || {
+    name: 'Sample Product', description: 'Sample description text shown in place of {{description}}.',
+    price: 5000, category: 'keyboards', images: [],
+  });
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <button type="button" onClick={loadSkeleton}
+            style={{ fontSize: '0.72rem', color: 'var(--accent)', background: 'none', border: '1px solid var(--accent)', borderRadius: 'var(--radius-pill)', padding: '4px 11px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+            {value ? '↻ Reload skeleton' : '↓ Load skeleton'}
+          </button>
+          {value && (
+            <button type="button" onClick={clearAll}
+              style={{ fontSize: '0.72rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: '4px 11px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+              Clear
+            </button>
+          )}
+        </div>
+        <button type="button" onClick={() => setPreview(p => !p)}
+          style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+          {preview ? 'Edit' : 'Preview'}
+        </button>
+      </div>
+      <p style={{ fontSize: '0.7rem', color: 'var(--ink-faint)', margin: '0 0 8px 0', lineHeight: 1.55 }}>
+        Tokens: <code>{'{{name}}'}</code> · <code>{'{{description}}'}</code> · <code>{'{{price}}'}</code> · <code>{'{{category}}'}</code> · <code>{'{{image1}}'}</code> … <code>{'{{imageN}}'}</code>.
+        Markup is rendered as-is below the buy section. Click <em>Load skeleton</em> for an Oblique-style starter.
+      </p>
+      {preview ? (
+        <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: 'var(--bg)', minHeight: 240 }}>
+          {value?.trim()
+            ? <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+            : <p style={{ fontSize: '0.82rem', color: 'var(--ink-faint)', fontStyle: 'italic', textAlign: 'center', padding: '32px 0' }}>Nothing to preview. Paste HTML or load the skeleton.</p>}
+        </div>
+      ) : (
+        <textarea className="form-input" value={value || ''} onChange={e => onChange(e.target.value)}
+          placeholder="Paste HTML + <style>. Leave blank to use the block editor above instead."
+          spellCheck={false}
+          style={{ minHeight: 280, resize: 'vertical', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '0.78rem', lineHeight: 1.5, width: '100%', whiteSpace: 'pre' }} />
+      )}
+    </div>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════
+   PINNED PRODUCTS PICKER — used for the "Addons" and "You might also like"
+   admin fields on Product + GroupBuy modals. Empty selection = customer page
+   falls back to auto-derived items (same-category related, parent-child
+   addons). Loads /products/active + /group-buys/active once per instance,
+   filters in-memory so multi-select clicks don't refetch.
+═══════════════════════════════════════════════ */
+export function PinnedProductsPicker({ value, onChange, includeGroupBuys = true, placeholder = 'Search by name…', label, helpText }) {
+  const selectedIds = Array.isArray(value) ? value : [];
+  const [products, setProducts] = useState([]);
+  const [groupBuys, setGroupBuys] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('');
+  const [kind, setKind] = useState('all'); // 'all' | 'product' | 'gb'
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const tasks = [apiFetch('/products/active').then(r => Array.isArray(r) ? r : (r.products || []))];
+        if (includeGroupBuys) tasks.push(apiFetch('/group-buys/active').then(r => Array.isArray(r) ? r : (r.groupBuys || [])));
+        const results = await Promise.all(tasks);
+        if (cancelled) return;
+        setProducts(results[0] || []);
+        if (includeGroupBuys) setGroupBuys(results[1] || []);
+      } catch { /* silent — picker just shows empty catalog */ }
+      finally { if (!cancelled) setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [includeGroupBuys]);
+
+  const idIndex = (id) => selectedIds.indexOf(id);
+  const toggle = (id) => onChange(selectedIds.includes(id) ? selectedIds.filter(x => x !== id) : [...selectedIds, id]);
+  const removeAt = (idx) => onChange(selectedIds.filter((_, i) => i !== idx));
+  const move = (idx, dir) => {
+    const j = idx + dir;
+    if (j < 0 || j >= selectedIds.length) return;
+    const next = selectedIds.slice();
+    [next[idx], next[j]] = [next[j], next[idx]];
+    onChange(next);
+  };
+
+  const q = filter.trim().toLowerCase();
+  const matches = (name) => !q || (name || '').toLowerCase().includes(q);
+  const visibleProducts = kind === 'gb' ? [] : products.filter(p => matches(p.name));
+  const visibleGBs = !includeGroupBuys || kind === 'product' ? [] : groupBuys.filter(g => matches(g.name));
+
+  // Resolve each selected id against both catalogs so the Selected row knows
+  // what to display. Skips unknown ids (deleted/archived) but keeps them in
+  // the underlying value array so a temporarily-missing item doesn't get
+  // silently dropped from the admin's curated list.
+  const resolveSelected = () => selectedIds.map(id => {
+    const p = products.find(x => x._id === id);
+    if (p) return { kind: 'product', id, name: p.name, image: p.images?.[0]?.url };
+    const g = includeGroupBuys ? groupBuys.find(x => x._id === id) : null;
+    if (g) return { kind: 'gb', id, name: g.name, image: g.images?.[0]?.url };
+    return { kind: 'unknown', id, name: 'Unknown (deleted?)', image: null };
+  });
+  const selectedRows = resolveSelected();
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {(label || helpText) && (
+        <div>
+          {label && <p style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ink)', margin: 0 }}>{label}</p>}
+          {helpText && <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', margin: '2px 0 0' }}>{helpText}</p>}
+        </div>
+      )}
+
+      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 8 }}>
+        <p style={{ fontSize: '0.7rem', color: 'var(--ink-faint)', margin: '0 0 6px 0', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Selected ({selectedRows.length})
+          {selectedRows.length === 0 && ' · empty = auto-pick'}
+        </p>
+        {selectedRows.length === 0 ? (
+          <p style={{ fontSize: '0.78rem', color: 'var(--ink-faint)', fontStyle: 'italic', margin: 0 }}>None pinned. The customer page will auto-pick.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {selectedRows.map((row, i) => (
+              <div key={`${row.kind}-${row.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', background: 'var(--surface)', borderRadius: 4, border: '1px solid var(--border)' }}>
+                <div style={{ width: 28, height: 28, borderRadius: 3, background: 'var(--bg-secondary)', overflow: 'hidden', flexShrink: 0 }}>
+                  {row.image && <img src={row.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                </div>
+                <span style={{ fontSize: '0.66rem', color: 'var(--ink-faint)', textTransform: 'uppercase', letterSpacing: '0.06em', minWidth: 48 }}>
+                  {row.kind === 'product' ? 'Stock' : row.kind === 'gb' ? 'Group buy' : '?'}
+                </span>
+                <span style={{ flex: 1, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</span>
+                <button type="button" onClick={() => move(i, -1)} disabled={i === 0} title="Move up"
+                  style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--ink-muted)', cursor: i === 0 ? 'not-allowed' : 'pointer', opacity: i === 0 ? 0.4 : 1, fontSize: '0.7rem' }}>↑</button>
+                <button type="button" onClick={() => move(i, 1)} disabled={i === selectedRows.length - 1} title="Move down"
+                  style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--ink-muted)', cursor: i === selectedRows.length - 1 ? 'not-allowed' : 'pointer', opacity: i === selectedRows.length - 1 ? 0.4 : 1, fontSize: '0.7rem' }}>↓</button>
+                <button type="button" onClick={() => removeAt(i)} title="Remove"
+                  style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: '#c0392b', cursor: 'pointer', fontSize: '0.78rem' }}>✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input className="form-input" value={filter} onChange={e => setFilter(e.target.value)}
+          placeholder={placeholder} style={{ flex: 1, minWidth: 160, fontSize: '0.82rem', padding: '6px 9px' }} />
+        {includeGroupBuys && (
+          <div style={{ display: 'inline-flex', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', overflow: 'hidden', fontSize: '0.7rem' }}>
+            {[{ k: 'all', label: 'All' }, { k: 'product', label: 'In stock' }, { k: 'gb', label: 'Group buys' }].map(opt => (
+              <button key={opt.k} type="button" onClick={() => setKind(opt.k)}
+                style={{ padding: '4px 10px', background: kind === opt.k ? 'var(--accent)' : 'transparent', color: kind === opt.k ? '#fff' : 'var(--ink-muted)', border: 'none', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {loading ? (
+        <p style={{ fontSize: '0.78rem', color: 'var(--ink-faint)', fontStyle: 'italic', textAlign: 'center', padding: '14px 0' }}>Loading catalog…</p>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 6, maxHeight: 260, overflowY: 'auto', padding: 4, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
+          {visibleProducts.map(p => (
+            <PickerTile key={`p-${p._id}`} name={p.name} image={p.images?.[0]?.url} tag="Stock" selected={idIndex(p._id) >= 0} order={idIndex(p._id) + 1} onClick={() => toggle(p._id)} />
+          ))}
+          {visibleGBs.map(g => (
+            <PickerTile key={`g-${g._id}`} name={g.name} image={g.images?.[0]?.url} tag="GB" selected={idIndex(g._id) >= 0} order={idIndex(g._id) + 1} onClick={() => toggle(g._id)} />
+          ))}
+          {visibleProducts.length === 0 && visibleGBs.length === 0 && (
+            <p style={{ gridColumn: '1 / -1', fontSize: '0.78rem', color: 'var(--ink-faint)', fontStyle: 'italic', textAlign: 'center', padding: '10px 0' }}>No matches.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PickerTile({ name, image, tag, selected, order, onClick }) {
+  return (
+    <button type="button" onClick={onClick}
+      style={{
+        position: 'relative',
+        display: 'flex', flexDirection: 'column', alignItems: 'stretch', textAlign: 'left',
+        background: selected ? 'var(--accent-light)' : 'var(--bg-secondary)',
+        border: `2px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+        borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer',
+      }}>
+      <div style={{ width: '100%', aspectRatio: '1/1', background: 'var(--surface)', borderRadius: 3, overflow: 'hidden', marginBottom: 4 }}>
+        {image && <img src={image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+      </div>
+      {selected && (
+        <span style={{ position: 'absolute', top: 6, right: 6, width: 22, height: 22, borderRadius: '50%', background: 'var(--accent)', color: '#fff', fontSize: '0.7rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{order}</span>
+      )}
+      <span style={{ fontSize: '0.6rem', color: 'var(--ink-faint)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{tag}</span>
+      <span style={{ fontSize: '0.78rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+    </button>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════
+   CATEGORIES PANEL — admin tab. Lists every known category (records + the
+   stub entries derived from product/GB strings) and lets the admin promote
+   stubs into full records, edit existing ones (image, description, order,
+   pinned product/GB lists), and delete records.
+
+   Deleting a record only removes the metadata — products/GBs that carry
+   the slug continue to render the stub. To truly retire a category, the
+   admin has to retag the underlying products.
+═══════════════════════════════════════════════ */
+function CategoriesPanel() {
+  const [list, setList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null); // category being edited, or null
+
+  const reload = async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch('/categories');
+      setList(Array.isArray(data) ? data : []);
+    } catch (err) { toast.error(err.message || 'Failed to load categories'); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { reload(); }, []);
+
+  const startNew = () => setEditing({
+    _id: null, name: '', slug: '',
+    image: { url: '', altText: '' },
+    description: '', sortOrder: 1000,
+    pinnedProductIds: [], pinnedGroupBuyIds: [],
+    hasRecord: false,
+  });
+
+  const onSaved = () => { setEditing(null); reload(); };
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.6rem', margin: 0 }}>Categories</h2>
+          <p style={{ fontSize: '0.82rem', color: 'var(--ink-muted)', margin: '4px 0 0' }}>
+            Manage the categories shown in the strip and dropdowns. Pin products to control what appears on each category's page.
+          </p>
+        </div>
+        <button className="btn-dark" onClick={startNew} style={{ padding: '10px 22px' }}>
+          <span>+ New Category</span>
+        </button>
+      </div>
+
+      {loading ? (
+        <p style={{ color: 'var(--ink-muted)', fontStyle: 'italic' }}>Loading…</p>
+      ) : list.length === 0 ? (
+        <p style={{ color: 'var(--ink-muted)', fontStyle: 'italic' }}>No categories yet. Add one above, or create a product with a new category.</p>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+          {list.map(cat => (
+            <CategoryCard key={cat.slug} category={cat} onEdit={() => setEditing(cat)} onChanged={reload} />
+          ))}
+        </div>
+      )}
+
+      {editing && (
+        <CategoryEditModal
+          category={editing}
+          onClose={() => setEditing(null)}
+          onSaved={onSaved}
+        />
+      )}
+    </div>
+  );
+}
+
+function CategoryCard({ category, onEdit, onChanged }) {
+  const isStub = !category.hasRecord;
+  const pinned = (category.pinnedProductIds?.length || 0) + (category.pinnedGroupBuyIds?.length || 0);
+  const deleteThis = async () => {
+    if (!category._id) return;
+    if (!window.confirm(`Delete the "${category.name}" category record? Products using this slug keep their tag and the slug stays in the strip — only the metadata (image/description/pinned list) is removed.`)) return;
+    try {
+      await apiFetch(`/categories/${category._id}`, { method: 'DELETE' });
+      toast.success('Category record deleted');
+      onChanged();
+    } catch (err) { toast.error(err.message || 'Delete failed'); }
+  };
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ width: '100%', aspectRatio: '16/9', background: 'var(--bg-secondary)', position: 'relative' }}>
+        {category.image?.url ? (
+          <img src={category.image.url} alt={category.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : (
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink-faint)', fontFamily: "'DM Serif Display', serif", fontSize: '2rem' }}>
+            {category.name?.[0]?.toUpperCase() || '?'}
+          </div>
+        )}
+        {isStub && (
+          <span style={{ position: 'absolute', top: 8, left: 8, background: 'var(--ink)', color: 'var(--bg)', fontSize: '0.62rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', padding: '3px 8px', borderRadius: 999 }}>
+            Auto-derived
+          </span>
+        )}
+      </div>
+      <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+        <p style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.05rem', margin: 0, letterSpacing: '-0.01em' }}>{category.name}</p>
+        <p style={{ fontSize: '0.74rem', color: 'var(--ink-faint)', margin: 0, fontFamily: 'monospace' }}>/{category.slug}</p>
+        {category.description && (
+          <p style={{ fontSize: '0.8rem', color: 'var(--ink-muted)', margin: '6px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{category.description}</p>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto', paddingTop: 12 }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--ink-muted)' }}>
+            {pinned > 0 ? `${pinned} pinned · ` : ''}order {category.sortOrder ?? 1000}
+          </span>
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+          <button onClick={onEdit} className="btn-outline" style={{ padding: '6px 14px', fontSize: '0.78rem', flex: 1 }}>
+            {isStub ? 'Set up' : 'Edit'}
+          </button>
+          <Link to={`/category/${category.slug}`} className="btn-outline" style={{ padding: '6px 14px', fontSize: '0.78rem', textDecoration: 'none' }}>
+            View
+          </Link>
+          {!isStub && (
+            <button onClick={deleteThis} style={{ padding: '6px 12px', fontSize: '0.78rem', background: 'none', border: '1px solid var(--border)', color: '#c0392b', borderRadius: 'var(--radius-pill)', cursor: 'pointer' }}>
+              ✕
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CategoryEditModal({ category, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    name: category.name || '',
+    slug: category.slug || '',
+    imageUrl: category.image?.url || '',
+    imageAlt: category.image?.altText || '',
+    description: category.description || '',
+    sortOrder: category.sortOrder ?? 1000,
+  });
+  // Pinned ids — flatten populated docs to ids in case the parent passed
+  // hydrated arrays.
+  const [pinnedProductIds, setPinnedProductIds] = useState(
+    (category.pinnedProductIds || []).map(p => p?._id ?? p)
+  );
+  const [pinnedGroupBuyIds, setPinnedGroupBuyIds] = useState(
+    (category.pinnedGroupBuyIds || []).map(g => g?._id ?? g)
+  );
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  // The picker takes one combined id list and resolves each id against
+  // products or group buys. Categories want two distinct lists, so we merge
+  // them locally and split on save.
+  const combinedPinned = [...pinnedProductIds, ...pinnedGroupBuyIds];
+  const handleCombinedChange = (newIds) => {
+    // Re-partition by checking each id against the current product/GB lists
+    // we have. We don't have the catalog here, so we split by remembering
+    // which list each id came from before. Newly added ids land in whichever
+    // bucket their underlying object lives in — we figure that out by
+    // fetching the active catalogs once.
+    // For simplicity: we track each id's kind via membership in the prior
+    // arrays. Newly-added unknown ids are tentatively products; the user can
+    // remove and re-pick if wrong. The catalog fetch in PinnedProductsPicker
+    // already covers both kinds so the visual is correct.
+    const prevP = new Set(pinnedProductIds);
+    const prevG = new Set(pinnedGroupBuyIds);
+    const stillP = newIds.filter(id => prevP.has(id));
+    const stillG = newIds.filter(id => prevG.has(id));
+    const fresh = newIds.filter(id => !prevP.has(id) && !prevG.has(id));
+    // Default fresh ids to "product"; CategoryEditModal's preview / save
+    // resolves any miscategorisation when the backend populates.
+    setPinnedProductIds([...stillP, ...fresh]);
+    setPinnedGroupBuyIds(stillG);
+  };
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0]; e.target.value = '';
+    if (!file) return;
+    setUploading(true);
+    try {
+      const url = await uploadOptionImage(file);
+      setForm(f => ({ ...f, imageUrl: url }));
+    } catch (err) { toast.error(err.message || 'Upload failed'); }
+    finally { setUploading(false); }
+  };
+
+  const save = async () => {
+    if (!form.name.trim()) { toast.error('Name is required'); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        name: form.name.trim(),
+        slug: form.slug.trim() || undefined,
+        image: { url: form.imageUrl.trim(), altText: form.imageAlt.trim() },
+        description: form.description.trim(),
+        sortOrder: Number(form.sortOrder) || 1000,
+        pinnedProductIds,
+        pinnedGroupBuyIds,
+      };
+      if (category._id) {
+        await apiFetch(`/categories/${category._id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+        toast.success('Category updated');
+      } else {
+        await apiFetch('/categories', { method: 'POST', body: JSON.stringify(payload) });
+        toast.success('Category created');
+      }
+      onSaved();
+    } catch (err) { toast.error(err.message || 'Save failed'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-body">
+        <h2 className="modal-title">{category._id ? `Edit ${category.name}` : (category.slug ? `Set up ${category.name}` : 'New Category')}</h2>
+        <p className="modal-subtitle">
+          Image and description appear on the per-category page hero. Pinned items show first; everything else in this category fills in below.
+        </p>
+
+        <div className="form-group">
+          <label className="form-label">Name</label>
+          <input className="form-input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Keyboards" />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">
+            Slug <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>(URL — auto-derived from name)</span>
+          </label>
+          <input className="form-input" value={form.slug} onChange={e => setForm(f => ({ ...f, slug: e.target.value }))} placeholder="keyboards" style={{ fontFamily: 'monospace' }} />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Cover Image</label>
+          {form.imageUrl ? (
+            <div style={{ marginBottom: 8 }}>
+              <img src={form.imageUrl} alt="" style={{ width: 280, height: 158, objectFit: 'cover', borderRadius: 'var(--radius-sm)', display: 'block' }} />
+            </div>
+          ) : (
+            <div style={{ width: 280, height: 158, background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink-faint)', fontSize: '0.82rem' }}>
+              No image
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input className="form-input" value={form.imageUrl} onChange={e => setForm(f => ({ ...f, imageUrl: e.target.value }))} placeholder="Image URL or click Upload" style={{ flex: 1 }} />
+            <label className="btn-outline" style={{ padding: '8px 16px', cursor: uploading ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+              {uploading ? '…' : '↑ Upload'}
+              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleUpload} disabled={uploading} style={{ display: 'none' }} />
+            </label>
+          </div>
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">Description</label>
+          <textarea className="form-input" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="Short blurb shown under the category title."
+            style={{ minHeight: 80, resize: 'vertical' }} />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">
+            Sort Order <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>(lower = earlier in the strip)</span>
+          </label>
+          <input type="number" className="form-input" value={form.sortOrder} onChange={e => setForm(f => ({ ...f, sortOrder: e.target.value }))} style={{ maxWidth: 120 }} />
+        </div>
+
+        <div className="form-group">
+          <label className="form-label">
+            Pinned products + group buys{' '}
+            <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>
+              {combinedPinned.length > 0 ? `(${combinedPinned.length} pinned)` : '(auto)'}
+            </span>
+          </label>
+          <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: 8, marginTop: 2 }}>
+            Pinned items show first on the category page in the order set. Leave empty to auto-show everything in the category.
+          </p>
+          <PinnedProductsPicker value={combinedPinned} onChange={handleCombinedChange} />
+        </div>
+
+        <div className="modal-actions">
+          <button onClick={save} disabled={saving} className="btn-dark" style={{ flex: 1, justifyContent: 'center' }}>
+            <span>{saving ? 'Saving…' : (category._id ? 'Save Category' : 'Create Category')}</span>
+          </button>
+          <button onClick={onClose} className="btn-outline">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════
+   SPECS EDITOR — label/value rows for product specifications.
+   Keyboard flow: Enter on Label → focus Value; Enter on Value → focus next
+   row's Label, OR add a fresh row and focus it when on the last value. Keeps
+   admins on the keyboard instead of reaching for the mouse for every row.
+═══════════════════════════════════════════════ */
+export function SpecsEditor({ value, onChange }) {
+  const specs = Array.isArray(value) ? value : [];
+  const labelRefs = useRef([]);
+  const valueRefs = useRef([]);
+  const [pendingFocus, setPendingFocus] = useState(null); // { row, field: 'label' | 'value' }
+  const inputSm = { fontSize: '0.78rem', padding: '7px 9px' };
+
+  useEffect(() => {
+    if (!pendingFocus) return;
+    const refs = pendingFocus.field === 'value' ? valueRefs : labelRefs;
+    const el = refs.current[pendingFocus.row];
+    if (el) el.focus();
+    setPendingFocus(null);
+  }, [pendingFocus, specs.length]);
+
+  const addRow = () => {
+    const newIdx = specs.length;
+    onChange([...specs, { label: '', value: '' }]);
+    setPendingFocus({ row: newIdx, field: 'label' });
+  };
+  const updateRow = (i, field, val) =>
+    onChange(specs.map((r, j) => j !== i ? r : { ...r, [field]: val }));
+  const removeRow = (i) => onChange(specs.filter((_, j) => j !== i));
+
+  const onLabelKey = (i) => (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      valueRefs.current[i]?.focus();
+    }
+  };
+  const onValueKey = (i) => (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (i === specs.length - 1) addRow();
+      else labelRefs.current[i + 1]?.focus();
+    }
+  };
+
+  return (
+    <div>
+      {specs.map((spec, i) => (
+        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '6px', marginBottom: '6px' }}>
+          <input className="form-input" style={inputSm} placeholder="Label (e.g. Layout)"
+            ref={el => { labelRefs.current[i] = el; }}
+            value={spec.label}
+            data-enter-action="custom"
+            onKeyDown={onLabelKey(i)}
+            onChange={e => updateRow(i, 'label', e.target.value)} />
+          <input className="form-input" style={inputSm} placeholder="Value (e.g. 65%, hotswap)"
+            ref={el => { valueRefs.current[i] = el; }}
+            value={spec.value}
+            data-enter-action="custom"
+            onKeyDown={onValueKey(i)}
+            onChange={e => updateRow(i, 'value', e.target.value)} />
+          <button type="button" onClick={() => removeRow(i)}
+            style={{ padding: '0 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: '#c0392b', cursor: 'pointer', fontSize: '0.8rem', lineHeight: 1 }}>✕</button>
+        </div>
+      ))}
+      <button type="button" onClick={addRow}
+        style={{ marginTop: '4px', fontSize: '0.78rem', color: 'var(--accent)', background: 'none', border: '1px solid var(--accent)', borderRadius: 'var(--radius-pill)', padding: '5px 14px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+        + Add Specification
+      </button>
+    </div>
+  );
+}
+
+
+/* ═══════════════════════════════════════════════
+   EDITABLE DIMENSION ROW — inline-edits a variant dimension (its name +
+   value chips) so admins can fix typos instead of removing the whole
+   dimension. Each value chip has an inline input and a ✕; a trailing
+   input at the end accepts new values (Enter to add).
+═══════════════════════════════════════════════ */
+// Values are now { value, priceModifier } objects. EditableDimensionRow
+// tolerates either shape on input (legacy bare strings get treated as
+// { value, priceModifier: 0 }) but always emits the object form via
+// onUpdateValue(vi, partial). Each value pill shows the name input plus a
+// tiny ±₱ input so admins can set per-value modifiers without leaving the
+// dimension row.
+export function EditableDimensionRow({ dim, onRename, onUpdateValue, onRemoveValue, onAddValue, onRemove }) {
+  const [newVal, setNewVal] = useState('');
+  const commitNew = () => {
+    if (!newVal.trim()) return;
+    onAddValue(newVal);
+    setNewVal('');
+  };
+  const normalize = (v) => (typeof v === 'string'
+    ? { value: v, priceModifier: 0 }
+    : { value: v?.value ?? '', priceModifier: Number(v?.priceModifier) || 0 });
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '6px', padding: '8px 10px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '0.82rem', flexWrap: 'wrap' }}>
+      <input className="form-input" style={{ fontSize: '0.78rem', padding: '5px 8px', fontWeight: 600, width: 'auto', minWidth: 100, maxWidth: 160 }}
+        value={dim.name}
+        onChange={e => onRename(e.target.value)}
+        data-enter-action="custom"
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1, minWidth: 200 }}>
+        {dim.values.map((raw, vi) => {
+          const v = normalize(raw);
+          return (
+            <span key={vi} style={{ display: 'inline-flex', alignItems: 'center', gap: 2, padding: '2px 4px 2px 8px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 999, fontSize: '0.72rem' }}>
+              <input value={v.value}
+                onChange={e => onUpdateValue(vi, { value: e.target.value })}
+                data-enter-action="custom"
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
+                style={{ border: 'none', background: 'transparent', padding: 0, fontSize: '0.72rem', width: `${Math.max(4, v.value.length)}ch`, minWidth: '3ch', color: 'inherit', outline: 'none' }} />
+              {/* Per-value price modifier. Empty / 0 hides the +/-₱ badge on
+                  the customer page. Small width keeps the pill compact. */}
+              <input type="number"
+                value={v.priceModifier === 0 ? '' : v.priceModifier}
+                onChange={e => onUpdateValue(vi, { priceModifier: e.target.value === '' ? 0 : Number(e.target.value) || 0 })}
+                placeholder="±₱"
+                title="Price modifier for this value"
+                data-enter-action="custom"
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
+                style={{ border: 'none', borderLeft: '1px solid var(--border-subtle)', background: 'transparent', padding: '0 2px 0 6px', marginLeft: 4, fontSize: '0.7rem', width: '5ch', color: 'var(--ink-muted)', outline: 'none', MozAppearance: 'textfield' }} />
+              <button type="button" onClick={() => onRemoveValue(vi)} aria-label={`Remove ${v.value}`}
+                style={{ width: 16, height: 16, borderRadius: '50%', border: 'none', background: 'var(--bg-secondary)', color: 'var(--ink-muted)', cursor: 'pointer', fontSize: '0.65rem', lineHeight: 1, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}>✕</button>
+            </span>
+          );
+        })}
+        <input value={newVal}
+          onChange={e => setNewVal(e.target.value)}
+          data-enter-action="custom"
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commitNew(); } }}
+          onBlur={commitNew}
+          placeholder="+ value"
+          style={{ border: '1px dashed var(--border)', background: 'transparent', padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', width: '8ch', color: 'inherit', outline: 'none' }} />
+      </div>
+      <button type="button" onClick={onRemove}
+        style={{ fontSize: '0.7rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>
+        Remove
+      </button>
     </div>
   );
 }
@@ -1180,8 +2059,10 @@ function ProductConfigManager({ product, fetchData, onClose }) {
 
       {configs.map((cfg, ci) => (
         <div key={ci} style={{ marginBottom: '12px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-            <span style={{ fontWeight: 600, fontSize: '0.82rem' }}>{cfg.name}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', gap: 8 }}>
+            <input className="form-input" style={{ ...inputSm, fontWeight: 600, fontSize: '0.82rem', width: 'auto', minWidth: 140 }}
+              value={cfg.name}
+              onChange={e => setConfigs(p => p.map((c, i) => i !== ci ? c : { ...c, name: e.target.value }))} />
             <button onClick={() => removeConfig(ci)} style={{ fontSize: '0.68rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
           </div>
 
@@ -1195,8 +2076,9 @@ function ProductConfigManager({ product, fetchData, onClose }) {
 
           {cfg.options.map((opt, oi) => (
             <div key={oi} style={{ display: 'grid', gridTemplateColumns: '1fr 55px 45px 1fr 44px 22px', gap: '4px', alignItems: 'center', marginBottom: '3px' }}>
-              <span style={{ fontSize: '0.78rem', fontWeight: 500, padding: '4px 2px',
-                textDecoration: opt.available ? 'none' : 'line-through', opacity: opt.available ? 1 : 0.45 }}>{opt.value}</span>
+              <input className="form-input" style={{ ...inputSm, textDecoration: opt.available ? 'none' : 'line-through', opacity: opt.available ? 1 : 0.55 }}
+                value={opt.value}
+                onChange={e => updateOptField(ci, oi, 'value', e.target.value)} />
               <input type="number" className="form-input" style={inputSm} value={opt.priceModifier}
                 onChange={e => updateOptField(ci, oi, 'priceModifier', e.target.value)} />
               <input type="number" className="form-input" style={inputSm}
@@ -1410,7 +2292,7 @@ function EditVariantRowCard({ variant, idx, dimensions, onChange, onChangeAttr, 
               value={variant.attributes[d.name] || ''}
               onChange={e => onChangeAttr(d.name, e.target.value)}>
               <option value="">—</option>
-              {d.values.map(val => <option key={val} value={val}>{val}</option>)}
+              {getDimValues(d).map(({ value }) => <option key={value} value={value}>{value}</option>)}
             </select>
           </label>
         ))}
@@ -1474,7 +2356,12 @@ function EditVariantRowCard({ variant, idx, dimensions, onChange, onChangeAttr, 
 }
 
 function VariantEditor({ product, fetchData, onClose, embedded }) {
-  const [dims, setDims] = useState((product.variantDimensions || []).map(d => ({ name: d.name, values: [...(d.values || [])] })));
+  // Normalise dim.values into the { value, priceModifier } object shape on
+  // mount so the editor never has to branch on legacy bare strings.
+  const [dims, setDims] = useState((product.variantDimensions || []).map(d => ({
+    name: d.name,
+    values: getDimValues(d).map(v => ({ ...v })),
+  })));
   const [variants, setVariants] = useState((product.variants || []).map(v => {
     // Mongoose Map → plain object for editing
     const attrs = v.attributes && typeof v.attributes.get === 'function'
@@ -1495,7 +2382,10 @@ function VariantEditor({ product, fetchData, onClose, embedded }) {
   const generateCombos = () => {
     if (!dims.length || dims.some(d => !d.values.length)) return;
     const existing = variants.map(v => JSON.stringify(v.attributes));
-    const combos = dims.reduce((acc, d) => acc.flatMap(a => d.values.map(v => ({ ...a, [d.name]: v }))), [{}]);
+    const combos = dims.reduce(
+      (acc, d) => acc.flatMap(a => d.values.map(({ value }) => ({ ...a, [d.name]: value }))),
+      [{}]
+    );
     const newOnes = combos.filter(c => !existing.includes(JSON.stringify(c)));
     setVariants(v => [...v, ...newOnes.map(attrs => ({ attributes: attrs, stock: 0, price: '', sku: '', available: true }))]);
   };
@@ -1604,10 +2494,21 @@ function VariantEditor({ product, fetchData, onClose, embedded }) {
                 onChange={e => setDims(p => p.map((dd, i) => i !== di ? dd : { ...dd, name: e.target.value }))} />
               <button onClick={() => setDims(p => p.filter((_, i) => i !== di))} style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
               {d.values.map((v, vi) => (
-                <span key={vi} style={{ display: 'flex', alignItems: 'center', gap: '3px', padding: '2px 8px', background: 'var(--accent-light)', color: 'var(--accent)', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 500 }}>
-                  {v}
+                <span key={vi} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 4px 2px 10px', background: 'var(--accent-light)', color: 'var(--accent)', borderRadius: '20px', fontSize: '0.72rem', fontWeight: 500 }}>
+                  {/* Value name — editable inline */}
+                  <input
+                    value={v.value}
+                    onChange={e => setDims(p => p.map((dd, i) => i !== di ? dd : { ...dd, values: dd.values.map((x, j) => j !== vi ? x : { ...x, value: e.target.value }) }))}
+                    style={{ border: 'none', background: 'transparent', padding: 0, fontSize: '0.72rem', width: `${Math.max(4, v.value.length)}ch`, minWidth: '3ch', color: 'inherit', outline: 'none', fontWeight: 500 }} />
+                  {/* Per-value price modifier (blank/0 hides the badge customer-side). */}
+                  <input type="number"
+                    value={v.priceModifier === 0 ? '' : v.priceModifier}
+                    onChange={e => setDims(p => p.map((dd, i) => i !== di ? dd : { ...dd, values: dd.values.map((x, j) => j !== vi ? x : { ...x, priceModifier: e.target.value === '' ? 0 : Number(e.target.value) || 0 }) }))}
+                    placeholder="±₱"
+                    title="Price modifier for this value"
+                    style={{ border: 'none', borderLeft: '1px solid rgba(46,93,75,0.25)', background: 'transparent', padding: '0 2px 0 6px', fontSize: '0.68rem', width: '5ch', color: 'var(--accent)', outline: 'none' }} />
                   <button onClick={() => setDims(p => p.map((dd, i) => i !== di ? dd : { ...dd, values: dd.values.filter((_, j) => j !== vi) }))}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: '0.7rem', padding: '0 0 0 2px', lineHeight: 1 }}>×</button>
                 </span>
@@ -1617,14 +2518,14 @@ function VariantEditor({ product, fetchData, onClose, embedded }) {
                 onChange={e => setNewDimValues(p => ({ ...p, [di]: e.target.value }))}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && newDimValues[di]?.trim()) {
-                    setDims(p => p.map((dd, i) => i !== di ? dd : { ...dd, values: [...dd.values, newDimValues[di].trim()] }));
+                    setDims(p => p.map((dd, i) => i !== di ? dd : { ...dd, values: [...dd.values, { value: newDimValues[di].trim(), priceModifier: 0 }] }));
                     setNewDimValues(p => ({ ...p, [di]: '' }));
                     e.preventDefault();
                   }
                 }} />
               {newDimValues[di]?.trim() && (
                 <button onClick={() => {
-                  setDims(p => p.map((dd, i) => i !== di ? dd : { ...dd, values: [...dd.values, newDimValues[di].trim()] }));
+                  setDims(p => p.map((dd, i) => i !== di ? dd : { ...dd, values: [...dd.values, { value: newDimValues[di].trim(), priceModifier: 0 }] }));
                   setNewDimValues(p => ({ ...p, [di]: '' }));
                 }} className="admin-card-btn success" style={{ fontSize: '0.65rem' }}>+</button>
               )}
@@ -1659,7 +2560,7 @@ function VariantEditor({ product, fetchData, onClose, embedded }) {
             ))}
           </div>
         )}
-        <button onClick={() => setVariants(p => [...p, { attributes: Object.fromEntries(dims.map(d => [d.name, d.values[0] || ''])), stock: 0, price: '', sku: '', available: true, imageUrl: '', imageAlt: '' }])}
+        <button onClick={() => setVariants(p => [...p, { attributes: Object.fromEntries(dims.map(d => [d.name, d.values[0]?.value || ''])), stock: 0, price: '', sku: '', available: true, imageUrl: '', imageAlt: '' }])}
           className="admin-card-btn success" style={{ fontSize: '0.68rem', marginTop: '6px' }}>+ Add Variant</button>
       </div>
 
@@ -1690,7 +2591,7 @@ function VariantEditor({ product, fetchData, onClose, embedded }) {
                         return { ...vv, appliesTo: at };
                       }))}>
                       <option value="">Any</option>
-                      {d.values.map(v => <option key={v} value={v}>{v}</option>)}
+                      {d.values.map(({ value }) => <option key={value} value={value}>{value}</option>)}
                     </select>
                   </div>
                 ))}
@@ -2978,7 +3879,7 @@ function VariantRowCard({ row, idx, mode, dimensions, onUpdateAttr, onUpdateFiel
                 value={row.attrs[d.name] || ''}
                 onChange={e => onUpdateAttr(idx, d.name, e.target.value)}>
                 <option value="">—</option>
-                {d.values.map(v => <option key={v} value={v}>{v}</option>)}
+                {getDimValues(d).map(({ value }) => <option key={value} value={value}>{value}</option>)}
               </select>
             ) : (
               <span style={{ fontSize: '0.84rem', padding: '5px 0' }}>{row.attrs[d.name] || '—'}</span>
@@ -3046,7 +3947,7 @@ function VariantRowCard({ row, idx, mode, dimensions, onUpdateAttr, onUpdateFiel
   );
 }
 
-function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentName }) {
+function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentName, products = [] }) {
   const [form, setForm] = useState({ name: '', description: '', price: '', stocks: '', category: '' });
   const [images, setImages] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
@@ -3054,9 +3955,35 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
   const [urlPreviews, setUrlPreviews] = useState([]);
   const [optionGroups, setOptionGroups] = useState([]);
   const [specs, setSpecs] = useState([]);
-  const [landingPage, setLandingPage] = useState([]);
   const [submitting, setSubmitting] = useState(false);
-  const [descPreview, setDescPreview] = useState(false);
+  // Variant-tagged images: each entry has a URL and an appliesTo map
+  // (dimension → value). Missing keys = "Any" for that dimension. Customer
+  // page picks the most-specific matching image; matches the `variantImages`
+  // schema on the Product model.
+  const [variantImages, setVariantImages] = useState([]);
+  const [uploadingVImage, setUploadingVImage] = useState(false);
+  // Long-form marketing content rendered below the buy section via
+  // LandingPageRenderer. Optional — most products won't use it.
+  const [landingPage, setLandingPage] = useState([]);
+  // Hand-coded HTML rendered below the buy section. Wins over landingPage
+  // when set. Used for flagship-style pages where the block editor can't
+  // produce the desired look.
+  const [customPageHtml, setCustomPageHtml] = useState('');
+  // Admin-curated cross-sell. Empty = customer page auto-derives.
+  const [pinnedAddOnIds, setPinnedAddOnIds] = useState([]);
+  const [pinnedRelatedIds, setPinnedRelatedIds] = useState([]);
+
+  // Esc closes — backdrop click is intentionally disabled so a stray click
+  // outside the modal body doesn't blow away in-progress form work.
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  // Known categories from existing products — fuels the category combobox so
+  // admins can pick rather than retyping (and avoid typo-driven duplicates).
+  const knownCategories = Array.from(new Set((products || []).map(p => (p.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 
   // Variants state — dimensions + per-combination stock/price.
   // Two modes:
@@ -3083,11 +4010,11 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
         // Drop attrs whose dimension was removed or whose value no longer exists.
         for (const k of Object.keys(attrs)) {
           const d = variantDimensions.find(d => d.name === k);
-          if (!d || !d.values.includes(attrs[k])) delete attrs[k];
+          if (!d || !getDimValues(d).some(v => v.value === attrs[k])) delete attrs[k];
         }
         // Default any newly-added dimensions to the first available value.
         for (const d of variantDimensions) {
-          if (attrs[d.name] == null) attrs[d.name] = d.values[0] || '';
+          if (attrs[d.name] == null) attrs[d.name] = getDimValues(d)[0]?.value || '';
         }
         return { ...r, attrs };
       }));
@@ -3095,7 +4022,7 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
     }
     if (variantDimensions.length === 0) { setVariantRows([]); return; }
     const combos = variantDimensions.reduce(
-      (acc, d) => acc.flatMap(a => d.values.map(v => ({ ...a, [d.name]: v }))),
+      (acc, d) => acc.flatMap(a => getDimValues(d).map(({ value }) => ({ ...a, [d.name]: value }))),
       [{}]
     );
     setVariantRows(prev => combos.map(attrs => {
@@ -3126,7 +4053,7 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
       return;
     }
     const attrs = {};
-    for (const d of variantDimensions) attrs[d.name] = d.values[0] || '';
+    for (const d of variantDimensions) attrs[d.name] = getDimValues(d)[0]?.value || '';
     setVariantRows(rows => [...rows, { attrs, stock: '', price: '' }]);
   };
   const updateListVariantAttr = (idx, dimName, val) => {
@@ -3136,12 +4063,44 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
 
   const addDimension = () => {
     const name = newDim.name.trim();
-    const values = newDim.values.split(',').map(s => s.trim()).filter(Boolean);
+    // Comma-separated input becomes one { value, priceModifier: 0 } per entry.
+    // Admins set the modifier per value inline once the dimension is added.
+    const values = newDim.values.split(',').map(s => s.trim()).filter(Boolean)
+      .map(v => ({ value: v, priceModifier: 0 }));
     if (!name || values.length === 0) return;
     setVariantDimensions(d => [...d, { name, values }]);
     setNewDim({ name: '', values: '' });
   };
   const removeDimension = (di) => setVariantDimensions(d => d.filter((_, i) => i !== di));
+  // Inline edit helpers — let admins fix typos in the dimension name or
+  // individual values without nuking the whole dimension and starting over.
+  // The matrix-rebuild effect handles variant row resync after edits.
+  const updateDimensionName = (di, name) =>
+    setVariantDimensions(d => d.map((dim, i) => i !== di ? dim : { ...dim, name }));
+  // patch is { value?, priceModifier? } — merged onto the existing value entry.
+  // Legacy bare-string entries get upgraded to the object form on first edit.
+  const updateDimensionValue = (di, vi, patch) =>
+    setVariantDimensions(d => d.map((dim, i) => i !== di ? dim : {
+      ...dim, values: dim.values.map((v, j) => {
+        if (j !== vi) return v;
+        const current = typeof v === 'string' ? { value: v, priceModifier: 0 } : v;
+        return { ...current, ...patch };
+      }),
+    }));
+  const removeDimensionValue = (di, vi) =>
+    setVariantDimensions(d => d.map((dim, i) => i !== di ? dim : {
+      ...dim, values: dim.values.filter((_, j) => j !== vi),
+    }));
+  const addDimensionValue = (di, val) => {
+    const v = val.trim();
+    if (!v) return;
+    setVariantDimensions(d => d.map((dim, i) => i !== di ? dim : {
+      ...dim,
+      values: dim.values.some(x => (typeof x === 'string' ? x : x?.value) === v)
+        ? dim.values
+        : [...dim.values, { value: v, priceModifier: 0 }],
+    }));
+  };
   const updateVariantField = (idx, field, val) => setVariantRows(rows => rows.map((r, i) => i === idx ? { ...r, [field]: val } : r));
 
   const applyBulkStock = () => {
@@ -3206,7 +4165,19 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
         .filter(d => d && d.name && Array.isArray(d.values) && !isPlaceholder(d.name))
         .map(d => ({
           name: String(d.name).trim(),
-          values: d.values.map(v => String(v).trim()).filter(v => v && !isPlaceholder(v)),
+          // Accept either bare strings (legacy / minimal AI output) or
+          // { value, priceModifier } objects. Default modifier is 0.
+          values: d.values.map(v => {
+            if (typeof v === 'string') {
+              const trimmed = v.trim();
+              return trimmed ? { value: trimmed, priceModifier: 0 } : null;
+            }
+            if (v && typeof v === 'object' && v.value) {
+              const trimmed = String(v.value).trim();
+              return trimmed ? { value: trimmed, priceModifier: Number(v.priceModifier) || 0 } : null;
+            }
+            return null;
+          }).filter(v => v && !isPlaceholder(v.value)),
         }))
         .filter(d => d.values.length > 0)
         : [];
@@ -3258,7 +4229,7 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
       // If the JSON is sparse (fewer variants than the cartesian product), the user's
       // intent is "only these SKUs exist" — switch to list mode and keep only those.
       const combos = dims.reduce(
-        (acc, d) => acc.flatMap(a => d.values.map(v => ({ ...a, [d.name]: v }))),
+        (acc, d) => acc.flatMap(a => getDimValues(d).map(({ value }) => ({ ...a, [d.name]: value }))),
         [{}]
       );
       const findIncoming = (attrs) => incoming.find(v => {
@@ -3402,35 +4373,26 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
   };
   const removeUrlPreview = (idx) => setUrlPreviews(prev => prev.filter((_, i) => i !== idx));
 
+  // Drag-drop reorder for the two image preview rows. We keep the upload row
+  // (images + imagePreviews) and the URL row independent so each can be
+  // shuffled without crossing types. `images` and `imagePreviews` move
+  // together so the underlying File[] stays in sync with what the admin sees.
+  const reorderUploads = (from, to) => {
+    if (from === to) return;
+    setImages(prev => arrayMove(prev, from, to));
+    setImagePreviews(prev => arrayMove(prev, from, to));
+  };
+  const reorderUrls = (from, to) => {
+    if (from === to) return;
+    setUrlPreviews(prev => arrayMove(prev, from, to));
+  };
+
 
   const submitProduct = async (queued) => {
     setSubmitting(true);
     try {
-      const product = await apiFetch('/products', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: form.name,
-          description: form.description,
-          price: Number(form.price) || 0,
-          stocks: form.stocks === '' || form.stocks == null ? -1 : Number(form.stocks),
-          category: form.category,
-          isQueued: !!queued,
-          ...(forcedParentId ? { parentProductId: forcedParentId } : {}),
-        })
-      });
-
-      if (images.length > 0) {
-        const fd = new FormData();
-        images.forEach(f => fd.append('images', f));
-        await apiFetch(`/products/${product._id}/images`, { method: 'POST', body: fd });
-      }
-
-      for (const up of urlPreviews) {
-        await apiFetch(`/products/${product._id}/images/add-url`, {
-          method: 'POST', body: JSON.stringify({ url: up.url }),
-        });
-      }
-
+      // Build everything up front so a follow-up PATCH includes the full payload
+      // even when the create endpoint only accepts the basic fields.
       const filteredSpecs = specs.filter(s => s.label.trim() && s.value.trim());
       const buildVariants = () => {
         if (variantDimensions.length === 0) return null;
@@ -3453,22 +4415,81 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
         return { useVariants: true, variantDimensions, variants };
       };
       const variantPayload = buildVariants();
-      const landingPagePayload = serializeLandingPage(landingPage);
-      if (optionGroups.length > 0 || filteredSpecs.length > 0 || variantPayload || landingPagePayload.length > 0) {
-        await apiFetch(`/products/${product._id}/update`, {
-          method: 'PATCH',
-          body: JSON.stringify({
-            options: optionGroups,
-            specifications: filteredSpecs,
-            landingPage: landingPagePayload,
-            ...(variantPayload || {}),
-          })
+
+      // Step 1 — create the bare product. Server controller currently only
+      // accepts the basic fields, so options/specs/variants are persisted by
+      // the follow-up PATCH below.
+      const product = await apiFetch('/products', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: form.name,
+          description: form.description,
+          price: Number(form.price) || 0,
+          stocks: form.stocks === '' || form.stocks == null ? -1 : Number(form.stocks),
+          category: form.category,
+          isQueued: !!queued,
+          ...(forcedParentId ? { parentProductId: forcedParentId } : {}),
+        })
+      });
+      console.log('[CreateProductModal] product created:', product?._id, product);
+
+      // Step 2 — file uploads (multipart). Chunked to 20 per request so
+      // exceeding the server's per-request file cap doesn't blow up the
+      // whole submission. Multer otherwise rejects the 21st file with a
+      // misleading "Unexpected field" error.
+      if (images.length > 0) {
+        const BATCH = 20;
+        for (let i = 0; i < images.length; i += BATCH) {
+          const slice = images.slice(i, i + BATCH);
+          const fd = new FormData();
+          slice.forEach(f => fd.append('images', f));
+          await apiFetch(`/products/${product._id}/images`, { method: 'POST', body: fd });
+        }
+        console.log('[CreateProductModal] uploaded', images.length, 'file(s)');
+      }
+
+      // Step 3 — URL-added images. One call each.
+      for (const up of urlPreviews) {
+        await apiFetch(`/products/${product._id}/images/add-url`, {
+          method: 'POST', body: JSON.stringify({ url: up.url }),
         });
+      }
+      if (urlPreviews.length > 0) console.log('[CreateProductModal] added', urlPreviews.length, 'url image(s)');
+
+      // Step 4 — persist everything else. Always send a body when there is
+      // anything to save, even if the condition was previously falsy. Logs the
+      // payload so a network-failure cause is visible in the console.
+      const usableVariantImages = variantImages.filter(v => v.url && v.url.trim());
+      const lpBlocks = serializeLandingPage(landingPage);
+      const trimmedCustomHtml = (customPageHtml || '').trim();
+      const hasExtra = optionGroups.length > 0 || filteredSpecs.length > 0 || variantPayload || usableVariantImages.length > 0 || lpBlocks.length > 0 || trimmedCustomHtml.length > 0 || pinnedAddOnIds.length > 0 || pinnedRelatedIds.length > 0;
+      if (hasExtra) {
+        const patchBody = {
+          options: optionGroups,
+          specifications: filteredSpecs,
+          ...(variantPayload || {}),
+          ...(usableVariantImages.length > 0 ? { variantImages: usableVariantImages } : {}),
+          ...(lpBlocks.length > 0 ? { landingPage: lpBlocks } : {}),
+          ...(trimmedCustomHtml.length > 0 ? { customPageHtml: customPageHtml } : {}),
+          ...(pinnedAddOnIds.length > 0 ? { pinnedAddOnIds } : {}),
+          ...(pinnedRelatedIds.length > 0 ? { pinnedRelatedIds } : {}),
+        };
+        console.log('[CreateProductModal] PATCH /products/:id/update body:', patchBody);
+        const patchResp = await apiFetch(`/products/${product._id}/update`, {
+          method: 'PATCH',
+          body: JSON.stringify(patchBody),
+        });
+        console.log('[CreateProductModal] PATCH response:', patchResp);
+      } else {
+        console.log('[CreateProductModal] skipping PATCH — nothing extra to save');
       }
 
       toast.success(queued ? 'Product queued' : 'Product created');
       onCreated();
-    } catch (err) { toast.error(err.message); }
+    } catch (err) {
+      console.error('[CreateProductModal] submit failed:', err);
+      toast.error(err.message);
+    }
     finally { setSubmitting(false); }
   };
   const handleSubmit = async (e) => {
@@ -3479,8 +4500,8 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
   const inputSm = { fontSize: '0.78rem', padding: '7px 9px' };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-body" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <div className="modal-body">
         <h2 className="modal-title">{forcedParentId ? 'New Add-on' : 'New Product'}</h2>
         <p className="modal-subtitle">
           {forcedParentId
@@ -3495,28 +4516,19 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
             <input className="form-input" required value={form.name} onChange={set('name')} placeholder="e.g. GMK Olivia" />
           </div>
 
-          {/* Rich text description */}
+          {/* Description — short product blurb shown beside the buy button.
+              Marketing/long-form content goes into the Product Page Sections
+              editor below (rendered under the buy section on the customer
+              product page). Keeping the description compact prevents it from
+              pushing the price / variants / add-to-cart below the fold. */}
           <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-              <label className="form-label" style={{ margin: 0 }}>Description</label>
-              <button type="button" onClick={() => setDescPreview(p => !p)} style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
-                {descPreview ? 'Edit' : 'Preview'}
-              </button>
-            </div>
-            {descPreview ? (
-              <div style={{ minHeight: 80, padding: '12px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-secondary)', fontSize: '0.9rem', lineHeight: 1.75 }}>
-                {form.description ? <RichText content={form.description} /> : <span style={{ color: 'var(--ink-faint)' }}>No description yet.</span>}
-              </div>
-            ) : (
-              <>
-                <textarea className="form-input" required value={form.description} onChange={set('description')}
-                  style={{ minHeight: 100, resize: 'vertical', fontFamily: 'monospace', fontSize: '0.82rem' }}
-                  placeholder="Describe the product...&#10;&#10;Tip: Use **bold**, *italic*, # Heading, or - bullet points for rich formatting." />
-                <p style={{ fontSize: '0.7rem', color: 'var(--ink-faint)', marginTop: '4px' }}>
-                  Markdown: **bold** · *italic* · # Heading · - bullet · blank line = new paragraph
-                </p>
-              </>
-            )}
+            <label className="form-label">Description</label>
+            <MarkdownEditor
+              value={form.description}
+              onChange={v => setForm(f => ({ ...f, description: v }))}
+              required
+              minHeight={110}
+              placeholder="A short blurb shown next to the buy button. Long-form marketing content lives in Product Page Sections below." />
           </div>
 
           <div className="modal-row-3">
@@ -3528,7 +4540,10 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
               <label className="form-label">Stock <span style={{ fontWeight: 400, color: 'var(--ink-faint)', fontSize: '0.7rem' }}>— optional</span></label>
               <input type="number" className="form-input" min="0" value={form.stocks} onChange={set('stocks')} placeholder="Leave blank if unlimited or set per option/variant" />
             </div>
-            <div className="form-group"><label className="form-label">Category</label><input className="form-input" value={form.category} onChange={set('category')} placeholder="keyboards" /></div>
+            <div className="form-group">
+              <label className="form-label">Category</label>
+              <CategoryPicker value={form.category} onChange={v => setForm(f => ({ ...f, category: v }))} options={knownCategories} placeholder="keyboards" />
+            </div>
           </div>
 
           {/* Images */}
@@ -3538,21 +4553,13 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
               <p>Click or drag to upload images (max 10MB each)</p>
               <input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={handleImageChange} />
             </div>
-            {imagePreviews.length > 0 && (
-              <div className="img-preview-row">
-                {imagePreviews.map((p, i) => (
-                  <div key={i} className="img-preview-thumb" style={{ position: 'relative' }}>
-                    <img src={p.url} alt={p.name} />
-                    <button type="button" onClick={() => removeImagePreview(i)} style={{
-                      position: 'absolute', top: 3, right: 3, width: 18, height: 18,
-                      borderRadius: '50%', background: 'rgba(0,0,0,0.6)', color: '#fff',
-                      border: 'none', cursor: 'pointer', display: 'flex',
-                      alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', lineHeight: 1
-                    }}>✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <DraggableThumbList
+              items={imagePreviews}
+              getSrc={p => p.url}
+              getAlt={p => p.name}
+              onReorder={reorderUploads}
+              onRemove={removeImagePreview}
+            />
             <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
               <input className="form-input" style={{ fontSize: '0.78rem', padding: '6px 9px', flex: 1 }}
                 placeholder="Or paste image URL..." value={urlInputCreate}
@@ -3564,20 +4571,17 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
                 + Add URL
               </button>
             </div>
-            {urlPreviews.length > 0 && (
-              <div className="img-preview-row" style={{ marginTop: '8px' }}>
-                {urlPreviews.map((p, i) => (
-                  <div key={i} className="img-preview-thumb" style={{ position: 'relative' }}>
-                    <img src={p.url} alt="" />
-                    <button type="button" onClick={() => removeUrlPreview(i)} style={{
-                      position: 'absolute', top: 3, right: 3, width: 18, height: 18,
-                      borderRadius: '50%', background: 'rgba(0,0,0,0.6)', color: '#fff',
-                      border: 'none', cursor: 'pointer', display: 'flex',
-                      alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem'
-                    }}>✕</button>
-                  </div>
-                ))}
-              </div>
+            <DraggableThumbList
+              items={urlPreviews}
+              getSrc={p => p.url}
+              onReorder={reorderUrls}
+              onRemove={removeUrlPreview}
+              extraStyle={{ marginTop: '8px' }}
+            />
+            {(imagePreviews.length + urlPreviews.length) > 1 && (
+              <p style={{ fontSize: '0.68rem', color: 'var(--ink-faint)', marginTop: '6px' }}>
+                Drag thumbnails to reorder. The first image is the main/cover image. Uploads and URL-added images keep their own order; uploads come first on save.
+              </p>
             )}
           </CollapsibleSection>
 
@@ -3585,24 +4589,9 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
           <CollapsibleSection title="Specifications" summary={specs.filter(s => s.label.trim() && s.value.trim()).length > 0 ? `${specs.filter(s => s.label.trim() && s.value.trim()).length} row${specs.filter(s => s.label.trim() && s.value.trim()).length === 1 ? '' : 's'}` : 'optional'}>
             <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
               Optional. Add custom spec rows shown on the product page (e.g. Layout → 65%, Weight → 1.2kg).
+              <span style={{ display: 'block', marginTop: 4, color: 'var(--ink-faint)' }}>Tip: press Enter to jump from Label → Value, and again on Value to add the next row.</span>
             </p>
-            {specs.map((spec, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '6px', marginBottom: '6px' }}>
-                <input className="form-input" style={inputSm} placeholder="Label (e.g. Layout)"
-                  value={spec.label}
-                  onChange={e => setSpecs(s => s.map((r, j) => j !== i ? r : { ...r, label: e.target.value }))} />
-                <input className="form-input" style={inputSm} placeholder="Value (e.g. 65%, hotswap)"
-                  value={spec.value}
-                  onChange={e => setSpecs(s => s.map((r, j) => j !== i ? r : { ...r, value: e.target.value }))} />
-                <button type="button" onClick={() => setSpecs(s => s.filter((_, j) => j !== i))}
-                  style={{ padding: '0 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: '#c0392b', cursor: 'pointer', fontSize: '0.8rem', lineHeight: 1 }}>✕</button>
-              </div>
-            ))}
-            <button type="button"
-              onClick={() => setSpecs(s => [...s, { label: '', value: '' }])}
-              style={{ marginTop: '4px', fontSize: '0.78rem', color: 'var(--accent)', background: 'none', border: '1px solid var(--accent)', borderRadius: 'var(--radius-pill)', padding: '5px 14px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
-              + Add Specification
-            </button>
+            <SpecsEditor value={specs} onChange={setSpecs} />
           </CollapsibleSection>
 
           {/* Add Options */}
@@ -3691,11 +4680,14 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
             )}
 
             {variantDimensions.map((d, di) => (
-              <div key={di} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', padding: '8px 10px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: '0.82rem' }}>
-                <span style={{ fontWeight: 600 }}>{d.name}</span>
-                <span style={{ color: 'var(--ink-muted)', flex: 1 }}>{d.values.join(', ')}</span>
-                <button type="button" onClick={() => removeDimension(di)} style={{ fontSize: '0.7rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
-              </div>
+              <EditableDimensionRow key={di}
+                dim={d}
+                onRename={name => updateDimensionName(di, name)}
+                onUpdateValue={(vi, val) => updateDimensionValue(di, vi, val)}
+                onRemoveValue={vi => removeDimensionValue(di, vi)}
+                onAddValue={val => addDimensionValue(di, val)}
+                onRemove={() => removeDimension(di)}
+              />
             ))}
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: '6px', marginBottom: '12px' }}>
@@ -3764,11 +4756,134 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
                 + Add Variant
               </button>
             )}
+
+            {/* ── Variant-tagged Images ──────────────────────────────────
+                Faster alternative to setting an image per SKU row: attach an
+                image to a *combination* of dimension values. Leaving a
+                dimension as "Any" wildcards it. The customer page picks the
+                most-specific match for the active selection. */}
+            {variantDimensions.length > 0 && (
+              <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px dashed var(--border)' }}>
+                <p style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '4px' }}>
+                  Variant Images <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--ink-faint)' }}>(optional)</span>
+                </p>
+                <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px' }}>
+                  Attach images to dimension combinations. Set <strong>"Any"</strong> for a dimension that should match all values. Most-specific match wins on the product page — easier than setting an image per SKU.
+                </p>
+                {variantImages.map((img, ii) => (
+                  <div key={ii} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginBottom: '8px', padding: '8px 10px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+                    {img.url
+                      ? <img src={img.url} alt="" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 'var(--radius-sm)', flexShrink: 0, border: '1px solid var(--border)' }} />
+                      : <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--ink-faint)', fontSize: '1rem' }}>🖼</div>}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', gap: 4, marginBottom: '6px' }}>
+                        <input className="form-input" style={{ ...inputSm, flex: 1, minWidth: 0 }} placeholder="Image URL or upload →" value={img.url}
+                          onChange={e => setVariantImages(p => p.map((vv, i) => i !== ii ? vv : { ...vv, url: e.target.value }))} />
+                        <label style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: uploadingVImage ? 'wait' : 'pointer', fontSize: '0.72rem', whiteSpace: 'nowrap' }} title="Upload image">
+                          {uploadingVImage ? '…' : '↑'}
+                          <input type="file" accept="image/*" style={{ display: 'none' }}
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0]; e.target.value = '';
+                              if (!file) return;
+                              setUploadingVImage(true);
+                              try {
+                                const url = await uploadOptionImage(file);
+                                setVariantImages(p => p.map((vv, i) => i !== ii ? vv : { ...vv, url }));
+                              } catch { toast.error('Upload failed'); }
+                              finally { setUploadingVImage(false); }
+                            }} />
+                        </label>
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                        {variantDimensions.map(d => (
+                          <label key={d.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.7rem' }}>
+                            <span style={{ color: 'var(--ink-faint)', fontWeight: 600 }}>{d.name}:</span>
+                            <select className="form-input" style={{ ...inputSm, width: 'auto', paddingRight: '20px' }}
+                              value={img.appliesTo?.[d.name] || ''}
+                              onChange={e => setVariantImages(p => p.map((vv, i) => {
+                                if (i !== ii) return vv;
+                                const at = { ...(vv.appliesTo || {}) };
+                                if (e.target.value) at[d.name] = e.target.value; else delete at[d.name];
+                                return { ...vv, appliesTo: at };
+                              }))}>
+                              <option value="">Any</option>
+                              {getDimValues(d).map(({ value }) => <option key={value} value={value}>{value}</option>)}
+                            </select>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => setVariantImages(p => p.filter((_, i) => i !== ii))}
+                      style={{ fontSize: '0.78rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 8px', cursor: 'pointer' }}>✕</button>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button type="button" onClick={() => setVariantImages(p => [...p, { url: '', appliesTo: {} }])}
+                    style={{ fontSize: '0.72rem', color: 'var(--accent)', background: 'none', border: '1px solid var(--accent)', borderRadius: 'var(--radius-pill)', padding: '4px 12px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                    + Add Image (URL)
+                  </button>
+                  <label style={{ fontSize: '0.72rem', color: 'var(--accent)', background: 'none', border: '1px solid var(--accent)', borderRadius: 'var(--radius-pill)', padding: '4px 12px', cursor: uploadingVImage ? 'wait' : 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+                    ↑ Upload Image
+                    <input type="file" accept="image/*" style={{ display: 'none' }}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0]; e.target.value = '';
+                        if (!file) return;
+                        setUploadingVImage(true);
+                        try {
+                          const url = await uploadOptionImage(file);
+                          setVariantImages(p => [...p, { url, appliesTo: {} }]);
+                        } catch { toast.error('Upload failed'); }
+                        finally { setUploadingVImage(false); }
+                      }} />
+                  </label>
+                </div>
+              </div>
+            )}
           </CollapsibleSection>
 
-          {/* Landing Page (Amazon A+ style) */}
-          <CollapsibleSection title="Landing Page" summary={landingPage.length > 0 ? `${landingPage.length} block${landingPage.length === 1 ? '' : 's'}` : 'optional'}>
+          {/* Product Page Sections — block-based marketing content rendered
+              under the buy section. Collapsed by default so the form stays
+              scannable for the common case (product without a custom page). */}
+          <CollapsibleSection
+            title="Product Page Sections"
+            summary={landingPage.length > 0 ? `${landingPage.length} section${landingPage.length === 1 ? '' : 's'}` : 'optional'}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
+              Optional. Build a marketing page rendered <strong>below the buy section</strong> on the customer product page.
+              Add a Hero image, Banner text, Text+Image split, Gallery, or Feature grid.
+            </p>
             <LandingPageEditor value={landingPage} onChange={setLandingPage} />
+          </CollapsibleSection>
+
+          {/* Custom HTML — escape hatch for flagship pages where the block
+              editor can't produce the right look. Overrides Product Page
+              Sections when set. */}
+          <CollapsibleSection
+            title="Custom HTML"
+            summary={customPageHtml.trim() ? `${customPageHtml.length.toLocaleString()} chars` : 'optional'}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '8px' }}>
+              Paste raw HTML + CSS. Rendered <strong>below the buy section</strong>, replacing Product Page Sections when set.
+            </p>
+            <CustomHtmlEditor value={customPageHtml} onChange={setCustomPageHtml} />
+          </CollapsibleSection>
+
+          {/* Cross-sell — addons + "you might also like". Leaving either empty
+              tells the customer page to auto-pick (children + same-category). */}
+          <CollapsibleSection
+            title="Add-ons"
+            summary={pinnedAddOnIds.length > 0 ? `${pinnedAddOnIds.length} pinned` : 'auto'}>
+            <PinnedProductsPicker
+              value={pinnedAddOnIds}
+              onChange={setPinnedAddOnIds}
+              helpText="Items shown in the Add-ons section below the buy section. Leave empty to auto-show products tagged with this product as their parent." />
+          </CollapsibleSection>
+
+          <CollapsibleSection
+            title="You might also like"
+            summary={pinnedRelatedIds.length > 0 ? `${pinnedRelatedIds.length} pinned` : 'auto'}>
+            <PinnedProductsPicker
+              value={pinnedRelatedIds}
+              onChange={setPinnedRelatedIds}
+              helpText="Items shown in the 'You might also like' section at the bottom of the page. Leave empty to auto-pick from the same category." />
           </CollapsibleSection>
 
           <div className="modal-actions">
@@ -3810,21 +4925,32 @@ export function RichText({ content }) {
     bulletBuffer = [];
   };
 
+  // Inline tokenizer — scans left-to-right and emits text + the first matching
+  // pattern, then recurses on the rest. Image syntax MUST be matched before
+  // link syntax since both end with `](...)`.
+  const inlineRe = /(!\[([^\]]*)\]\(([^)]+)\))|(\[([^\]]+)\]\(([^)]+)\))|(\*\*(.+?)\*\*)|(\*(.+?)\*)/;
   const parseInline = (text) => {
-    const parts = [];
-    let remaining = text;
-    let idx = 0;
-    // Bold: **text**
-    remaining = remaining.replace(/\*\*(.+?)\*\*/g, (_, m) => `\x00b${m}\x00`);
-    // Italic: *text*
-    remaining = remaining.replace(/\*(.+?)\*/g, (_, m) => `\x00i${m}\x00`);
-
-    const chunks = remaining.split('\x00');
-    return chunks.map((chunk, ci) => {
-      if (chunk.startsWith('b')) return <strong key={ci}>{chunk.slice(1)}</strong>;
-      if (chunk.startsWith('i')) return <em key={ci}>{chunk.slice(1)}</em>;
-      return chunk;
-    });
+    const out = [];
+    let rest = text;
+    let i = 0;
+    while (rest.length > 0) {
+      const m = rest.match(inlineRe);
+      if (!m) { out.push(rest); break; }
+      if (m.index > 0) out.push(rest.slice(0, m.index));
+      if (m[1]) {
+        // Inline image — kept small and inline-block so it can sit next to text.
+        // Standalone-image lines are handled at the block level below as a wider image.
+        out.push(<img key={`inl-img-${i++}`} src={m[3]} alt={m[2]} style={{ maxWidth: '100%', maxHeight: 280, verticalAlign: 'middle', borderRadius: 'var(--radius-sm)' }} />);
+      } else if (m[4]) {
+        out.push(<a key={`a-${i++}`} href={m[6]} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>{parseInline(m[5])}</a>);
+      } else if (m[7]) {
+        out.push(<strong key={`b-${i++}`}>{parseInline(m[8])}</strong>);
+      } else if (m[9]) {
+        out.push(<em key={`i-${i++}`}>{parseInline(m[10])}</em>);
+      }
+      rest = rest.slice(m.index + m[0].length);
+    }
+    return out;
   };
 
   for (const line of lines) {
@@ -3833,6 +4959,18 @@ export function RichText({ content }) {
     if (trimmed === '') {
       flushBullets();
       elements.push(<div key={key++} style={{ height: '0.75em' }} />);
+      continue;
+    }
+
+    // Standalone image line — render full-width as a block so it acts like an
+    // illustration paragraph instead of a tiny inline glyph.
+    const standaloneImg = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+    if (standaloneImg) {
+      flushBullets();
+      elements.push(
+        <img key={key++} src={standaloneImg[2]} alt={standaloneImg[1]}
+          style={{ maxWidth: '100%', display: 'block', borderRadius: 'var(--radius-sm)', margin: '14px 0' }} />
+      );
       continue;
     }
 

@@ -82,7 +82,7 @@ export default function CartView() {
 
   return (
     <div className="page-body" style={{ padding: '56px var(--page-pad) 80px' }}>
-      <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.6rem', letterSpacing: '-0.025em', marginBottom: '44px' }}>Your Cart</h1>
+      <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(1.7rem, 5.5vw, 2.6rem)', letterSpacing: '-0.025em', marginBottom: '44px' }}>Your Cart</h1>
 
       {isEmpty ? (
         <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--ink-muted)' }}>

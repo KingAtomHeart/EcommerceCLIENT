@@ -3,17 +3,14 @@ import { Link } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import GroupBuyCard from '../components/GroupBuyCard';
 import { apiFetch } from '../utils/api';
+import { useCategories } from '../utils/categories';
 
 // Paste your first hero Cloudinary URL here so it shows immediately on load
 const HERO_FALLBACK_IMAGE = '';
 
-const CATEGORIES = [
-  { slug: 'keyboards', label: 'Keyboards' },
-  { slug: 'keycaps', label: 'Keycaps' },
-  { slug: 'switches', label: 'Switches' },
-  { slug: 'desk-accessories', label: 'Desk Accessories' },
-  { slug: 'tools-accessories', label: 'Tools & Accessories' },
-];
+// Category list is now fetched dynamically via `useCategories` — see
+// CategoryStrip below. The hook auto-falls back to a hardcoded list if the
+// backend is unreachable, so this file no longer needs the local constant.
 
 /* Split text on *asterisks* and wrap odd segments in <em>. `emStyle` is an
    optional inline style applied to each <em>; the banner uses it to tint
@@ -96,6 +93,17 @@ const BLOCK_BG_STYLES = {
 };
 function blockBgStyle(bg) { return BLOCK_BG_STYLES[bg] || BLOCK_BG_STYLES.default; }
 
+/* Append a #products / #group-buys anchor to internal links so the destination
+   page scrolls past admin-built blocks and lands on its catalog grid. Skipped
+   when the link already has an explicit hash or points outside those pages. */
+function withCatalogAnchor(link) {
+  if (!link) return link;
+  if (link.includes('#')) return link;
+  if (link.startsWith('/products'))   return `${link}#products`;
+  if (link.startsWith('/group-buys')) return `${link}#group-buys`;
+  return link;
+}
+
 /* Shared section header. `centered=true` stacks eyebrow → title → subtitle on
    the centerline and pulls view-all out (renders SectionFooter below content
    instead). `centered=false` keeps the classic title-left / view-all-right row. */
@@ -129,7 +137,7 @@ function SectionHeader({ eyebrow, title, subtitle, viewAllLink, centered }) {
         )}
       </div>
       {viewAllLink && (
-        <Link to={viewAllLink} className="section-link">View all →</Link>
+        <Link to={withCatalogAnchor(viewAllLink)} className="section-link">View all →</Link>
       )}
     </div>
   );
@@ -139,7 +147,7 @@ function SectionFooter({ viewAllLink, label = 'View all' }) {
   if (!viewAllLink) return null;
   return (
     <div style={{ textAlign: 'center', marginTop: '40px' }}>
-      <Link to={viewAllLink} className="section-link" style={{ fontSize: '0.95rem' }}>
+      <Link to={withCatalogAnchor(viewAllLink)} className="section-link" style={{ fontSize: '0.95rem' }}>
         {label} →
       </Link>
     </div>
@@ -197,17 +205,30 @@ export function BlockRenderer({ block, isFirst, products, groupBuys, loading, co
   // Hero owns its own full-bleed background, so no bg wrapper. Still reveal-on-mount.
   if (block.type === 'hero') {
     return (
-      <section className="hero" style={{ marginTop: isFirst ? 'var(--nav-h)' : 0 }}>
-        <HeroCarousel
-          images={(data.images || []).map(i => i.url).filter(Boolean)}
-          fallbackImage={HERO_FALLBACK_IMAGE}
-          eyebrow={data.eyebrow || ''}
-          title={data.title || ''}
-          subtitle={data.subtitle || ''}
-          primaryCta={{ label: data.primaryCtaLabel || 'Shop Now', link: data.primaryCtaLink || '/products' }}
-          secondaryCta={{ label: data.secondaryCtaLabel || '', link: data.secondaryCtaLink || '' }}
-        />
-      </section>
+      <HeroCarousel
+        isFirst={isFirst}
+        data={data}
+        images={(data.images || []).map(i => i.url).filter(Boolean)}
+        fallbackImage={HERO_FALLBACK_IMAGE}
+        primaryCta={{
+          label: data.primaryCtaLabel || 'Shop Now',
+          link:  data.primaryCtaLink  || '/products',
+          style: data.primaryCtaStyle || 'filled',
+          size:  data.primaryCtaSize  || 'md',
+          icon:  data.primaryCtaIcon,
+          bg:    data.primaryCtaBg,
+          fg:    data.primaryCtaFg,
+        }}
+        secondaryCta={{
+          label: data.secondaryCtaLabel || '',
+          link:  data.secondaryCtaLink  || '',
+          style: data.secondaryCtaStyle || 'outline',
+          size:  data.secondaryCtaSize  || 'md',
+          icon:  data.secondaryCtaIcon,
+          bg:    data.secondaryCtaBg,
+          fg:    data.secondaryCtaFg,
+        }}
+      />
     );
   }
 
@@ -215,6 +236,9 @@ export function BlockRenderer({ block, isFirst, products, groupBuys, loading, co
   switch (block.type) {
     case 'categoryStrip':
       content = <CategoryStrip countByCategory={countByCategory} />;
+      break;
+    case 'categoriesGrid':
+      content = <CategoriesGridBlock data={data} />;
       break;
     case 'productGrid':
       content = <ProductGridBlock data={data} products={products} loading={loading} />;
@@ -248,10 +272,14 @@ export function BlockRenderer({ block, isFirst, products, groupBuys, loading, co
 
   const bg = blockBgStyle(data.bg);
   const isTinted = (data.bg && data.bg !== 'default');
+  // Admin can disable the on-hover image scale per block. The class neutralizes
+  // the descendant `transform` rules in globals.css (product cards, hero tiles,
+  // banner images, etc.); no JS branching in the block components themselves.
+  const wrapperClass = data.hoverZoom === false ? 'no-hover-zoom' : undefined;
   return (
     // `display: flow-root` prevents child margin-collapse from leaking the
     // background tint past adjacent blocks. Only enabled when actually tinted.
-    <div style={{ ...bg, display: isTinted ? 'flow-root' : undefined }}>
+    <div className={wrapperClass} style={{ ...bg, display: isTinted ? 'flow-root' : undefined }}>
       <Reveal disabled={adminMode}>{content}</Reveal>
     </div>
   );
@@ -259,31 +287,127 @@ export function BlockRenderer({ block, isFirst, products, groupBuys, loading, co
 
 
 /* ─── Category Strip (extracted unchanged) ─── */
+// Apple-style category strip: centered typography only, no dividers, no
+// count badges, no hover arrows. Whitespace and a subtle color hover do the
+// work. On phones the row turns into a smoothly scrolling rail with faded
+// edges so partial items at the boundary look intentional, not cut off.
 function CategoryStrip({ countByCategory }) {
+  // countByCategory kept in signature for backward-compat with the dispatcher,
+  // but intentionally unused — counts cluttered the visual.
+  void countByCategory;
+  // List comes from the API now — admin-created categories appear here
+  // automatically. Falls back to a hardcoded set when the backend is offline.
+  const { categories } = useCategories();
   return (
-    <nav className="cat-strip">
+    <nav className="cat-strip" aria-label="Shop by category">
       <div className="cat-strip-inner">
-        {CATEGORIES.map((cat, i) => {
-          const count = countByCategory(cat.slug);
-          return (
-            <Link
-              key={cat.slug}
-              to={`/products?cat=${cat.slug}`}
-              className="cat-link animate-fadeUp"
-              style={{ animationDelay: `${i * 0.06}s` }}
-            >
-              <span className="cat-link-label">{cat.label}</span>
-              <span className="cat-link-count">{count}</span>
-              <svg className="cat-link-arrow" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-            </Link>
-          );
-        })}
-        <Link to="/products" className="cat-link cat-link-all animate-fadeUp" style={{ animationDelay: `${CATEGORIES.length * 0.06}s` }}>
-          <span className="cat-link-label">Shop All</span>
-          <svg className="cat-link-arrow" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        {/* Hash anchor on every link so the destination page jumps to the
+            catalog grid, skipping admin-built blocks above it. */}
+        <Link to="/products#products" className="cat-link cat-link-all animate-fadeUp">
+          All
         </Link>
+        {categories.map((cat, i) => (
+          <Link
+            key={cat.slug}
+            to={`/category/${cat.slug}`}
+            className="cat-link animate-fadeUp"
+            style={{ animationDelay: `${(i + 1) * 0.05}s` }}
+          >
+            {cat.name}
+          </Link>
+        ))}
       </div>
     </nav>
+  );
+}
+
+
+/* ─── Categories Grid Block ────────────────────────────────────────────
+   Image-led tiles linking to each /category/:slug page. When
+   `categorySlugs` is non-empty the admin's chosen order is honored; an
+   empty list shows every known category in its global sortOrder.
+
+   Each tile uses the category's cover image (or a soft accent fallback if
+   no image is set yet), with the name laid over the bottom of the image. */
+function CategoriesGridBlock({ data }) {
+  const { categories } = useCategories();
+  const cols = [2, 3, 4, 5].includes(data?.columns) ? data.columns : 4;
+  const align = data?.align === 'center' ? 'center' : 'left';
+  const pinned = Array.isArray(data?.categorySlugs) ? data.categorySlugs : [];
+
+  // Build the rendered list. Pinned slugs preserve admin order; entries
+  // that no longer have a record are dropped silently (avoid 404s).
+  const list = pinned.length > 0
+    ? pinned.map(slug => categories.find(c => c.slug === slug)).filter(Boolean)
+    : categories;
+
+  if (list.length === 0) return null;
+
+  return (
+    <section style={{ padding: '56px var(--page-pad) 64px' }}>
+      {(data?.eyebrow || data?.title || data?.subtitle) && (
+        <div style={{ marginBottom: 28, textAlign: align }}>
+          {data.eyebrow && (
+            <p style={{ fontSize: '0.72rem', letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 8, fontWeight: 600 }}>{data.eyebrow}</p>
+          )}
+          {data.title && (
+            <h2 className="section-title" style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(1.5rem, 2.6vw, 2rem)', letterSpacing: '-0.02em', margin: 0 }}>
+              {data.title}
+            </h2>
+          )}
+          {data.subtitle && (
+            <p style={{ color: 'var(--ink-muted)', fontSize: '0.95rem', marginTop: 8, maxWidth: 640, marginLeft: align === 'center' ? 'auto' : 0, marginRight: align === 'center' ? 'auto' : 0 }}>{data.subtitle}</p>
+          )}
+        </div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 14 }} className="cg-grid">
+        {list.map(cat => (
+          <Link key={cat.slug} to={`/category/${cat.slug}`} className="cg-tile" style={{
+            position: 'relative', display: 'block', textDecoration: 'none',
+            aspectRatio: '4/5', borderRadius: 'var(--radius-sm)', overflow: 'hidden',
+            background: cat.image?.url ? 'var(--ink)' : 'var(--bg-secondary)',
+            color: '#fff',
+          }}>
+            {cat.image?.url ? (
+              <img src={cat.image.url} alt={cat.name} style={{
+                position: 'absolute', inset: 0, width: '100%', height: '100%',
+                objectFit: 'cover', transition: 'transform 0.4s ease',
+              }} />
+            ) : (
+              <div style={{
+                position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontFamily: "'DM Serif Display', serif", fontSize: '3rem', color: 'var(--ink-faint)',
+              }}>{cat.name?.[0]?.toUpperCase()}</div>
+            )}
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: cat.image?.url
+                ? 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.05) 50%, transparent 100%)'
+                : 'transparent',
+              pointerEvents: 'none',
+            }} />
+            <div style={{
+              position: 'absolute', left: 0, right: 0, bottom: 0,
+              padding: '14px 16px',
+              color: cat.image?.url ? '#fff' : 'var(--ink)',
+            }}>
+              <p style={{
+                fontFamily: "'DM Serif Display', serif",
+                fontSize: 'clamp(1rem, 1.6vw, 1.3rem)', letterSpacing: '-0.01em',
+                margin: 0, lineHeight: 1.1,
+              }}>{cat.name}</p>
+            </div>
+          </Link>
+        ))}
+      </div>
+      <style>{`
+        .cg-tile { isolation: isolate; }
+        .cg-tile:hover img { transform: scale(1.04); }
+        @media (max-width: 760px) {
+          .cg-grid { grid-template-columns: repeat(2, 1fr) !important; }
+        }
+      `}</style>
+    </section>
   );
 }
 
@@ -334,7 +458,11 @@ function ProductGridBlock({ data, products, loading }) {
   }, [products, data.productIds, data.category, data.sort, data.limit]);
 
   const centered = data.align === 'center';
-  const viewAll = data.viewAllLink || '/products';
+  // Smart default: if the block is filtered to a category, the View-All link
+  // takes the user to that same category in the shop instead of the generic
+  // /products page. `hideViewAll` lets admin suppress the link entirely.
+  const defaultVA = data.category ? `/products?cat=${data.category}` : '/products';
+  const viewAll = data.hideViewAll ? null : (data.viewAllLink || defaultVA);
 
   // Presentation knobs — passed down to every ProductCard so admin can dial in
   // sizes, fields-to-show, button style, etc. without touching the card itself.
@@ -369,7 +497,7 @@ function ProductGridBlock({ data, products, loading }) {
           {[...Array(6)].map((_, i) => <Skeleton key={i} style={{ height: 360 }} />)}
         </div>
       ) : layoutMode === 'grid' ? (
-        <div style={{
+        <div className="collection-grid" style={{
           display: 'grid',
           // itemAlign:center swaps the rigid N-column layout for auto-fit so partial
           // rows can actually center. With repeat(N, 1fr) the columns always span
@@ -449,7 +577,7 @@ function GroupBuysBlock({ data, groupBuys, forcedLayout }) {
   if (filtered.length === 0) return null;
 
   const centered = data.align === 'center';
-  const viewAll = data.viewAllLink || '/group-buys';
+  const viewAll = data.hideViewAll ? null : (data.viewAllLink || '/group-buys');
   const defaultTitle = (data.gbMode || data.mode) === 'interest-check' ? 'Interest Checks' : 'Active Group Buys';
 
   const renderLayout = forcedLayout || 'grid';
@@ -480,7 +608,7 @@ function GroupBuysBlock({ data, groupBuys, forcedLayout }) {
     </div>
   );
   const cardsGrid = (
-    <div style={{
+    <div className="collection-grid" style={{
       display: 'grid',
       gridTemplateColumns: data.itemAlign === 'center'
         ? `repeat(auto-fit, minmax(240px, ${Math.floor(100 / columns)}%))`
@@ -521,7 +649,7 @@ function GroupBuysBlock({ data, groupBuys, forcedLayout }) {
    Layouts:
      * single — 1 full-width tile
      * pair   — 2 tiles side-by-side (50/50)
-     * triple — 1 big tile (left, spans 2 rows) + 2 small tiles stacked right */
+     * triple — 3 equal tiles side-by-side */
 const PRODUCT_HERO_HEIGHTS = { medium: 480, tall: 640, xtall: 760, fullscreen: '88vh' };
 
 function ProductHeroBlock({ data, products, adminMode }) {
@@ -554,8 +682,8 @@ function ProductHeroBlock({ data, products, adminMode }) {
   } else if (layout === 'pair') {
     gridStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap };
   } else {
-    // triple: 1.6fr | 1fr, 2 rows tall — first tile spans both rows
-    gridStyle = { display: 'grid', gridTemplateColumns: '1.6fr 1fr', gridTemplateRows: `${tileHeight} ${tileHeight}`, gap };
+    // triple: 3 equal tiles side-by-side
+    gridStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap };
   }
 
   return (
@@ -567,6 +695,9 @@ function ProductHeroBlock({ data, products, adminMode }) {
       <style>{`
         .ph-tile:hover .ph-tile-img { transform: scale(1.04); }
         .ph-header > div { margin-bottom: 0 !important; }
+        @media (max-width: 960px) {
+          .ph-grid--triple { grid-template-columns: 1fr 1fr !important; }
+        }
         @media (max-width: 720px) {
           .ph-grid { grid-template-columns: 1fr !important; grid-template-rows: auto !important; }
           .ph-grid > .ph-tile { grid-row: auto !important; height: 480px !important; min-height: 480px !important; }
@@ -583,9 +714,8 @@ function ProductHeroBlock({ data, products, adminMode }) {
           />
         </div>
       )}
-      <div className="ph-grid" style={{ ...gridStyle, margin: sectionMargin }}>
+      <div className={`ph-grid${layout === 'triple' ? ' ph-grid--triple' : ''}`} style={{ ...gridStyle, margin: sectionMargin }}>
         {tiles.map((t, i) => {
-          const isBig = layout === 'triple' && i === 0;
           // Admin placeholder tile when no product picked yet — shows the layout
           // structure with a "Pick a product" prompt so the block is visible
           // and clickable in the live-preview editor.
@@ -595,7 +725,6 @@ function ProductHeroBlock({ data, products, adminMode }) {
                 key={`ph-empty-${i}`}
                 index={i}
                 height={tileHeight}
-                gridStyle={isBig ? { gridRow: 'span 2' } : {}}
               />
             );
           }
@@ -610,8 +739,7 @@ function ProductHeroBlock({ data, products, adminMode }) {
                 imageStyle: data.imageStyle || 'overlay',
                 verticalAlign: data.verticalAlign || 'bottom',
               }}
-              tileHeight={layout === 'triple' && !isBig ? tileHeight : tileHeight}
-              gridStyle={isBig ? { gridRow: 'span 2' } : {}}
+              tileHeight={tileHeight}
             />
           );
         })}
@@ -696,6 +824,120 @@ function ProductHeroPlaceholder({ index, height, gridStyle }) {
   );
 }
 
+// Unicode trailing-icon glyphs for CTAs. Kept tiny on purpose — they ride
+// next to the label as a visual cue. '' means no icon; the renderer also
+// falls back to '→' for the link variant when the field is undefined so
+// pre-existing link CTAs keep their arrow without a data migration.
+const CTA_ICON_GLYPHS = {
+  'arrow-right':    '→',
+  'arrow-up-right': '↗',
+  'chevron-right':  '›',
+  'plus':           '+',
+};
+// Size → padding / font-size maps. Pill sizes apply to filled+outline;
+// inline sizes apply to link+text (no padding, just type scale).
+const CTA_PILL_PAD  = { sm: '8px 18px',  md: '12px 24px', lg: '16px 32px' };
+const CTA_PILL_FONT = { sm: '0.82rem',   md: '0.92rem',   lg: '1.05rem'   };
+const CTA_INLINE_FONT = { sm: '0.86rem', md: '1rem',      lg: '1.15rem'   };
+
+function resolveCtaIcon(rawIcon, style) {
+  // Explicit value wins. Undefined + link → backward-compat arrow.
+  if (rawIcon === undefined) return style === 'link' ? '→' : '';
+  return CTA_ICON_GLYPHS[rawIcon] || '';
+}
+
+/* Shared CTA renderer used by every section-level CTA (hero, product hero,
+   banner, etc.). One renderer = one consistent visual across the site.
+
+   `cta` is a normalized shape: { label, link, style, size, icon, bg, fg }.
+   Style values are link / filled / outline / text (CTA_STYLE_OPTIONS in the
+   admin editor). Legacy banner names (ghost, text-arrow, none) are migrated
+   here so older docs render without a schema change.
+
+   `opts.isLight`         — true when the CTA sits on a dark backdrop (default colors invert)
+   `opts.fallbackStyle`   — used when cta.style is undefined
+   `opts.asElement`       — 'link' wraps in <Link>; 'span' renders inline (when parent is already a link) */
+function renderSectionCta(cta, opts = {}) {
+  const { isLight = true, fallbackStyle = 'filled', asElement = 'link' } = opts;
+  if (!cta || !cta.label) return null;
+
+  let style = cta.style || fallbackStyle;
+  if (style === 'ghost')      style = 'outline';
+  if (style === 'text-arrow') style = 'link';
+  if (style === 'none')       return null;
+
+  const size = cta.size || 'md';
+  const bg = cta.bg || '';
+  const customFg = cta.fg || '';
+  const iconGlyph = resolveCtaIcon(cta.icon, style);
+  const iconNode = iconGlyph ? <span aria-hidden="true">{iconGlyph}</span> : null;
+
+  // `isLight` here means "the surrounding section uses LIGHT text" — i.e. its
+  // bg is dark. Buttons need to sit visually OPPOSITE the section bg.
+  //
+  // Previously this used `var(--ink)` for the dark side of the pair, but
+  // --ink flips with the site theme (cream in dark mode), so a filled button
+  // ended up with cream bg + white text or white bg + cream text — both
+  // invisible. Hardcoding the dark side as #1a1a18 keeps the button always
+  // a black/white pair, regardless of dark/light site theme.
+  const DARK_INK = '#1a1a18';
+  const WHITE    = '#fff';
+
+  const autoFg = isLight ? WHITE : DARK_INK;
+  const fg = customFg || autoFg;
+
+  let styleObj;
+  if (style === 'filled') {
+    const fillBg = bg || (isLight ? WHITE : DARK_INK);
+    const fillFg = customFg || (isLight ? DARK_INK : WHITE);
+    styleObj = {
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      fontSize: CTA_PILL_FONT[size], fontWeight: 500,
+      padding: CTA_PILL_PAD[size], borderRadius: 999,
+      background: fillBg, color: fillFg, textDecoration: 'none',
+    };
+  } else if (style === 'outline') {
+    const borderColor = customFg || (isLight ? 'rgba(255,255,255,0.7)' : DARK_INK);
+    styleObj = {
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      fontSize: CTA_PILL_FONT[size], fontWeight: 500,
+      padding: CTA_PILL_PAD[size], borderRadius: 999,
+      background: bg || 'transparent',
+      border: `1px solid ${borderColor}`,
+      color: fg, textDecoration: 'none',
+    };
+  } else if (style === 'text') {
+    styleObj = {
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      fontSize: CTA_INLINE_FONT[size], fontWeight: 500,
+      color: fg, textDecoration: 'none',
+    };
+  } else {
+    const underlineColor = customFg || (isLight ? 'rgba(255,255,255,0.55)' : DARK_INK);
+    styleObj = {
+      display: 'inline-flex', alignItems: 'center', gap: 6,
+      fontSize: CTA_INLINE_FONT[size], fontWeight: 500,
+      color: fg, textDecoration: 'none',
+      borderBottom: `1px solid ${underlineColor}`,
+      paddingBottom: 3,
+    };
+  }
+
+  if (asElement === 'span') {
+    return <span className="section-cta" style={styleObj}>{cta.label}{iconNode}</span>;
+  }
+  return <Link to={cta.link} className="section-cta" style={styleObj}>{cta.label}{iconNode}</Link>;
+}
+
+// Thin shim — kept so existing call sites in ProductHeroTile don't churn. The
+// tile is already a <Link>, so render as a span (no nested anchor).
+function renderHeroTileCta(label, tile, isLight) {
+  return renderSectionCta(
+    { label, style: tile.ctaStyle, size: tile.ctaSize, icon: tile.ctaIcon, bg: tile.ctaBg, fg: tile.ctaFg },
+    { isLight, fallbackStyle: 'link', asElement: 'span' },
+  );
+}
+
 function ProductHeroTile({ tile, product, blockDefaults, tileHeight, gridStyle }) {
   const images = product.images || [];
   const hasImage = images.some(i => i?.url);
@@ -745,14 +987,7 @@ function ProductHeroTile({ tile, product, blockDefaults, tileHeight, gridStyle }
           ...(textAlign === 'center' && { marginLeft: 'auto', marginRight: 'auto' }),
         }}>{subtitle}</p>
       )}
-      {ctaLabel && (
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          fontSize: '1rem', fontWeight: 500, color: fg, textDecoration: 'none',
-          borderBottom: `1px solid ${isLight ? 'rgba(255,255,255,0.55)' : 'var(--ink)'}`,
-          paddingBottom: 3,
-        }}>{ctaLabel} <span aria-hidden="true">→</span></span>
-      )}
+      {ctaLabel && renderHeroTileCta(ctaLabel, tile, isLight)}
     </div>
   );
 
@@ -835,41 +1070,64 @@ function ProductHeroTile({ tile, product, blockDefaults, tileHeight, gridStyle }
    Edges fade out so cards don't pop in/out abruptly. Hovering pauses; users
    with prefers-reduced-motion get a static row instead. */
 function MarqueeRow({ items, renderItem, speed = 40, gap = 24, cardWidth = 280 }) {
-  const trackRef = useRef(null);
+  const wrapRef = useRef(null);
+  const [repeatCount, setRepeatCount] = useState(2);
   const [duration, setDuration] = useState(20);
+
+  // Width of one canonical "set" of items in px — used both as the animation
+  // distance (we translate by exactly one set) and to decide how many sets to
+  // render so the visible row never runs out of cards.
+  const singleSetWidth = items.length > 0
+    ? items.length * cardWidth + items.length * gap
+    : 0;
 
   useEffect(() => {
     const measure = () => {
-      if (!trackRef.current) return;
-      // We duplicate items, so the keyframe goes 0 → -50%. The visible scroll
-      // distance is half the track's scrollWidth, and time = distance / speed.
-      const halfWidth = trackRef.current.scrollWidth / 2;
+      if (!wrapRef.current || singleSetWidth === 0) return;
+      const viewport = wrapRef.current.clientWidth;
+      // Need at least: (one set wider than viewport) + 1 buffer set so the
+      // visible row always has cards even at the wrap-around moment.
+      const setsForViewport = Math.ceil(viewport / singleSetWidth);
+      const needed = Math.max(2, setsForViewport + 1);
+      setRepeatCount(needed);
+
       const safeSpeed = Math.max(5, speed);
-      setDuration(Math.max(6, halfWidth / safeSpeed));
+      setDuration(Math.max(6, singleSetWidth / safeSpeed));
     };
     measure();
-    // Recompute on resize so the speed-in-px/sec promise holds.
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
-    if (ro && trackRef.current) ro.observe(trackRef.current);
+    if (ro && wrapRef.current) ro.observe(wrapRef.current);
     return () => { if (ro) ro.disconnect(); };
-  }, [items, speed]);
+  }, [items.length, speed, singleSetWidth]);
 
   if (!items || items.length === 0) return null;
 
+  // Build `repeatCount` back-to-back copies. Only the first set is exposed to
+  // assistive tech; the rest are visual padding for the seamless loop.
+  const cells = [];
+  for (let r = 0; r < repeatCount; r++) {
+    items.forEach((item, i) => {
+      cells.push(
+        <div key={`${r}-${i}`} className="marquee-cell"
+          style={{ width: cardWidth, flexShrink: 0 }}
+          aria-hidden={r > 0 ? 'true' : undefined}>
+          {renderItem(item, i)}
+        </div>
+      );
+    });
+  }
+
   return (
-    <div className="marquee-wrap">
-      <div ref={trackRef} className="marquee-track" style={{ gap: `${gap}px`, animationDuration: `${duration}s` }}>
-        {items.map((item, i) => (
-          <div key={`a-${i}`} className="marquee-cell" style={{ width: cardWidth, flexShrink: 0 }}>
-            {renderItem(item, i)}
-          </div>
-        ))}
-        {/* Duplicate set — keeps the scroll seamless across the keyframe wrap. */}
-        {items.map((item, i) => (
-          <div key={`b-${i}`} className="marquee-cell" style={{ width: cardWidth, flexShrink: 0 }} aria-hidden="true">
-            {renderItem(item, i)}
-          </div>
-        ))}
+    <div ref={wrapRef} className="marquee-wrap">
+      <div className="marquee-track" style={{
+        gap: `${gap}px`,
+        animationDuration: `${duration}s`,
+        // Move by exactly one set's width — gives a perfectly seamless wrap
+        // because cell `n` of set `r+1` is sitting where cell `n` of set `r`
+        // started.
+        '--marquee-distance': `-${singleSetWidth}px`,
+      }}>
+        {cells}
       </div>
       <style>{`
         .marquee-wrap {
@@ -885,7 +1143,7 @@ function MarqueeRow({ items, renderItem, speed = 40, gap = 24, cardWidth = 280 }
         .marquee-wrap:hover .marquee-track { animation-play-state: paused; }
         @keyframes marquee-scroll {
           from { transform: translateX(0); }
-          to   { transform: translateX(-50%); }
+          to   { transform: translateX(var(--marquee-distance)); }
         }
         @media (prefers-reduced-motion: reduce) {
           .marquee-track { animation: none !important; transform: none !important; }
@@ -910,10 +1168,48 @@ function CollectionBlock({ data, products, groupBuys, loading, adminMode }) {
 
   // ── Source: mixed — admin pins any combination of products and group buys ──
   if (source === 'mixed') {
-    // Hero isn't supported for mixed (tile editor still expects a productId).
-    // Force carousel/grid/marquee fallback — mostly hit via legacy data.
-    const effLayout = layout === 'hero' ? 'carousel' : layout;
-    return <MixedCollectionBlock data={data} layout={effLayout} products={products} groupBuys={groupBuys} />;
+    if (layout === 'hero') {
+      // Map the first N pinned items (N from heroVariant) into hero tiles,
+      // linking each to its product / group-buy detail page.
+      const productById = new Map(products.map(p => [String(p._id), p]));
+      const gbById = new Map(groupBuys.map(g => [String(g._id), g]));
+      const refs = Array.isArray(data.mixedItems) ? data.mixedItems : [];
+      const resolved = refs.map(ref => {
+        if (!ref || !ref.id) return null;
+        if (ref.type === 'group-buy') {
+          const gb = gbById.get(String(ref.id));
+          return gb ? { type: 'group-buy', data: gb } : null;
+        }
+        const p = productById.get(String(ref.id));
+        return p ? { type: 'product', data: p } : null;
+      }).filter(Boolean);
+      const variant = data.heroVariant || 'pair';
+      const max = variant === 'single' ? 1 : variant === 'triple' ? 3 : 2;
+      const items = resolved.slice(0, max);
+      return (
+        <GenericHeroRow
+          data={data}
+          items={items}
+          itemToTile={item => item.type === 'group-buy'
+            ? {
+                images: item.data.images || [],
+                name: item.data.name,
+                category: item.data.kind || 'group-buy',
+                detailLink: `/group-buys/${item.data._id}`,
+              }
+            : {
+                images: item.data.images || [],
+                name: item.data.name,
+                category: item.data.category,
+                detailLink: `/products/${item.data._id}`,
+              }
+          }
+          adminMode={adminMode}
+          emptyLabel="Mixed Hero — pin items to fill the tiles"
+        />
+      );
+    }
+    return <MixedCollectionBlock data={data} layout={layout} products={products} groupBuys={groupBuys} />;
   }
 
   // ── Marquee: auto-scrolling row, handled identically for either source ──
@@ -1011,7 +1307,12 @@ function CollectionMarqueeBlock({ data, products, groupBuys }) {
   if (items.length === 0) return null;
 
   const centered = data.align === 'center';
-  const viewAll = data.viewAllLink || (source === 'group-buys' ? '/group-buys' : '/products');
+  // Smart default by source: group-buy collections link to /group-buys,
+  // product collections respect data.category when set, otherwise /products.
+  const defaultVA = source === 'group-buys'
+    ? '/group-buys'
+    : (data.category ? `/products?cat=${data.category}` : '/products');
+  const viewAll = data.hideViewAll ? null : (data.viewAllLink || defaultVA);
   const defaultTitle = source === 'group-buys'
     ? ((data.gbMode || 'active') === 'interest-check' ? 'Interest Checks' : 'Active Group Buys')
     : 'Products';
@@ -1088,7 +1389,7 @@ function MixedCollectionBlock({ data, layout, products, groupBuys }) {
   if (items.length === 0) return null;
 
   const centered = data.align === 'center';
-  const viewAll = data.viewAllLink || '/products';
+  const viewAll = data.hideViewAll ? null : (data.viewAllLink || '/products');
   const defaultTitle = data.title || 'Featured';
   const presentation = {
     size: data.cardSize || 'md',
@@ -1141,7 +1442,7 @@ function MixedCollectionBlock({ data, layout, products, groupBuys }) {
           viewAllLink={centered ? null : viewAll}
           centered={centered}
         />
-        <div style={{
+        <div className="collection-grid" style={{
           display: 'grid',
           gridTemplateColumns: data.itemAlign === 'center'
             ? `repeat(auto-fit, minmax(240px, ${Math.floor(100 / columns)}%))`
@@ -1207,7 +1508,7 @@ function GenericHeroRow({ data, items, itemToTile, adminMode, emptyLabel }) {
   } else if (variant === 'pair') {
     gridStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap };
   } else {
-    gridStyle = { display: 'grid', gridTemplateColumns: '1.6fr 1fr', gridTemplateRows: `${tileHeight} ${tileHeight}`, gap };
+    gridStyle = { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap };
   }
 
   const blockDefaults = {
@@ -1233,6 +1534,9 @@ function GenericHeroRow({ data, items, itemToTile, adminMode, emptyLabel }) {
       <style>{`
         .ph-tile:hover .ph-tile-img { transform: scale(1.04); }
         .ph-header > div { margin-bottom: 0 !important; }
+        @media (max-width: 960px) {
+          .ph-grid--triple { grid-template-columns: 1fr 1fr !important; }
+        }
         @media (max-width: 720px) {
           .ph-grid { grid-template-columns: 1fr !important; grid-template-rows: auto !important; }
           .ph-grid > .ph-tile { grid-row: auto !important; height: 480px !important; min-height: 480px !important; }
@@ -1249,11 +1553,10 @@ function GenericHeroRow({ data, items, itemToTile, adminMode, emptyLabel }) {
           />
         </div>
       )}
-      <div className="ph-grid" style={{ ...gridStyle, margin: sectionMargin }}>
+      <div className={`ph-grid${variant === 'triple' ? ' ph-grid--triple' : ''}`} style={{ ...gridStyle, margin: sectionMargin }}>
         {renderTiles.map((t, i) => {
-          const isBig = variant === 'triple' && i === 0;
           if (!t.filled) {
-            return <ProductHeroPlaceholder key={`empty-${i}`} index={i} height={tileHeight} gridStyle={isBig ? { gridRow: 'span 2' } : {}} />;
+            return <ProductHeroPlaceholder key={`empty-${i}`} index={i} height={tileHeight} />;
           }
           // Synthesize a minimal `product` shape that ProductHeroTile already
           // understands. We're just plumbing the tile-data through its existing
@@ -1271,7 +1574,6 @@ function GenericHeroRow({ data, items, itemToTile, adminMode, emptyLabel }) {
               product={synthProduct}
               blockDefaults={blockDefaults}
               tileHeight={tileHeight}
-              gridStyle={isBig ? { gridRow: 'span 2' } : {}}
             />
           );
         })}
@@ -1287,21 +1589,98 @@ function GenericHeroRow({ data, items, itemToTile, adminMode, emptyLabel }) {
 
 
 /* ─── Hero Carousel ─── */
-function HeroCarousel({ images, fallbackImage, eyebrow, title, subtitle, primaryCta, secondaryCta }) {
+// Thin shim — delegates to renderSectionCta so the hero CTAs share rendering
+// with banner / product-hero CTAs. The hero sits on a dark image backdrop,
+// so isLight defaults to true unless the caller overrides.
+function renderHeroBlockCta(cta, fallbackStyle, isLight = true) {
+  return renderSectionCta(cta, { isLight, fallbackStyle });
+}
+
+// Hero height presets. `standard` matches the legacy hardcoded value so old
+// hero docs (no height field) keep their original size after rollout.
+const HERO_HEIGHT_MAP = {
+  compact:  { height: '60vh', minHeight: '420px' },
+  standard: { height: 'calc(100vh - var(--nav-h))', minHeight: '580px' },
+  tall:     { height: 'calc(110vh - var(--nav-h))', minHeight: '720px' },
+  full:     { height: '100vh', minHeight: '580px' },
+};
+
+// Build a scrim CSS gradient. Shared shape: dark from one edge, fading to
+// transparent. `none` returns null (no overlay rendered).
+function buildHeroScrim(strength, dir, color) {
+  if (!strength || dir === 'none') return null;
+  const c = color || '#000';
+  // Quick rgba builder for hex (defensive — falls back to using the color
+  // string verbatim and stacking opacity via the gradient stops).
+  const cap = `${c}${typeof c === 'string' && c.startsWith('#') && c.length === 7 ? Math.round(strength * 255).toString(16).padStart(2, '0') : ''}`;
+  // For non-hex / shorthand colors we just blend via rgba style; CSS handles it.
+  const tint = c.startsWith('#') && c.length === 7
+    ? cap
+    : `color-mix(in srgb, ${c} ${Math.round(strength * 100)}%, transparent)`;
+  switch (dir) {
+    case 'top':    return `linear-gradient(to bottom, ${tint} 0%, transparent 75%)`;
+    case 'bottom': return `linear-gradient(to top,    ${tint} 0%, transparent 75%)`;
+    case 'left':   return `linear-gradient(to right,  ${tint} 0%, transparent 65%)`;
+    case 'right':  return `linear-gradient(to left,   ${tint} 0%, transparent 65%)`;
+    case 'radial': return `radial-gradient(circle at center, transparent 0%, ${tint} 95%)`;
+    case 'full':
+    default:       return tint;
+  }
+}
+
+function HeroCarousel({ isFirst, data, images, fallbackImage, primaryCta, secondaryCta }) {
   const [current, setCurrent] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const timerRef = useRef(null);
+
+  // Resolved layout knobs — each falls back to the legacy default so old docs
+  // render identically until the admin starts customizing.
+  // imageOnly forces non-gallery layouts to 'overlay' so split/stacked/minimal
+  // don't leave an empty content column behind when their text is hidden.
+  const rawLayout         = data?.layout || 'overlay';
+  const layout            = (data?.imageOnly && rawLayout !== 'gallery') ? 'overlay' : rawLayout;
+  const heightKey         = data?.height || 'standard';
+  const heightStyles      = HERO_HEIGHT_MAP[heightKey] || HERO_HEIGHT_MAP.standard;
+  const contentAlignH     = data?.contentAlignH || 'left';
+  const contentAlignV     = data?.contentAlignV || 'bottom';
+  const textColor         = data?.textColor || 'light';
+  const contentMaxWidth   = Number(data?.contentMaxWidth) || 660;
+  const scrimStrength     = data?.scrimStrength ?? 0.4;
+  const scrimDir          = data?.scrimDir || 'bottom';
+  const scrimColor        = data?.scrimColor || '#000';
+  const imagePosition     = data?.imagePosition || 'center';
+  const bgColor           = data?.bgColor || '';
+  // imageOnly mode: hide eyebrow / title / sub / CTAs and treat the hero as
+  // a pure image. When primary CTA has a link, the whole hero becomes a
+  // single anchor (admin still gets a clickthrough without visible text).
+  const imageOnly         = !!data?.imageOnly;
+  const autoAdvance       = data?.autoAdvance !== false;
+  const interval          = (Number(data?.interval) || 5) * 1000;
+  const showDots          = data?.showDots !== false;
+  const showScrollHint    = data?.showScrollIndicator !== false;
+  const splitImageSide    = data?.splitImageSide || 'right';
+  const splitImageRatio   = Math.max(0.2, Math.min(0.8, Number(data?.splitImageRatio) || 0.5));
+  const stackedImageSide  = data?.stackedImageSide || 'below';
+  const stackedImageRatio = Math.max(0.2, Math.min(0.9, Number(data?.stackedImageRatio) || 0.55));
+  const galleryHeight     = Math.max(160, Math.min(640, Number(data?.galleryImageHeight) || 360));
+  const gallerySpeed      = Math.max(5,   Math.min(200, Number(data?.gallerySpeed) || 40));
+  const galleryGap        = Math.max(0,   Math.min(60,  Number(data?.galleryGap) ?? 6));
+  const eyebrow           = data?.eyebrow || '';
+  const title             = data?.title || '';
+  const subtitle          = data?.subtitle || '';
+
   const displayImages = images.length > 0 ? images : (fallbackImage ? [fallbackImage] : []);
   const hasImages = displayImages.length > 0;
+  const isLightText = textColor !== 'dark';
 
   const startTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-    if (displayImages.length <= 1) return;
+    if (!autoAdvance || displayImages.length <= 1) return;
     timerRef.current = setInterval(() => {
       setCurrent(prev => (prev + 1) % displayImages.length);
-    }, 5000);
-  }, [displayImages.length]);
+    }, interval);
+  }, [displayImages.length, autoAdvance, interval]);
 
   const firstImgRef = useRef(null);
   useEffect(() => {
@@ -1330,62 +1709,230 @@ function HeroCarousel({ images, fallbackImage, eyebrow, title, subtitle, primary
     startTimer();
   };
 
-  return (
+  // ── Pre-compute pieces shared by every layout ──
+  const scrimGradient = buildHeroScrim(scrimStrength, scrimDir, scrimColor);
+  const vAlign = { top: 'flex-start', middle: 'center', bottom: 'flex-end' }[contentAlignV] || 'flex-end';
+  const hAlign = { left: 'flex-start', center: 'center', right: 'flex-end' }[contentAlignH] || 'flex-start';
+  const titleColor   = isLightText ? '#fff' : 'var(--ink)';
+  const subColor     = isLightText ? 'rgba(255,255,255,0.6)' : 'var(--ink-muted)';
+  const eyebrowColor = isLightText ? 'rgba(255,255,255,0.55)' : 'var(--ink-faint)';
+  const sectionMargin = isFirst ? { marginTop: 'var(--nav-h)' } : null;
+
+  // Skip the text block entirely in imageOnly mode. Returning null lets each
+  // layout below collapse its content column instead of rendering an empty
+  // div that would steal grid/flex space.
+  const contentBlock = imageOnly ? null : (
+    <div className="hero-text" style={{ maxWidth: contentMaxWidth, textAlign: contentAlignH }}>
+      {eyebrow && (
+        <p className="hero-eyebrow animate-fadeUp" style={{ color: eyebrowColor }}>{eyebrow}</p>
+      )}
+      <h1 className="hero-title animate-fadeUp" style={{ color: titleColor, animationDelay: '0.15s' }}>
+        {parseItalic(title)}
+      </h1>
+      {subtitle && (
+        <p className="hero-sub animate-fadeUp" style={{ color: subColor, animationDelay: '0.3s' }}>
+          {subtitle}
+        </p>
+      )}
+      {(primaryCta.label || secondaryCta.label) && (
+        <div className="hero-cta animate-fadeUp" style={{ animationDelay: '0.45s', justifyContent: hAlign }}>
+          {primaryCta.label && renderHeroBlockCta(primaryCta, 'filled', isLightText)}
+          {secondaryCta.label && renderHeroBlockCta(secondaryCta, 'outline', isLightText)}
+        </div>
+      )}
+    </div>
+  );
+
+  // When the hero is image-only AND the admin set a primary CTA link, the
+  // entire section becomes a single clickthrough — keeps the image actionable
+  // without showing button chrome. Falls back to a plain <section> otherwise.
+  const wrapClickable = (content) => (imageOnly && primaryCta.link
+    ? <Link to={primaryCta.link} aria-label={primaryCta.label || title || 'Hero'} style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>{content}</Link>
+    : content
+  );
+
+  // Carousel images + fallback. Reused by every layout that has an image area.
+  const imageStack = (
     <>
-      <div className="hero-bg">
-        {hasImages && displayImages.map((src, i) => (
-          <img
-            key={i}
-            ref={i === 0 ? firstImgRef : null}
-            src={src}
-            alt={`Hero ${i + 1}`}
-            loading={i === 0 ? 'eager' : 'lazy'}
-            decoding={i === 0 ? 'sync' : 'async'}
-            fetchpriority={i === 0 ? 'high' : 'auto'}
-            onLoad={i === 0 ? () => requestAnimationFrame(() => setMounted(true)) : undefined}
-            className={`hero-slide ${mounted && i === current ? 'active' : ''}`}
-          />
-        ))}
-        <div className="hero-slide-fallback" />
-      </div>
-
-      <div className="hero-content">
-        <div className="hero-text">
-          <p className="hero-eyebrow animate-fadeUp">{eyebrow}</p>
-          <h1 className="hero-title animate-fadeUp" style={{ animationDelay: '0.15s' }}>
-            {parseItalic(title)}
-          </h1>
-          <p className="hero-sub animate-fadeUp" style={{ animationDelay: '0.3s' }}>
-            {subtitle}
-          </p>
-          <div className="hero-cta animate-fadeUp" style={{ animationDelay: '0.45s' }}>
-            {primaryCta.label && <Link to={primaryCta.link} className="btn-primary">{primaryCta.label}</Link>}
-            {secondaryCta.label && <Link to={secondaryCta.link} className="btn-ghost">{secondaryCta.label}</Link>}
-          </div>
-        </div>
-      </div>
-
-      {displayImages.length > 1 && (
-        <div className="hero-dots">
-          {displayImages.map((_, i) => (
-            <button
-              key={i}
-              className={`hero-dot ${i === current ? 'active' : ''}`}
-              onClick={() => goTo(i)}
-              aria-label={`Go to slide ${i + 1}`}
-            />
-          ))}
-        </div>
-      )}
-
-      {!scrolled && (
-        <div className="hero-scroll-indicator" aria-hidden="true">
-          <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-        </div>
-      )}
+      {hasImages && displayImages.map((src, i) => (
+        <img
+          key={i}
+          ref={i === 0 ? firstImgRef : null}
+          src={src}
+          alt={`Hero ${i + 1}`}
+          loading={i === 0 ? 'eager' : 'lazy'}
+          decoding={i === 0 ? 'sync' : 'async'}
+          fetchpriority={i === 0 ? 'high' : 'auto'}
+          onLoad={i === 0 ? () => requestAnimationFrame(() => setMounted(true)) : undefined}
+          className={`hero-slide ${mounted && i === current ? 'active' : ''}`}
+          style={{ objectPosition: imagePosition }}
+        />
+      ))}
+      <div className="hero-slide-fallback" style={bgColor ? { background: bgColor } : undefined} />
     </>
+  );
+
+  const dots = showDots && displayImages.length > 1 && (
+    <div className="hero-dots">
+      {displayImages.map((_, i) => (
+        <button key={i} className={`hero-dot ${i === current ? 'active' : ''}`}
+          onClick={() => goTo(i)} aria-label={`Go to slide ${i + 1}`} />
+      ))}
+    </div>
+  );
+
+  const scrollHint = showScrollHint && !scrolled && (
+    <div className="hero-scroll-indicator" aria-hidden="true">
+      <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </div>
+  );
+
+  // ── GALLERY: content header on top, infinite marquee of featured images below ──
+  if (layout === 'gallery') {
+    // Each tile is 16:9-ish — wide enough to feel cinematic but tall enough
+    // that smaller images don't get crushed.
+    const tileWidth = Math.round(galleryHeight * 1.6);
+    const galleryItems = hasImages ? displayImages : [];
+    return wrapClickable(
+      <section style={{
+        ...sectionMargin,
+        position: 'relative', overflow: 'hidden',
+        background: bgColor || (isLightText ? 'var(--ink)' : 'var(--bg)'),
+        display: 'flex', flexDirection: 'column',
+        padding: imageOnly ? 0 : '60px 0 0',
+      }}>
+        {/* Skip the header band entirely in imageOnly mode so the marquee
+            sits flush against the section edge. */}
+        {!imageOnly && (
+          <div style={{ padding: '0 var(--page-pad) 48px', display: 'flex', justifyContent: hAlign }}>
+            {contentBlock}
+          </div>
+        )}
+        {galleryItems.length > 0 && (
+          <MarqueeRow
+            items={galleryItems}
+            renderItem={(src, i) => (
+              <img src={src} alt={`Featured ${i + 1}`}
+                style={{
+                  width: '100%', height: galleryHeight,
+                  objectFit: 'cover', objectPosition: imagePosition,
+                  display: 'block',
+                }} />
+            )}
+            speed={gallerySpeed}
+            gap={galleryGap}
+            cardWidth={tileWidth}
+          />
+        )}
+      </section>
+    );
+  }
+
+  // ── MINIMAL: no image, just typography on a solid background ──
+  if (layout === 'minimal') {
+    return (
+      <section style={{
+        ...heightStyles,
+        ...sectionMargin,
+        position: 'relative', overflow: 'hidden',
+        background: bgColor || (isLightText ? 'var(--ink)' : 'var(--bg)'),
+        display: 'flex', flexDirection: 'column', justifyContent: vAlign,
+        padding: '60px var(--page-pad)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: hAlign }}>{contentBlock}</div>
+      </section>
+    );
+  }
+
+  // ── SPLIT: two columns, image on one side, content on the other ──
+  if (layout === 'split') {
+    // Image column always gets `splitImageRatio` of the width; content gets the rest.
+    const imageFr = splitImageRatio;
+    const contentFr = 1 - splitImageRatio;
+    const gridCols = splitImageSide === 'left'
+      ? `${imageFr}fr ${contentFr}fr`
+      : `${contentFr}fr ${imageFr}fr`;
+    const imagePane = (
+      <div className="hero-split-img" style={{ position: 'relative', overflow: 'hidden' }}>{imageStack}</div>
+    );
+    const contentPane = (
+      <div style={{
+        display: 'flex', flexDirection: 'column', justifyContent: 'center',
+        alignItems: hAlign,
+        padding: '60px var(--page-pad)',
+      }}>{contentBlock}</div>
+    );
+    return (
+      <section style={{
+        ...heightStyles,
+        ...sectionMargin,
+        position: 'relative', overflow: 'hidden',
+        background: bgColor || (isLightText ? 'var(--ink)' : 'var(--bg)'),
+        display: 'grid', gridTemplateColumns: gridCols,
+      }} className="hero-split">
+        {splitImageSide === 'left' ? <>{imagePane}{contentPane}</> : <>{contentPane}{imagePane}</>}
+      </section>
+    );
+  }
+
+  // ── STACKED: image and content as full-width horizontal bands ──
+  if (layout === 'stacked') {
+    const imageFlex = `0 0 ${stackedImageRatio * 100}%`;
+    const imagePane = (
+      <div style={{ position: 'relative', overflow: 'hidden', flex: imageFlex }}>{imageStack}</div>
+    );
+    const contentPane = (
+      <div style={{
+        flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center',
+        alignItems: hAlign,
+        padding: '40px var(--page-pad)',
+      }}>{contentBlock}</div>
+    );
+    return (
+      <section style={{
+        ...heightStyles,
+        ...sectionMargin,
+        position: 'relative', overflow: 'hidden',
+        background: bgColor || (isLightText ? 'var(--ink)' : 'var(--bg)'),
+        display: 'flex', flexDirection: 'column',
+      }}>
+        {stackedImageSide === 'above' ? <>{imagePane}{contentPane}</> : <>{contentPane}{imagePane}</>}
+      </section>
+    );
+  }
+
+  // ── OVERLAY (default): full-bleed image with content overlaid + scrim ──
+  // Pad only on the edge the content is anchored to so vertical align actually
+  // shifts the block instead of being dragged off-center by a hardcoded 90px
+  // bottom gap from the legacy .hero-content rule.
+  const overlayPadTop    = contentAlignV === 'top'    ? 90 : 0;
+  const overlayPadBottom = contentAlignV === 'bottom' ? 90 : 0;
+  return wrapClickable(
+    <section className="hero" style={{
+      ...heightStyles,
+      ...sectionMargin,
+      justifyContent: vAlign,
+      background: bgColor || undefined,
+    }}>
+      <div className="hero-bg">{imageStack}</div>
+      {/* Skip scrim + content overlay in imageOnly mode — the scrim only
+          existed to make text legible, and the content div is empty now. */}
+      {!imageOnly && scrimGradient && (
+        <div style={{ position: 'absolute', inset: 0, background: scrimGradient, zIndex: 1, pointerEvents: 'none' }} />
+      )}
+      {!imageOnly && (
+        <div className="hero-content" style={{
+          display: 'flex', justifyContent: hAlign,
+          padding: `${overlayPadTop}px var(--page-pad) ${overlayPadBottom}px`,
+        }}>
+          {contentBlock}
+        </div>
+      )}
+      {dots}
+      {!imageOnly && scrollHint}
+    </section>
   );
 }
 
@@ -1403,7 +1950,7 @@ const BANNER_PRESETS = {
   split:     { textAlign: 'left',   verticalAlign: 'middle', height: 'medium', scrim: 0,     textColor: 'light', padding: 'spacious', cornerRadius: 'lg',   imageOpacity: 1, ctaStyle: 'filled', imagePosition: 'right' },
   overlay:   { textAlign: 'left',   verticalAlign: 'bottom', height: 'tall',   scrim: 0.45,  textColor: 'light', padding: 'spacious', cornerRadius: 'lg',   imageOpacity: 1, ctaStyle: 'filled' },
   stacked:   { textAlign: 'center', verticalAlign: 'middle', height: 'medium', scrim: 0,     textColor: 'dark',  padding: 'normal',   cornerRadius: 'lg',   imageOpacity: 1, ctaStyle: 'filled', imagePosition: 'top' },
-  fullbleed: { textAlign: 'left',   verticalAlign: 'bottom', height: 'xtall',  scrim: 0.5,   textColor: 'light', padding: 'spacious', cornerRadius: 'none', imageOpacity: 1, ctaStyle: 'ghost',  fullBleed: true },
+  fullbleed: { textAlign: 'left',   verticalAlign: 'bottom', height: 'xtall',  scrim: 0.5,   textColor: 'light', padding: 'spacious', cornerRadius: 'none', imageOpacity: 1, ctaStyle: 'outline', fullBleed: true },
 };
 
 const BANNER_HEIGHT  = { short: 280, medium: 420, tall: 520, xtall: 640 };
@@ -1438,39 +1985,17 @@ function autoScrimDir(verticalAlign, textAlign) {
   return 'radial';
 }
 
-function BannerCta({ style, label, link, isLight }) {
-  if (style === 'none' || !label) return null;
-  if (style === 'text' || style === 'text-arrow') {
-    return (
-      <Link to={link} style={{
-        display: 'inline-flex', alignItems: 'center', gap: 8,
-        fontSize: '0.98rem', fontWeight: 500,
-        color: isLight ? '#fff' : 'var(--ink)',
-        textDecoration: 'none',
-        borderBottom: `1.5px solid ${isLight ? 'rgba(255,255,255,0.55)' : 'var(--ink)'}`,
-        paddingBottom: 3,
-        transition: 'gap 0.2s, border-color 0.2s',
-      }}
-      onMouseEnter={e => e.currentTarget.style.gap = '12px'}
-      onMouseLeave={e => e.currentTarget.style.gap = '8px'}
-      >{label} <span aria-hidden="true">→</span></Link>
-    );
-  }
-  if (style === 'ghost') {
-    return (
-      <Link to={link} className={isLight ? 'btn-ghost-white' : 'btn-outline'}>
-        <span>{label}</span>
-      </Link>
-    );
-  }
-  return (
-    <Link to={link} className={isLight ? 'btn-light' : 'btn-dark'}>
-      <span>{label}</span>
-    </Link>
+// Thin shim — delegates to renderSectionCta so banner CTAs share rendering
+// with hero / product-hero CTAs. Legacy banner style values (ghost,
+// text-arrow, none) migrate inside renderSectionCta.
+function BannerCta({ style, size, icon, bg, fg, label, link, isLight }) {
+  return renderSectionCta(
+    { label, link, style, size, icon, bg, fg },
+    { isLight, fallbackStyle: 'filled' },
   );
 }
 
-function BannerSection({ layout = 'split', imgUrl, eyebrow, title, subtitle, ctaLabel, ctaLink, ...overrides }) {
+function BannerSection({ layout = 'split', imgUrl, eyebrow, title, subtitle, ctaLabel, ctaLink, imageOnly = false, ...overrides }) {
   const bannerRef = useRef(null);
   const [visible, setVisible] = useState(false);
   useEffect(() => {
@@ -1516,7 +2041,10 @@ function BannerSection({ layout = 'split', imgUrl, eyebrow, title, subtitle, cta
   const scrimDir = settings.scrimDir || autoScrimDir(settings.verticalAlign, settings.textAlign);
   const scrimBg  = bannerScrim(settings.scrim, scrimDir);
 
-  const content = (
+  // imageOnly hides the entire text block. Returning null lets each layout
+  // collapse its content slot cleanly (split goes to single image-only column,
+  // overlay loses its overlay div, stacked drops the content row).
+  const content = imageOnly ? null : (
     <div className={visible ? 'banner-animate-in' : ''} style={{
       textAlign: settings.textAlign || 'left',
       color: fg,
@@ -1527,16 +2055,7 @@ function BannerSection({ layout = 'split', imgUrl, eyebrow, title, subtitle, cta
         <p style={{
           fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.16em', textTransform: 'uppercase',
           color: eyeFg, marginBottom: 18,
-          display: 'inline-flex', alignItems: 'center', gap: 10,
-        }}>
-          {/* Small decorative line before the eyebrow text — restored from the
-              original banner styling. Hidden when text is right-aligned so the
-              line doesn't float in front of nothing. */}
-          {settings.textAlign !== 'right' && (
-            <span style={{ display: 'inline-block', width: 22, height: 1.5, background: eyeFg, borderRadius: 1 }} />
-          )}
-          {eyebrow}
-        </p>
+        }}>{eyebrow}</p>
       )}
       {title && (
         <h2 style={{
@@ -1554,7 +2073,16 @@ function BannerSection({ layout = 'split', imgUrl, eyebrow, title, subtitle, cta
           ...(settings.textAlign === 'center' && { marginLeft: 'auto', marginRight: 'auto' }),
         }}>{subtitle}</p>
       )}
-      <BannerCta style={settings.ctaStyle} label={ctaLabel} link={ctaLink} isLight={isLight} />
+      <BannerCta
+        style={settings.ctaStyle}
+        size={settings.ctaSize}
+        icon={settings.ctaIcon}
+        bg={settings.ctaBg}
+        fg={settings.ctaFg}
+        label={ctaLabel}
+        link={ctaLink}
+        isLight={isLight}
+      />
     </div>
   );
 
@@ -1580,21 +2108,32 @@ function BannerSection({ layout = 'split', imgUrl, eyebrow, title, subtitle, cta
 
   const wrap = { margin, borderRadius: radius, overflow: 'hidden', position: 'relative', minHeight: minH };
 
+  // Whole-banner clickthrough for image-only mode. Keeps the banner actionable
+  // when there's no visible CTA button. Falls through unchanged otherwise.
+  const wrapClickable = (node) => (imageOnly && ctaLink
+    ? <Link to={ctaLink} aria-label={ctaLabel || title || 'Banner'} style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>{node}</Link>
+    : node
+  );
+
   // ── overlay & fullbleed: image as full background, content on top
   if (layout === 'overlay' || layout === 'fullbleed') {
-    return (
+    return wrapClickable(
       <div ref={bannerRef} className="bs-banner" style={{ ...wrap, background: 'var(--ink)' }}>
         {hoverStyles}
         <div style={{ position: 'absolute', inset: 0 }}>{image}</div>
-        {scrimBg && <div style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none', background: scrimBg }} />}
-        <div style={{
-          position: 'relative', zIndex: 2,
-          minHeight: minH, padding: pad,
-          display: 'flex', flexDirection: 'column',
-          justifyContent: alignV, alignItems: alignH,
-        }}>
-          {content}
-        </div>
+        {/* Scrim only exists to make overlay text legible — skip it in
+            imageOnly mode so the image shows clean. */}
+        {!imageOnly && scrimBg && <div style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none', background: scrimBg }} />}
+        {!imageOnly && (
+          <div style={{
+            position: 'relative', zIndex: 2,
+            minHeight: minH, padding: pad,
+            display: 'flex', flexDirection: 'column',
+            justifyContent: alignV, alignItems: alignH,
+          }}>
+            {content}
+          </div>
+        )}
       </div>
     );
   }
@@ -1604,10 +2143,13 @@ function BannerSection({ layout = 'split', imgUrl, eyebrow, title, subtitle, cta
   // confusing — now they're separate knobs.)
   if (layout === 'stacked') {
     const imagePos = settings.imagePosition === 'bottom' ? 'bottom' : 'top';
+    // In imageOnly mode the image gets the whole height; otherwise it keeps
+    // its 55% slice so the content row has room.
+    const imageHeight = imageOnly ? minH : Math.max(240, Math.round(minH * 0.55));
     const imageBlock = (
-      <div style={{ width: '100%', height: Math.max(240, Math.round(minH * 0.55)), overflow: 'hidden' }}>{image}</div>
+      <div style={{ width: '100%', height: imageHeight, overflow: 'hidden' }}>{image}</div>
     );
-    const contentBlock = (
+    const contentBlock = imageOnly ? null : (
       <div style={{
         padding: pad,
         display: 'flex', flexDirection: 'column', alignItems: alignH,
@@ -1618,8 +2160,8 @@ function BannerSection({ layout = 'split', imgUrl, eyebrow, title, subtitle, cta
         {content}
       </div>
     );
-    return (
-      <div ref={bannerRef} className="bs-banner" style={{ ...wrap, background: 'var(--surface)', border: '1px solid var(--border)', minHeight: 'unset' }}>
+    return wrapClickable(
+      <div ref={bannerRef} className="bs-banner" style={{ ...wrap, background: 'var(--surface)', border: imageOnly ? 'none' : '1px solid var(--border)', minHeight: 'unset' }}>
         {hoverStyles}
         {imagePos === 'bottom' ? <>{contentBlock}{imageBlock}</> : <>{imageBlock}{contentBlock}</>}
       </div>
@@ -1632,6 +2174,18 @@ function BannerSection({ layout = 'split', imgUrl, eyebrow, title, subtitle, cta
   const imageLeft = settings.imagePosition === 'left';
   const fadeDirection = imageLeft ? 'left' : 'right';
   const contentBg = isLight ? 'var(--ink)' : 'var(--surface)';
+
+  // imageOnly + split → single full-width image row (no content column,
+  // skip the gradient fade since there's nothing to bridge to).
+  if (imageOnly) {
+    return wrapClickable(
+      <div ref={bannerRef} className="bs-banner" style={{ ...wrap, background: contentBg }}>
+        {hoverStyles}
+        <div style={{ position: 'relative', overflow: 'hidden', minHeight: minH }}>{image}</div>
+      </div>
+    );
+  }
+
   return (
     <div ref={bannerRef} className="bs-banner" style={{
       ...wrap, background: contentBg,

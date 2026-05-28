@@ -1,5 +1,5 @@
 import { useState, useEffect, useContext, useCallback } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import UserContext from '../context/UserContext';
 import AddToOrderContext from '../context/AddToOrderContext';
 import ProductCard, { computeStockSummary } from '../components/ProductCard';
@@ -14,6 +14,7 @@ export default function Products() {
   const { user, loading: userLoading } = useContext(UserContext);
   const { info: addToOrderInfo } = useContext(AddToOrderContext);
   const navigate = useNavigate();
+  const location = useLocation();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -44,6 +45,20 @@ export default function Products() {
   }, [searchParams]);
 
   useEffect(() => { setVisibleCount(PAGE_SIZE); }, [search, sort, category, hideOutOfStock]);
+
+  // When the URL carries a hash like /products?cat=keyboards#products, jump
+  // past the admin-built blocks and land on the catalog area. Re-runs on
+  // every navigation (location.key) so clicking the same category strip link
+  // from /products → /products?cat=X#products still scrolls down.
+  useEffect(() => {
+    if (!location.hash || loading) return;
+    const id = location.hash.replace(/^#/, '');
+    const t = setTimeout(() => {
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+    return () => clearTimeout(t);
+  }, [location.key, location.hash, loading]);
 
   // FIX: Stabilize fetchProducts with useCallback so the dep array is correct
   const isAdmin = user?.isAdmin;
@@ -140,15 +155,15 @@ export default function Products() {
         </div>
       )}
 
-      <div style={{ padding: '56px var(--page-pad) 0', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '24px', flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.8rem', letterSpacing: '-0.025em', marginBottom: '8px' }}>Shop</h1>
+      <div id="products" className="shop-header" style={{ scrollMarginTop: 'var(--nav-h, 64px)', padding: '56px var(--page-pad) 0', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '24px', flexWrap: 'wrap' }}>
+        <div className="shop-header-title">
+          <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(1.7rem, 5.5vw, 2.8rem)', letterSpacing: '-0.025em', marginBottom: '8px' }}>Shop</h1>
           <p style={{ color: 'var(--ink-muted)', fontSize: '0.95rem' }}>Keyboards, keycaps, and accessories.</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative' }}>
+        <div className="shop-header-tools" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div className="shop-search-wrap" style={{ position: 'relative' }}>
             <svg style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-muted)', pointerEvents: 'none' }} width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="22" y2="22"/></svg>
-            <input type="text" placeholder="Search products..." value={search} onChange={e => setSearch(e.target.value)} className="form-input" style={{ paddingLeft: 38, borderRadius: 'var(--radius-pill)', width: 210 }} />
+            <input type="text" placeholder="Search products..." value={search} onChange={e => setSearch(e.target.value)} className="form-input shop-search-input" style={{ paddingLeft: 38, borderRadius: 'var(--radius-pill)', width: 210 }} />
           </div>
           <select value={sort} onChange={e => setSort(e.target.value)} className="form-input" style={{ borderRadius: 'var(--radius-pill)', width: 'auto', paddingRight: 34, cursor: 'pointer' }}>
             <option value="default">Sort: Default</option>
