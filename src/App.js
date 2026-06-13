@@ -4,10 +4,12 @@ import { Toaster } from 'react-hot-toast';
 import { UserProvider } from './context/UserContext';
 import UserContext from './context/UserContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { SiteStyleProvider } from './context/SiteStyleContext';
 import { AddToOrderProvider } from './context/AddToOrderContext';
 import AppNavbar from './components/AppNavbar';
 import Footer from './components/Footer';
 import ErrorBoundary from './components/ErrorBoundary';
+import ScrollToTop from './components/ScrollToTop';
 import Home from './pages/Home';
 import Products from './pages/Products';
 import CategoryPage from './pages/CategoryPage';
@@ -40,17 +42,31 @@ function ProtectedRoute({ element, adminOnly = false }) {
 export default function App() {
   return (
     <ThemeProvider>
+      <SiteStyleProvider>
       <UserProvider>
         <AddToOrderProvider>
           <Router>
+            <ScrollToTop />
             <Toaster
               position="bottom-center"
               toastOptions={{
                 duration: 2600,
+                // No emojis / checkmarks / X icons — text-only by design. Set on
+                // every variant so react-hot-toast doesn't sneak its defaults back.
+                icon: null,
+                success: { icon: null, style: { background: 'var(--accent)', color: '#fff' } },
+                error:   { icon: null, style: { background: '#c54848', color: '#fff' } },
+                loading: { icon: null },
                 style: {
+                  fontFamily: 'inherit', fontSize: '0.875rem', fontWeight: 500,
+                  padding: '12px 22px',
                   background: 'var(--ink)', color: 'var(--bg)',
-                  fontFamily: "'DM Sans', sans-serif", fontSize: '0.875rem', fontWeight: 500,
-                  borderRadius: '50px', padding: '12px 24px', boxShadow: 'var(--shadow-lg)',
+                  // Shape adapts per theme via the CSS custom property:
+                  //   Classic     → 50px (pill)
+                  //   Origami     → 4px  (subtle square)
+                  //   Pastel Paper → 999px (full pill, overridden by frosted-glass rule)
+                  borderRadius: 'var(--radius-pill)',
+                  boxShadow: 'var(--shadow-lg)',
                 },
               }}
             />
@@ -84,6 +100,7 @@ export default function App() {
           </Router>
         </AddToOrderProvider>
       </UserProvider>
+      </SiteStyleProvider>
     </ThemeProvider>
   );
 }

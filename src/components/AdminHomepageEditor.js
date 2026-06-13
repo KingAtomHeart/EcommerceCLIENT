@@ -73,6 +73,10 @@ const BLOCK_META = {
     const n = (d.categorySlugs || []).length;
     return d.title || (n > 0 ? `${n} categor${n === 1 ? 'y' : 'ies'} pinned` : 'All categories');
   } },
+  // Position marker for the live product/group-buy grid on the Shop or Group
+  // Buys page. Drag it to control where the catalog renders relative to the
+  // other section blocks. Hidden on the Homepage tab (no catalog there).
+  catalog:       { label: 'Catalog Grid',   icon: '▥', summary: () => 'Live product / group-buy grid', pageOnly: ['shop', 'group-buys'] },
   // Legacy types — kept here so already-rendered admin rows display correctly
   // before the controller migrates them to `collection`. `hidden: true` keeps
   // them out of the "+ Insert" / "+ Add Section" menus.
@@ -276,6 +280,9 @@ const BLOCK_DEFAULTS = {
     columns: 4,            // 2 | 3 | 4 | 5
     align: 'left',         // header alignment
   }),
+  // No data needed — the Shop / Group Buys page renders its live catalog
+  // wherever the block is positioned in the list.
+  catalog: () => ({}),
 };
 
 async function uploadImage(file) {
@@ -518,6 +525,7 @@ export default function AdminHomepageEditor() {
           groupBuys={groupBuys}
           countByCategory={countByCategory}
           handlers={blockHandlers}
+          pageKey={pageKey}
         />
       ) : (
         <ListEditorBody
@@ -528,6 +536,7 @@ export default function AdminHomepageEditor() {
           handlers={blockHandlers}
           products={products}
           groupBuys={groupBuys}
+          pageKey={pageKey}
         />
       )}
 
@@ -564,7 +573,7 @@ export default function AdminHomepageEditor() {
 }
 
 /* ─── List-editor body (legacy compact view, untouched logic) ─── */
-function ListEditorBody({ blocks, cardStyle, expanded, setExpanded, handlers, products, groupBuys = [] }) {
+function ListEditorBody({ blocks, cardStyle, expanded, setExpanded, handlers, products, groupBuys = [], pageKey = 'homepage' }) {
   const { moveBlock, duplicateBlock, deleteBlock, toggleEnabled, updateBlockData, addBlock } = handlers;
   return (
     <>
@@ -617,17 +626,42 @@ function ListEditorBody({ blocks, cardStyle, expanded, setExpanded, handlers, pr
         );
       })}
 
+      {/* Catalog Grid fallback hint — shown only on Shop / Group Buys when the
+          admin hasn't placed an explicit Catalog Grid block. Mirrors the
+          customer-page fallback so the admin sees what's actually rendered. */}
+      {(pageKey === 'shop' || pageKey === 'group-buys') && !blocks.some(b => b.type === 'catalog') && (
+        <div style={{
+          ...cardStyle,
+          border: '2px dashed var(--accent)',
+          background: 'var(--accent-light)',
+          textAlign: 'center',
+          padding: '18px 20px',
+        }}>
+          <p style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent)', margin: '0 0 4px' }}>
+            Catalog Grid · default position
+          </p>
+          <p style={{ fontSize: '0.78rem', color: 'var(--ink-muted)', margin: 0 }}>
+            Live {pageKey === 'group-buys' ? 'group-buy' : 'product'} listing renders at the bottom by default. Add a <strong>Catalog Grid</strong> section below to move it.
+          </p>
+        </div>
+      )}
+
       {/* Add-block strip */}
       <div style={{ ...cardStyle, background: 'var(--bg-secondary)', borderStyle: 'dashed' }}>
         <p style={{ fontSize: '0.72rem', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-muted)', marginBottom: '10px', fontWeight: 600 }}>
           + Add Section
         </p>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {Object.entries(BLOCK_META).filter(([, m]) => !m.hidden).map(([type, m]) => (
-            <button key={type} onClick={() => addBlock(type)} className="btn-outline" style={{ fontSize: '0.82rem', padding: '8px 14px' }}>
-              <span style={{ color: 'var(--accent)', marginRight: 6 }}>{m.icon}</span>{m.label}
-            </button>
-          ))}
+          {Object.entries(BLOCK_META)
+            .filter(([, m]) => !m.hidden)
+            // pageOnly restricts a block type to specific pageKeys (e.g. the
+            // catalog marker only makes sense on Shop / Group Buys).
+            .filter(([, m]) => !m.pageOnly || m.pageOnly.includes(pageKey))
+            .map(([type, m]) => (
+              <button key={type} onClick={() => addBlock(type)} className="btn-outline" style={{ fontSize: '0.82rem', padding: '8px 14px' }}>
+                <span style={{ color: 'var(--accent)', marginRight: 6 }}>{m.icon}</span>{m.label}
+              </button>
+            ))}
         </div>
       </div>
     </>
@@ -709,6 +743,7 @@ function CategoriesGridEditor({ data, onChange }) {
             onChange={v => onChange({ align: v })} compact />
         </Field>
       </Row>
+      <CtaField data={data} onChange={onChange} hint="Optional CTA shown above the grid (e.g., 'See all categories')." />
       <Field
         label={selected.length > 0 ? `Pinned categories · ${selected.length}` : 'Pinned categories'}
         hint={selected.length > 0
@@ -759,6 +794,58 @@ function CategoriesGridEditor({ data, onChange }) {
   );
 }
 
+/* Editor for the `data.cta` slot on blocks that don't have a view-all link
+   (e.g., Categories Grid). When label + link are both empty the renderer
+   skips the button entirely, so this stays opt-in. */
+function CtaField({ data, onChange, hint = 'Optional button rendered with the section header.' }) {
+  const cta = data.cta || {};
+  const patch = (p) => onChange({ cta: { ...cta, ...p } });
+  return (
+    <>
+      <Row>
+        <Field label="Button label" hint={hint}>
+          <input className="form-input" value={cta.label || ''} placeholder="(none)"
+            onChange={e => patch({ label: e.target.value })} />
+        </Field>
+        <Field label="Button link">
+          <input className="form-input" value={cta.link || ''} placeholder="/products"
+            onChange={e => patch({ link: e.target.value })} />
+        </Field>
+      </Row>
+      {(cta.label || cta.link) && (
+        <Row>
+          <Field label="Button style">
+            <SegmentedControl value={cta.style || 'outline'} options={CTA_STYLE_OPTIONS}
+              onChange={v => patch({ style: v })} compact />
+          </Field>
+          <Field label="Size">
+            <SegmentedControl value={cta.size || 'md'} options={CTA_SIZE_OPTIONS}
+              onChange={v => patch({ size: v })} compact />
+          </Field>
+        </Row>
+      )}
+      {(cta.label || cta.link) && (
+        <>
+          <Field label="Icon">
+            <Select value={cta.icon || ''} options={CTA_ICON_OPTIONS} onChange={v => patch({ icon: v })} />
+          </Field>
+          {/* Color overrides — parity with Hero/Banner/ViewAll. */}
+          <Row>
+            <Field label="Button background (CSS color)" hint="Blank = automatic.">
+              <input className="form-input" value={cta.bg || ''} placeholder="#1a1a18 or var(--accent)"
+                onChange={e => patch({ bg: e.target.value })} />
+            </Field>
+            <Field label="Button text color (CSS color)" hint="Blank = automatic.">
+              <input className="form-input" value={cta.fg || ''} placeholder="#fff"
+                onChange={e => patch({ fg: e.target.value })} />
+            </Field>
+          </Row>
+        </>
+      )}
+    </>
+  );
+}
+
 function Field({ label, children, hint }) {
   return (
     <div style={{ marginBottom: '12px' }}>
@@ -805,31 +892,74 @@ function Collapsible({ label, summary, defaultOpen = false, children }) {
 }
 
 // Shared View-All field for collection-style block editors. Combines the
-// optional URL override with a hide toggle: when "Show" is off the link is
-// suppressed entirely on the customer page.
+// optional URL override with a hide toggle plus button-style controls so
+// every section that supports a view-all can pick filled / outline / text /
+// link, sized + iconed to match Hero/Banner buttons. The renderer falls back
+// to the legacy text-link when style is undefined or 'link' (preserves the
+// old look for existing data).
 function ViewAllField({ data, onChange, placeholder = '/products' }) {
   const hidden = !!data.hideViewAll;
+  const cta = data.viewAllCta || {};
+  const patchCta = (patch) => onChange({ viewAllCta: { ...cta, ...patch } });
   return (
-    <Row>
-      <Field label="View-all link" hint="Leave blank to use the smart default (e.g., the filtered category).">
-        <input
-          className="form-input"
-          value={data.viewAllLink || ''}
-          placeholder={placeholder}
-          disabled={hidden}
-          onChange={e => onChange({ viewAllLink: e.target.value })}
-          style={{ opacity: hidden ? 0.5 : 1 }}
-        />
-      </Field>
-      <Field label="Show view-all button">
-        <SegmentedControl
-          value={hidden ? 'off' : 'on'}
-          options={ONOFF_OPTIONS}
-          onChange={v => onChange({ hideViewAll: v === 'off' })}
-          compact
-        />
-      </Field>
-    </Row>
+    <>
+      <Row>
+        <Field label="View-all link" hint="Leave blank to use the smart default (e.g., the filtered category).">
+          <input
+            className="form-input"
+            value={data.viewAllLink || ''}
+            placeholder={placeholder}
+            disabled={hidden}
+            onChange={e => onChange({ viewAllLink: e.target.value })}
+            style={{ opacity: hidden ? 0.5 : 1 }}
+          />
+        </Field>
+        <Field label="Show view-all button">
+          <SegmentedControl
+            value={hidden ? 'off' : 'on'}
+            options={ONOFF_OPTIONS}
+            onChange={v => onChange({ hideViewAll: v === 'off' })}
+            compact
+          />
+        </Field>
+      </Row>
+      {!hidden && (
+        <>
+          <Row>
+            <Field label="Button label" hint="Defaults to 'View all'.">
+              <input className="form-input" value={cta.label || ''} placeholder="View all"
+                onChange={e => patchCta({ label: e.target.value })} />
+            </Field>
+            <Field label="Button style">
+              <SegmentedControl value={cta.style || 'link'} options={CTA_STYLE_OPTIONS}
+                onChange={v => patchCta({ style: v })} compact />
+            </Field>
+          </Row>
+          <Row>
+            <Field label="Size">
+              <SegmentedControl value={cta.size || 'md'} options={CTA_SIZE_OPTIONS}
+                onChange={v => patchCta({ size: v })} compact />
+            </Field>
+            <Field label="Icon">
+              <Select value={cta.icon || ''} options={CTA_ICON_OPTIONS}
+                onChange={v => patchCta({ icon: v })} />
+            </Field>
+          </Row>
+          {/* Color overrides — parity with the Hero/Banner CTA editors. Blank
+              uses the renderer's automatic theme-pinned defaults. */}
+          <Row>
+            <Field label="Button background (CSS color)" hint="Blank = automatic.">
+              <input className="form-input" value={cta.bg || ''} placeholder="#1a1a18 or var(--accent)"
+                onChange={e => patchCta({ bg: e.target.value })} />
+            </Field>
+            <Field label="Button text color (CSS color)" hint="Blank = automatic.">
+              <input className="form-input" value={cta.fg || ''} placeholder="#fff"
+                onChange={e => patchCta({ fg: e.target.value })} />
+            </Field>
+          </Row>
+        </>
+      )}
+    </>
   );
 }
 
@@ -1061,15 +1191,12 @@ function HeroEditor({ data, onChange }) {
             </Field>
           )}
         </Row>
-        <Row>
-          <Field label="Text color">
-            <SegmentedControl value={data.textColor || 'light'} options={TEXT_COLOR_OPTIONS} onChange={v => onChange({ textColor: v })} compact />
-          </Field>
-          <Field label={`Content width · ${data.contentMaxWidth ?? 660}px`}>
-            <input type="range" min="320" max="1200" step="20" value={data.contentMaxWidth ?? 660}
-              onChange={e => onChange({ contentMaxWidth: Number(e.target.value) })} style={{ width: '100%' }} />
-          </Field>
-        </Row>
+        {/* Text color picker removed — hero text is always light (white) to
+            match the rest of the site and stay readable on hero imagery. */}
+        <Field label={`Content width · ${data.contentMaxWidth ?? 660}px`}>
+          <input type="range" min="320" max="1200" step="20" value={data.contentMaxWidth ?? 660}
+            onChange={e => onChange({ contentMaxWidth: Number(e.target.value) })} style={{ width: '100%' }} />
+        </Field>
       </Collapsible>
 
       {/* ── Background & scrim (collapsed) ── */}
@@ -2018,6 +2145,11 @@ function ProductHeroEditor({ data, onChange, products }) {
         <input className="form-input" value={data.subtitle || ''} onChange={e => onChange({ subtitle: e.target.value })} />
       </Field>
 
+      {/* Header CTA — shown alongside the section title (only when there IS
+          a header, i.e. eyebrow/title/subtitle set). Same styling controls
+          as Hero/Banner so the look is consistent. */}
+      <ViewAllField data={data} onChange={onChange} placeholder="/products" />
+
       {/* ── Layout & sizing ── */}
       <div style={{ borderTop: '1px dashed var(--border-subtle)', marginTop: 14, paddingTop: 14 }}>
         <p style={{ fontSize: '0.7rem', color: 'var(--ink-muted)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 600 }}>
@@ -2045,21 +2177,15 @@ function ProductHeroEditor({ data, onChange, products }) {
             <ToggleSwitch checked={data.fullBleed !== false} onChange={v => onChange({ fullBleed: v })} />
           </Field>
         </Row>
-        <Row>
-          <Field label="Text color">
-            <SegmentedControl value={data.textColor || 'light'} options={[
-              { value: 'light', label: 'Light' },
-              { value: 'dark',  label: 'Dark' },
-            ]} onChange={v => onChange({ textColor: v })} compact />
-          </Field>
-          <Field label="Text alignment">
-            <SegmentedControl value={data.textAlign || 'center'} options={[
-              { value: 'left',   label: 'Left' },
-              { value: 'center', label: 'Center' },
-              { value: 'right',  label: 'Right' },
-            ]} onChange={v => onChange({ textAlign: v })} compact />
-          </Field>
-        </Row>
+        {/* Text color picker removed — product-hero tile text is always
+            light (white) to match the rest of the site. */}
+        <Field label="Text alignment">
+          <SegmentedControl value={data.textAlign || 'center'} options={[
+            { value: 'left',   label: 'Left' },
+            { value: 'center', label: 'Center' },
+            { value: 'right',  label: 'Right' },
+          ]} onChange={v => onChange({ textAlign: v })} compact />
+        </Field>
         {(data.imageStyle || 'overlay') === 'overlay' && (
           <Field label="Vertical position (overlay only)">
             <SegmentedControl value={data.verticalAlign || 'bottom'} options={[
@@ -2240,18 +2366,11 @@ function ProductHeroTileEditor({ index, tile, products, onChange }) {
               <input className="form-input" value={tile.ctaFg || ''} placeholder="#fff" onChange={e => onChange({ ctaFg: e.target.value })} />
             </Field>
           </Row>
-          <Row>
-            <Field label="Text color override">
-              <SegmentedControl value={tile.textColor || ''} options={[
-                { value: '',      label: 'Inherit' },
-                { value: 'light', label: 'Light' },
-                { value: 'dark',  label: 'Dark' },
-              ]} onChange={v => onChange({ textColor: v })} compact />
-            </Field>
-            <Field label="Background override (CSS color)" hint="Leave blank to use default tile background.">
-              <input className="form-input" value={tile.bg || ''} placeholder="#1a1a18 or var(--accent)" onChange={e => onChange({ bg: e.target.value })} />
-            </Field>
-          </Row>
+          {/* Per-tile text color override removed — tile text is always
+              light (white). Background override stays. */}
+          <Field label="Background override (CSS color)" hint="Leave blank to use default tile background.">
+            <input className="form-input" value={tile.bg || ''} placeholder="#1a1a18 or var(--accent)" onChange={e => onChange({ bg: e.target.value })} />
+          </Field>
           {/* Per-tile scrim — only meaningful in overlay mode, where text sits on the image.
               Slider range is 0 (no overlay) to 1 (solid black). Stacked layouts ignore this. */}
           <Field
@@ -2721,7 +2840,15 @@ function ModeSwitcher({ mode, setMode }) {
 }
 
 /* Renders the homepage exactly as a customer sees it, with edit overlays. */
-function PreviewEditor({ blocks, products, groupBuys, countByCategory, handlers }) {
+function PreviewEditor({ blocks, products, groupBuys, countByCategory, handlers, pageKey = 'homepage' }) {
+  // Shop / Group Buys: when the admin hasn't placed a `catalog` block, the
+  // customer page falls back to rendering the catalog at the end. Mirror that
+  // here so the preview matches what the customer sees and the admin can tell
+  // there IS a catalog (and that they can add a Catalog Grid block to move it).
+  const isCatalogPage = pageKey === 'shop' || pageKey === 'group-buys';
+  const hasCatalogBlock = blocks.some(b => b.type === 'catalog');
+  const showFallbackCatalog = isCatalogPage && !hasCatalogBlock;
+
   return (
     <div style={{
       // Boxed preview frame — visually signals "this is the live customer view"
@@ -2729,13 +2856,13 @@ function PreviewEditor({ blocks, products, groupBuys, countByCategory, handlers 
       border: '1px solid var(--border)', borderRadius: 'var(--radius)',
       overflow: 'hidden', background: 'var(--bg)',
     }}>
-      {blocks.length === 0 && (
+      {blocks.length === 0 && !showFallbackCatalog && (
         <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--ink-muted)' }}>
-          <p>Empty homepage — add your first section below.</p>
+          <p>Empty {pageKey === 'homepage' ? 'homepage' : 'page'} — add your first section below.</p>
         </div>
       )}
 
-      <AddBetween onAdd={type => handlers.insertBlockAt(0, type)} />
+      <AddBetween onAdd={type => handlers.insertBlockAt(0, type)} pageKey={pageKey} />
 
       {blocks.map((block, idx) => (
         <Fragment key={block._id || idx}>
@@ -2750,9 +2877,33 @@ function PreviewEditor({ blocks, products, groupBuys, countByCategory, handlers 
               adminMode
             />
           </BlockEnvelope>
-          <AddBetween onAdd={type => handlers.insertBlockAt(idx + 1, type)} />
+          <AddBetween onAdd={type => handlers.insertBlockAt(idx + 1, type)} pageKey={pageKey} />
         </Fragment>
       ))}
+
+      {/* Fallback catalog marker — shown only when the admin hasn't added an
+          explicit Catalog Grid block. Adding one (via the Add menu) moves the
+          catalog into a draggable position; this disappears when that happens. */}
+      {showFallbackCatalog && (
+        <div style={{
+          margin: '12px var(--page-pad) 16px',
+          padding: '28px 24px',
+          border: '2px dashed var(--accent)',
+          borderRadius: 'var(--radius-sm)',
+          background: 'var(--accent-light)',
+          textAlign: 'center',
+        }}>
+          <p style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent)', margin: '0 0 6px' }}>
+            Catalog Grid · default position
+          </p>
+          <p style={{ fontSize: '0.84rem', color: 'var(--ink-muted)', margin: '0 0 4px' }}>
+            Live {pageKey === 'group-buys' ? 'group-buy' : 'product'} listing renders here at the bottom of the page.
+          </p>
+          <p style={{ fontSize: '0.74rem', color: 'var(--ink-faint)', margin: 0 }}>
+            Add a <strong>Catalog Grid</strong> block from the menu below to move it elsewhere.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -2845,7 +2996,7 @@ function ToolbarBtn({ children, onClick, title, disabled, danger }) {
 }
 
 /* Thin insertion divider between blocks. Reveals an add-block menu on hover. */
-function AddBetween({ onAdd }) {
+function AddBetween({ onAdd, pageKey = 'homepage' }) {
   const [open, setOpen] = useState(false);
   return (
     <div
@@ -2876,7 +3027,10 @@ function AddBetween({ onAdd }) {
           <span style={{ fontSize: '0.7rem', color: 'var(--ink-muted)', alignSelf: 'center', padding: '0 6px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
             + Insert
           </span>
-          {Object.entries(BLOCK_META).filter(([, m]) => !m.hidden).map(([type, m]) => (
+          {Object.entries(BLOCK_META)
+            .filter(([, m]) => !m.hidden)
+            .filter(([, m]) => !m.pageOnly || m.pageOnly.includes(pageKey))
+            .map(([type, m]) => (
             <button key={type} type="button" onClick={() => onAdd(type)}
               style={{
                 fontSize: '0.78rem', padding: '4px 10px',

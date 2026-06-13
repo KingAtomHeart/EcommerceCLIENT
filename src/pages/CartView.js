@@ -146,7 +146,10 @@ export default function CartView() {
                   </div>
                   <div className="cart-qty">
                     <button className="qty-btn" onClick={() => updateQty(itemId, item.quantity - 1, item)} disabled={item.quantity <= 1}>−</button>
-                    <span style={{ fontSize: '0.95rem', fontWeight: 600, minWidth: 24, textAlign: 'center' }}>{item.quantity}</span>
+                    <QtyEditor
+                      value={item.quantity}
+                      onCommit={(n) => updateQty(itemId, n, item)}
+                    />
                     <button className="qty-btn" onClick={() => updateQty(itemId, item.quantity + 1, item)}>+</button>
                   </div>
                   <p className="cart-item-price">₱{item.subtotal?.toLocaleString()}</p>
@@ -192,5 +195,49 @@ export default function CartView() {
 
       <style>{`@media (max-width: 900px) { .cart-layout { grid-template-columns: 1fr !important; } }`}</style>
     </div>
+  );
+}
+
+// Inline qty input. Owns a draft string so the customer can clear the field
+// while typing without bouncing back to 1 each keystroke. Commits on Enter
+// or blur — re-syncs from the prop when the parent's cart re-fetches.
+function QtyEditor({ value, onCommit }) {
+  const [draft, setDraft] = useState(String(value ?? 1));
+  useEffect(() => { setDraft(String(value ?? 1)); }, [value]);
+
+  const commit = () => {
+    const n = parseInt(draft, 10);
+    if (!Number.isFinite(n) || n < 1) {
+      setDraft(String(value ?? 1));
+      return;
+    }
+    if (n !== value) onCommit(n);
+    else setDraft(String(value));
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={draft}
+      onChange={(e) => {
+        // Allow empty while typing; reject non-digits.
+        const next = e.target.value.replace(/[^\d]/g, '');
+        setDraft(next);
+      }}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+        if (e.key === 'Escape') { setDraft(String(value ?? 1)); e.currentTarget.blur(); }
+      }}
+      aria-label="Quantity"
+      style={{
+        width: 44, textAlign: 'center',
+        fontSize: '0.95rem', fontWeight: 600,
+        border: '1px solid var(--border)', background: 'var(--surface)',
+        color: 'inherit', borderRadius: 8, padding: '4px 6px',
+        outline: 'none',
+      }}
+    />
   );
 }

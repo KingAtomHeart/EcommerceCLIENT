@@ -4,6 +4,18 @@
 ═══════════════════════════════════════════ */
 
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
+/* Origami (minimal) theme typography pair:
+   - Space Grotesk for displays/headings: angular geometric letterforms with
+     subtle character; reads as folded-paper sharp. Used by Linear and Cash App.
+   - Inter for UI/body: the most professional neutral sans-serif, optimised
+     for screen at every weight.
+   Classic theme stays on DM Sans + DM Serif Display. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+/* Pastel Paper theme typography:
+   - Fraunces for editorial displays/headings: modern variable serif with
+     personality and a distinctive italic. Used by Stripe's marketing site.
+   - Inter for body/UI (shared with Origami). */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -372,8 +384,7 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
   font-size: clamp(3rem, 6.5vw, 5.8rem); line-height: 1.0; letter-spacing: -0.03em;
   color: #fff; margin-bottom: 24px;
 }
-.hero-title em { font-style: italic; color: var(--accent-light); }
-[data-theme="dark"] .hero-title em { color: #a8d8be; }
+.hero-title em { font-style: italic; color: #a8d8be; }
 .hero-sub {
   font-size: 1.05rem; font-weight: 300; color: rgba(255,255,255,0.6);
   line-height: 1.7; max-width: 500px; margin-bottom: 44px;
@@ -1188,6 +1199,69 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
   border-top: 1px solid var(--border); padding-top: 20px;
   margin-top: 8px; margin-bottom: 16px;
 }
+
+/* ─── ADMIN INLINE PANELS ─────────────────────────────────────────────────
+   Used by ProductCard / GBCard expansion panels (Details, Images, Orders,
+   Options, Variants, etc). Compact spacing so admins don't have to scroll
+   to fill the form or scan an orders list. */
+.admin-inline-panel {
+  position: relative;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.admin-inline-panel-muted { background: var(--bg-secondary); }
+/* Modifier for form-style panels (EditProduct / EditGB Details). Constrains
+   width to match the create modal so fields don't stretch across the whole
+   dashboard, which is what makes the inline edit feel "spread out". Centered
+   so the form reads like a modal popped inside the card. */
+.admin-inline-panel-form {
+  max-width: 640px;
+  margin: 0 auto;
+}
+/* Lift the Close button out of the form column and pin it to the top-right
+   of the whole panel — aligned under the Manage dropdown that opened it. */
+.admin-inline-panel-form button[aria-label="Close"] {
+  position: absolute;
+  top: 8px;
+  right: 16px;
+  z-index: 1;
+}
+.admin-inline-panel .form-group {
+  gap: 3px;
+  margin-bottom: 6px;
+}
+.admin-inline-panel .form-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+}
+.admin-inline-panel .form-input,
+.admin-inline-panel .form-select {
+  padding: 6px 10px;
+  font-size: 0.82rem;
+}
+.admin-inline-panel .modal-section {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 4px;
+  margin-top: 0;
+  margin-bottom: 2px;
+}
+.admin-inline-panel .modal-section-title {
+  font-size: 0.66rem;
+  margin-bottom: 4px;
+}
+.admin-inline-panel .modal-row-2,
+.admin-inline-panel .modal-row-3,
+.admin-inline-panel .modal-row-4 {
+  gap: 8px;
+}
+/* CollapsibleSection has inline padding on its header button and body —
+   override to tighten when inside an inline panel. */
+.admin-inline-panel .modal-section > button {
+  padding: 6px 8px !important;
+}
+.admin-inline-panel .modal-section > button + div {
+  padding: 0 8px 8px !important;
+}
 .modal-section-title {
   font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--ink-faint); margin-bottom: 12px;
@@ -1574,4 +1648,1277 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
     font-size: 0.72rem !important;
     padding: 5px 11px !important;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MINIMAL — "Origami" theme (Apple-inspired)
+   ───────────────────────────────────────────────────────────────────────────
+   Polished editorial look layered on top of light/dark. Activated when
+   <html data-style="minimal">. The site has two independent style axes:
+
+      data-theme  →  light / dark   (per-visitor, in ThemeContext)
+      data-style  →  classic / minimal   (site-wide, set by admin via SiteSettings)
+
+   Design rules for this style:
+     • Subtle radius (4px cards / 3px small / 4px buttons) — reads sharp at a
+       glance, softens just barely up close
+     • Brand green accent (#2e5d4b light / #4a8c6f dark) for contrast
+     • Inter typography — tight tracking, geometric letterforms
+     • Smooth cubic-bezier(0.16, 1, 0.3, 1) easing everywhere — the "Apple ease"
+     • Card hover: -6px lift + shadow growth + image scale 1.06
+     • Frosted-glass navbar (backdrop-filter)
+     • Subtle gradient surfaces in hero/banner for depth
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+[data-style="minimal"] {
+  --bg: #ffffff;
+  --bg-secondary: #f5f5f3;
+  --surface: #ffffff;
+  --surface-2: #fafaf8;
+  --ink: #1a1a18;                 /* near-black, not pure */
+  --ink-muted: #6e6e6e;
+  --ink-faint: #a8a8a8;
+  --accent: #2e5d4b;               /* brand green */
+  --accent-hover: #245040;
+  --accent-light: #e0ede7;
+  --accent-glow: rgba(46,93,75,0.18);
+  --border: #d4d4d0;
+  --border-subtle: #ececea;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 6px 20px rgba(0,0,0,0.07);
+  --shadow-lg: 0 18px 48px rgba(0,0,0,0.10);
+  --shadow-card: 0 1px 8px rgba(0,0,0,0.04);
+  /* Subtle radius — sharp at a glance, softens just barely up close.
+     Buttons match cards (no fake pill) so the angular reads consistently. */
+  --radius: 4px;
+  --radius-sm: 3px;
+  --radius-pill: 4px;
+  /* "Apple ease" — heavy at the start, glides to a stop */
+  --transition: 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-bounce: 0.55s cubic-bezier(0.16, 1.1, 0.3, 1);
+  --transition-slow: 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-style="minimal"][data-theme="dark"] {
+  --bg: #0a0a0a;
+  --bg-secondary: #141414;
+  --surface: #141414;
+  --surface-2: #1c1c1c;
+  --ink: #f0efe9;
+  --ink-muted: #9a9a9a;
+  --ink-faint: #5e5e5e;
+  --accent: #4a8c6f;               /* brand green (dark) — brighter */
+  --accent-hover: #5aa07f;
+  --accent-light: rgba(74,140,111,0.18);
+  --accent-glow: rgba(74,140,111,0.30);
+  --border: #2e2e2b;
+  --border-subtle: #1f1f1f;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 6px 20px rgba(0,0,0,0.45);
+  --shadow-lg: 0 18px 48px rgba(0,0,0,0.6);
+  --shadow-card: 0 1px 8px rgba(0,0,0,0.4);
+}
+
+/* Body font — Inter for crisp geometric letterforms. Headings use Space
+   Grotesk for the distinctive folded-paper character. */
+[data-style="minimal"] body,
+[data-style="minimal"] input,
+[data-style="minimal"] select,
+[data-style="minimal"] textarea,
+[data-style="minimal"] button,
+[data-style="minimal"] p,
+[data-style="minimal"] span,
+[data-style="minimal"] a,
+[data-style="minimal"] li,
+[data-style="minimal"] td,
+[data-style="minimal"] th,
+[data-style="minimal"] label {
+  font-family: 'Inter', 'DM Sans', sans-serif;
+}
+[data-style="minimal"] {
+  font-feature-settings: 'cv11', 'ss01', 'ss03';  /* nicer Inter alternates */
+}
+/* Catch-all attribute selectors — any element with an inline
+   `font-family: 'DM Serif Display'` style (used liberally across the
+   JSX for product names, modal titles, hero text, etc.) gets rewritten
+   to Space Grotesk. Same for inline DM Sans → Inter. Specificity high
+   enough to beat inline styles thanks to !important. */
+[data-style="minimal"] [style*="DM Serif Display"] {
+  font-family: 'Space Grotesk', 'Inter', sans-serif !important;
+  font-style: normal !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.02em !important;
+}
+[data-style="minimal"] [style*="DM Sans"] {
+  font-family: 'Inter', sans-serif !important;
+}
+
+/* Headings — Space Grotesk for the distinctive geometric character */
+[data-style="minimal"] h1,
+[data-style="minimal"] h2,
+[data-style="minimal"] h3,
+[data-style="minimal"] h4,
+[data-style="minimal"] h5,
+[data-style="minimal"] h6,
+[data-style="minimal"] .hero-title,
+[data-style="minimal"] .banner-title,
+[data-style="minimal"] .banner--overlay-title,
+[data-style="minimal"] .section-title,
+[data-style="minimal"] .card-name,
+[data-style="minimal"] .cart-item-name,
+[data-style="minimal"] .auth-logo,
+[data-style="minimal"] .nav-logo,
+[data-style="minimal"] .footer-logo,
+[data-style="minimal"] .admin-stat-n,
+[data-style="minimal"] .card-img-placeholder,
+[data-style="minimal"] .modal-title,
+[data-style="minimal"] .admin-dashboard-header h1 {
+  font-family: 'Space Grotesk', 'Inter', sans-serif !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.02em !important;
+  font-style: normal !important;
+}
+[data-style="minimal"] .section-title { letter-spacing: -0.025em !important; }
+[data-style="minimal"] .hero-title { letter-spacing: -0.035em !important; line-height: 1.02 !important; }
+[data-style="minimal"] .nav-logo { letter-spacing: -0.01em !important; }
+/* Eyebrows / labels — Inter for clean UI labels */
+[data-style="minimal"] .hero-eyebrow,
+[data-style="minimal"] .banner-eyebrow,
+[data-style="minimal"] .banner--overlay-eyebrow,
+[data-style="minimal"] .card-category,
+[data-style="minimal"] .label-sm,
+[data-style="minimal"] .form-label,
+[data-style="minimal"] .footer-col h4,
+[data-style="minimal"] .admin-stat-l,
+[data-style="minimal"] .card-chip-label,
+[data-style="minimal"] .modal-section-title {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.14em !important;
+  text-transform: uppercase;
+}
+/* Body / paragraph copy — Inter at lighter weight */
+[data-style="minimal"] .hero-sub,
+[data-style="minimal"] .banner-sub,
+[data-style="minimal"] .banner--overlay-sub,
+[data-style="minimal"] .card-desc,
+[data-style="minimal"] .modal-subtitle,
+[data-style="minimal"] .admin-dashboard-subtitle {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 400 !important;
+  letter-spacing: -0.005em !important;
+}
+[data-style="minimal"] .hero-title em,
+[data-style="minimal"] .banner-title em,
+[data-style="minimal"] .banner--overlay-title em,
+[data-style="minimal"] .nav-logo span,
+[data-style="minimal"] .auth-logo span,
+[data-style="minimal"] .footer-logo span {
+  color: var(--accent) !important;
+  font-style: normal !important;
+  font-weight: 600 !important;
+}
+
+/* ─── PRODUCT CARDS — Apple-style lift + image zoom ─────────────────────── */
+[data-style="minimal"] .product-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition),
+    border-color var(--transition);
+}
+[data-style="minimal"] .product-card:hover {
+  transform: translateY(-6px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--border-subtle);
+}
+[data-style="minimal"] .card-img,
+[data-style="minimal"] .card-img-placeholder {
+  background: var(--surface-2);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+[data-style="minimal"] .card-img .card-img-primary,
+[data-style="minimal"] .card-img .card-img-secondary {
+  transition: opacity 0.5s ease, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+[data-style="minimal"] .product-card:hover .card-img-primary { opacity: 0; transform: scale(1.06); }
+[data-style="minimal"] .product-card:hover .card-img-secondary { opacity: 1; transform: scale(1.06); }
+[data-style="minimal"] .product-card:hover .card-img-primary:only-of-type { opacity: 1; transform: scale(1.06); }
+[data-style="minimal"] .product-card:hover .card-name { color: var(--accent); }
+[data-style="minimal"] .card-badge {
+  border-radius: var(--radius-pill);
+  background: var(--accent); color: #fff;
+  font-weight: 600; letter-spacing: 0.05em;
+  backdrop-filter: blur(8px);
+}
+[data-style="minimal"] .card-add-btn {
+  width: 36px; height: 36px;
+  border-radius: var(--radius);
+  background: var(--accent); color: #fff;
+  font-size: 1.2rem;
+  box-shadow: 0 2px 10px var(--accent-glow);
+  transition: transform var(--transition-bounce), background var(--transition), box-shadow var(--transition);
+}
+[data-style="minimal"] .card-add-btn:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px) scale(1.05);
+  box-shadow: 0 6px 18px var(--accent-glow);
+}
+
+/* ─── BUTTONS — pill primary in Apple blue, smooth scale-up hover ───────── */
+[data-style="minimal"] .btn-primary,
+[data-style="minimal"] .btn-dark,
+[data-style="minimal"] .btn-light,
+[data-style="minimal"] .btn-outline,
+[data-style="minimal"] .btn-accent,
+[data-style="minimal"] .btn-ghost,
+[data-style="minimal"] .btn-ghost-white,
+[data-style="minimal"] .nav-cart-btn,
+[data-style="minimal"] .nav-auth-link {
+  border-radius: var(--radius-pill) !important;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 0.92rem;
+  padding: 12px 24px;
+  transition: background var(--transition), color var(--transition), transform var(--transition), box-shadow var(--transition);
+}
+[data-style="minimal"] .btn-primary[data-cta-size="sm"],
+[data-style="minimal"] .btn-ghost[data-cta-size="sm"] { padding: 9px 18px; font-size: 0.84rem; }
+[data-style="minimal"] .btn-primary[data-cta-size="lg"],
+[data-style="minimal"] .btn-ghost[data-cta-size="lg"] { padding: 15px 32px; font-size: 1rem; }
+
+[data-style="minimal"] .btn-dark::before,
+[data-style="minimal"] .nav-cart-btn::before { display: none !important; }
+
+/* Primary = filled Apple blue */
+[data-style="minimal"] .btn-primary,
+[data-style="minimal"] .btn-accent,
+[data-style="minimal"] .btn-dark {
+  background: var(--accent); color: #fff; border: none;
+  box-shadow: 0 1px 3px var(--accent-glow);
+}
+[data-style="minimal"] .btn-primary:hover,
+[data-style="minimal"] .btn-accent:hover,
+[data-style="minimal"] .btn-dark:hover {
+  background: var(--accent-hover);
+  transform: scale(1.02);
+  box-shadow: 0 6px 18px var(--accent-glow);
+  color: #fff;
+}
+[data-style="minimal"][data-theme="dark"] .btn-dark span,
+[data-style="minimal"][data-theme="dark"] .btn-dark svg { color: #fff; }
+
+/* Outline = transparent w/ accent ring */
+[data-style="minimal"] .btn-outline {
+  background: transparent; color: var(--accent);
+  border: 1.5px solid var(--accent);
+}
+[data-style="minimal"] .btn-outline:hover {
+  background: var(--accent); color: #fff;
+  transform: scale(1.02);
+}
+
+/* Light = white pill on dark backgrounds */
+[data-style="minimal"] .btn-light {
+  background: #fff; color: var(--ink); border: none;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+[data-style="minimal"] .btn-light:hover {
+  background: #fff; transform: scale(1.02);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+}
+
+/* Ghost = subtle frosted button over imagery */
+[data-style="minimal"] .btn-ghost {
+  background: rgba(255,255,255,0.18);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.35);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+[data-style="minimal"] .btn-ghost:hover {
+  background: rgba(255,255,255,0.28);
+  border-color: rgba(255,255,255,0.55);
+  transform: scale(1.02);
+  color: #fff;
+}
+[data-style="minimal"] .btn-ghost-white {
+  border-radius: var(--radius-pill);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
+[data-style="minimal"] .nav-cart-btn {
+  background: var(--accent); color: #fff; padding: 9px 18px;
+  font-size: 0.86rem;
+  box-shadow: 0 1px 3px var(--accent-glow);
+}
+[data-style="minimal"] .nav-cart-btn:hover {
+  background: var(--accent-hover);
+  transform: scale(1.04);
+  box-shadow: 0 4px 14px var(--accent-glow);
+}
+[data-style="minimal"] .section-cta:hover { transform: scale(1.02); }
+
+/* ─── PILLS / VARIANTS — modest radius, accent on active ─────────────────── */
+[data-style="minimal"] .pill,
+[data-style="minimal"] .variant-btn,
+[data-style="minimal"] .admin-toggle,
+[data-style="minimal"] .admin-search {
+  border-radius: var(--radius-pill) !important;
+  transition: all var(--transition);
+}
+[data-style="minimal"] .pill { border: 1px solid var(--border); padding: 8px 18px; background: var(--surface); }
+[data-style="minimal"] .pill:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+[data-style="minimal"] .pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+[data-style="minimal"] .variant-btn { border: 1px solid var(--border); padding: 9px 20px; background: var(--surface); }
+[data-style="minimal"] .variant-btn:hover:not(.active):not(.variant-btn-fixed) {
+  border-color: var(--accent); color: var(--accent); background: var(--accent-light); transform: translateY(-1px);
+}
+[data-style="minimal"] .variant-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+[data-style="minimal"] .section-link {
+  background: var(--accent-light); color: var(--accent);
+  padding: 7px 16px; border-radius: var(--radius-pill);
+  transition: all var(--transition);
+}
+[data-style="minimal"] .section-link:hover {
+  background: var(--accent); color: #fff;
+  gap: 8px; transform: translateY(-1px);
+}
+[data-style="minimal"] .status-badge { border-radius: var(--radius-pill); }
+[data-style="minimal"] .status-select { border-radius: var(--radius-pill); }
+[data-style="minimal"] .banner--overlay-eyebrow { border-radius: var(--radius-pill); }
+
+/* ─── NAVBAR — frosted-glass Apple feel ─────────────────────────────────── */
+[data-style="minimal"] .ok-nav {
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+[data-style="minimal"] .ok-nav.light-bg { background: rgba(255,255,255,0.72); }
+[data-style="minimal"][data-theme="dark"] .ok-nav { border-bottom-color: rgba(255,255,255,0.08); }
+[data-style="minimal"][data-theme="dark"] .ok-nav.dark-bg { background: rgba(28,28,30,0.72); }
+[data-style="minimal"] .nav-links a,
+[data-style="minimal"] .nav-dropdown-trigger { transition: color var(--transition); }
+[data-style="minimal"] .nav-links a::after,
+[data-style="minimal"] .nav-dropdown-trigger::after { background: var(--accent); }
+[data-style="minimal"] .nav-icon-btn,
+[data-style="minimal"] .dark-toggle {
+  border-radius: var(--radius);
+  transition: all var(--transition);
+}
+[data-style="minimal"] .dark-toggle { border: 1px solid var(--border-subtle); background: var(--surface-2); }
+[data-style="minimal"] .dark-toggle:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+[data-style="minimal"] .nav-icon-btn:hover { color: var(--accent); background: var(--accent-light); transform: translateY(-1px); }
+/* Avatars become subtly-rounded squares — origami theme rejects circles. */
+[data-style="minimal"] .nav-avatar-btn { border-radius: var(--radius); }
+[data-style="minimal"] .nav-avatar-img { border-radius: var(--radius); }
+[data-style="minimal"] .nav-avatar-initials { background: var(--accent-light); color: var(--accent); border-radius: var(--radius); }
+[data-style="minimal"] .nav-avatar-btn:hover { transform: translateY(-1px); box-shadow: 0 2px 12px rgba(0,0,0,0.15); }
+
+/* Icon-style controls — squared off to match the angular theme. */
+[data-style="minimal"] .mobile-menu-btn,
+[data-style="minimal"] .wishlist-btn,
+[data-style="minimal"] .qty-btn,
+[data-style="minimal"] .carousel-arrow,
+[data-style="minimal"] .social-btn {
+  border-radius: var(--radius);
+  border: 1px solid var(--border-subtle);
+  transition: all var(--transition);
+}
+[data-style="minimal"] .qty-btn:hover {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+  transform: translateY(-1px);
+}
+[data-style="minimal"] .carousel-arrow:hover {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+  transform: translateY(-1px);
+}
+[data-style="minimal"] .social-btn:hover {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+  transform: translateY(-2px);
+}
+[data-style="minimal"] .wishlist-btn:hover {
+  border-color: var(--accent); color: var(--accent); background: var(--accent-light);
+  transform: translateY(-1px);
+}
+
+/* ─── HERO — bigger lighter type, smooth fade-up entrance ───────────────── */
+[data-style="minimal"] .hero-title {
+  font-size: clamp(2.6rem, 6.5vw, 5.2rem);
+  line-height: 1.04;
+}
+[data-style="minimal"] .hero-eyebrow { color: rgba(255,255,255,0.7); letter-spacing: 0.18em; }
+[data-style="minimal"] .hero-dot { transition: all var(--transition); }
+[data-style="minimal"] .hero-dot.active { background: #fff; transform: scale(1.4); }
+
+/* ─── BANNERS — subtle gradient depth, smoother imagery ─────────────────── */
+[data-style="minimal"] .banner,
+[data-style="minimal"] .banner.banner--overlay,
+[data-style="minimal"] .banner.banner--stacked {
+  border-radius: var(--radius) !important;
+}
+[data-style="minimal"] .banner {
+  background: linear-gradient(135deg, var(--ink) 0%, #2a2a2c 100%);
+}
+[data-style="minimal"][data-theme="dark"] .banner {
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+  border: 1px solid var(--border-subtle);
+}
+[data-style="minimal"] .banner::before { display: none; }
+[data-style="minimal"] .banner.banner--stacked {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+}
+[data-style="minimal"] .banner--overlay-eyebrow {
+  border: 1px solid rgba(255,255,255,0.4);
+  backdrop-filter: blur(8px);
+}
+[data-style="minimal"] .banner-img img { transition: transform 1.2s cubic-bezier(0.16, 1, 0.3, 1), opacity var(--transition); }
+[data-style="minimal"] .banner:hover .banner-img img { transform: scale(1.04); opacity: 0.9; }
+[data-style="minimal"] .banner.banner--overlay:hover .banner--overlay-img { transform: scale(1.05); }
+[data-style="minimal"] .banner--overlay-img { transition: transform 1.2s cubic-bezier(0.16, 1, 0.3, 1); }
+[data-style="minimal"] .banner.banner--fullbleed { border-radius: 0 !important; }
+
+/* ─── FORMS — soft focus ring in Apple blue ─────────────────────────────── */
+[data-style="minimal"] .form-input,
+[data-style="minimal"] .form-select {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+}
+[data-style="minimal"] .form-input:focus,
+[data-style="minimal"] .form-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-glow);
+  background: var(--surface);
+}
+
+/* ─── CART ──────────────────────────────────────────────────────────────── */
+[data-style="minimal"] .cart-img {
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  transition: transform var(--transition);
+}
+[data-style="minimal"] .cart-row:hover .cart-img { transform: scale(1.04); }
+[data-style="minimal"] .shipping-progress-wrap { border-radius: var(--radius-sm); }
+[data-style="minimal"] .shipping-bar { border-radius: var(--radius-pill); }
+[data-style="minimal"] .shipping-fill {
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+}
+
+/* ─── AUTH ──────────────────────────────────────────────────────────────── */
+[data-style="minimal"] .auth-card {
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow var(--transition);
+}
+[data-style="minimal"] .auth-tabs { border-radius: var(--radius-sm); }
+[data-style="minimal"] .auth-tab { border-radius: calc(var(--radius-sm) - 2px); transition: all var(--transition); }
+[data-style="minimal"] .auth-tab.active { box-shadow: var(--shadow-sm); }
+[data-style="minimal"] .google-btn { border-radius: var(--radius-pill); }
+[data-style="minimal"] .google-btn-wrap:hover .google-btn {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+/* ─── TOAST ─────────────────────────────────────────────────────────────── */
+/* react-hot-toast renders each notification as a div with role="status".
+   Inline styles from App.js (var(--radius-pill) = 4px, accent bg for success,
+   red for error) already produce a clean angular square. We override only
+   the font + padding here to feel theme-consistent. */
+[data-style="minimal"] [role="status"] {
+  font-family: 'Inter', sans-serif !important;
+  letter-spacing: -0.005em !important;
+  padding: 10px 18px !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+
+/* ─── SPINNER ───────────────────────────────────────────────────────────── */
+[data-style="minimal"] .spinner { border-radius: 50%; border-top-color: var(--accent); }
+
+/* ─── INLINE-STYLE CATCH-ALLS ───────────────────────────────────────────── */
+/* Override any element with inline border-radius: 50% (lots of these across
+   JSX for round badges, icon buttons, image masks) to the theme's subtle
+   square. Keep the spinner round via the rule above (.spinner is excluded
+   below by NOT matching the attribute selector). */
+[data-style="minimal"] [style*="border-radius: 50%"],
+[data-style="minimal"] [style*="borderRadius:50%"],
+[data-style="minimal"] [style*="border-radius:50%"] {
+  border-radius: var(--radius) !important;
+}
+/* Override inline pill-style radii to subtle square. Covers everything from
+   small chip pills (6/8/10px) up to fully-rounded badges (999px). */
+[data-style="minimal"] [style*="border-radius: 999"],
+[data-style="minimal"] [style*="border-radius: 9999"],
+[data-style="minimal"] [style*="border-radius: 50px"],
+[data-style="minimal"] [style*="border-radius: 24px"],
+[data-style="minimal"] [style*="border-radius: 22px"],
+[data-style="minimal"] [style*="border-radius: 20px"],
+[data-style="minimal"] [style*="border-radius: 16px"],
+[data-style="minimal"] [style*="border-radius: 14px"],
+[data-style="minimal"] [style*="border-radius: 12px"],
+[data-style="minimal"] [style*="border-radius: 10px"],
+[data-style="minimal"] [style*="border-radius: 8px"],
+[data-style="minimal"] [style*="border-radius: 6px"] {
+  border-radius: var(--radius) !important;
+}
+/* Inline backgrounds using legacy classic-theme colors (purple variants tags,
+   raw rgba accents) get neutralised into the brand-green minimal palette. */
+[data-style="minimal"] [style*="rgba(120,80,200"],
+[data-style="minimal"] [style*="rgba(120, 80, 200"] {
+  background: var(--accent-light) !important;
+  color: var(--accent) !important;
+}
+
+/* ─── SELECTION + LINKS ─────────────────────────────────────────────────── */
+[data-style="minimal"] ::selection { background: var(--accent); color: #fff; }
+[data-style="minimal"] a { transition: color var(--transition), opacity var(--transition); }
+
+/* ─── CATEGORY STRIP ────────────────────────────────────────────────────── */
+[data-style="minimal"] .cat-strip { border-bottom: 1px solid var(--border-subtle); }
+[data-style="minimal"] .cat-link { transition: all var(--transition); }
+[data-style="minimal"] .cat-link:hover {
+  color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: none;
+}
+
+/* ─── FOOTER ────────────────────────────────────────────────────────────── */
+[data-style="minimal"] .ok-footer {
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+[data-style="minimal"] .footer-col ul a {
+  transition: color var(--transition), padding-left var(--transition);
+}
+[data-style="minimal"] .footer-col ul a:hover {
+  color: var(--accent); padding-left: 6px;
+}
+
+/* ─── ADMIN PANEL ───────────────────────────────────────────────────────── */
+[data-style="minimal"] .admin-stat {
+  border-radius: var(--radius-sm);
+  transition: border-color var(--transition), transform var(--transition), box-shadow var(--transition);
+}
+[data-style="minimal"] .admin-stat:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+[data-style="minimal"] .admin-toggle,
+[data-style="minimal"] .admin-search { padding: 8px 14px; }
+[data-style="minimal"] .admin-tab.active { border-bottom-color: var(--accent); color: var(--accent); }
+
+/* ─── FOCUS VISIBLE ─────────────────────────────────────────────────────── */
+[data-style="minimal"] :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+/* ─── SPECS TABLE ───────────────────────────────────────────────────────── */
+[data-style="minimal"] .specs-table tr { border-bottom: 1px solid var(--border-subtle); }
+
+/* ─── SUBTLE FADE-UP ON FIRST RENDER ────────────────────────────────────── */
+@keyframes minimalFadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+[data-style="minimal"] .product-card,
+[data-style="minimal"] .banner,
+[data-style="minimal"] .hero-content > * {
+  animation: minimalFadeUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+[data-style="minimal"] .hero-content > *:nth-child(1) { animation-delay: 0.05s; }
+[data-style="minimal"] .hero-content > *:nth-child(2) { animation-delay: 0.15s; }
+[data-style="minimal"] .hero-content > *:nth-child(3) { animation-delay: 0.25s; }
+[data-style="minimal"] .hero-content > *:nth-child(4) { animation-delay: 0.35s; }
+@media (prefers-reduced-motion: reduce) {
+  [data-style="minimal"] .product-card,
+  [data-style="minimal"] .banner,
+  [data-style="minimal"] .hero-content > * { animation: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PASTEL PAPER — Editorial paper-craft theme
+   ───────────────────────────────────────────────────────────────────────────
+   Warm cream surfaces, dusty pastel accents, sepia ink. Activated when
+   <html data-style="pastel-paper">. Layers on top of light/dark just like
+   Origami — see the matching dark variant below.
+
+   Design rules:
+     • Cream paper background (#faf5ec), surfaces brighter (#fefcf7) for lift
+     • Sepia ink (#3a342c) not pure black — friendlier "old book" feel
+     • Dusty sage as primary accent; rose / butter / sky as decorative pastels
+     • Soft warm-toned shadows (paper hovering above a desk, not glass)
+     • Fraunces editorial serif for headings (with italic emphasis), Inter for body
+     • Pill buttons (friendly), 10px card radius (intentional, not sharp)
+     • Sticky-note toasts: pastel BG, slight rotation, slide-up entrance
+     • Optional subtle SVG grain on body (paper texture)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+[data-style="pastel-paper"] {
+  /* Surfaces — warm cream. Surface slightly brighter so cards lift visibly. */
+  --bg: #faf5ec;
+  --bg-secondary: #ede2cc;
+  --surface: #ffffff;
+  --surface-2: #f3e9d6;
+  /* Ink — darker sepia for AA-grade contrast on cream. */
+  --ink: #1f1b15;
+  --ink-muted: #5a5347;
+  --ink-faint: #8f8676;
+  /* Primary accent — saturated forest sage. Now clears 4.5:1 on cream
+     for confident "buy now" presence. */
+  --accent: #3f6a47;
+  --accent-hover: #2d5235;
+  --accent-light: #c8ddc9;
+  --accent-glow: rgba(63,106,71,0.22);
+  /* Borders — visibly defined, not whisper-thin */
+  --border: #c9bda1;
+  --border-subtle: #e2d7be;
+  /* Shadows — sepia-tinted, more pronounced for clearer lift */
+  --shadow-sm: 0 1px 3px rgba(82,68,50,0.10);
+  --shadow-md: 0 6px 18px rgba(82,68,50,0.14);
+  --shadow-lg: 0 18px 44px rgba(82,68,50,0.18);
+  --shadow-card: 0 2px 12px rgba(82,68,50,0.10);
+  /* Radii — intentional rounded, between Classic and Origami */
+  --radius: 10px;
+  --radius-sm: 6px;
+  --radius-pill: 999px;
+  /* Motion — crisp paper snap, gentler bounce */
+  --transition: 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-bounce: 0.4s cubic-bezier(0.34, 1.4, 0.64, 1);
+  --transition-slow: 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Supplemental pastel tokens — punched up so badges/tags actually read. */
+  --pastel-rose: #c97e7e;
+  --pastel-rose-light: #f0d4d4;
+  --pastel-rose-ink: #6a2424;
+  --pastel-butter: #c9a64f;
+  --pastel-butter-light: #f0e0b8;
+  --pastel-butter-ink: #4a3712;
+  --pastel-sky: #82a3bd;
+  --pastel-sky-light: #d4e0eb;
+  --pastel-sky-ink: #1f3d54;
+}
+
+[data-style="pastel-paper"][data-theme="dark"] {
+  /* Deeper, less brown — reduces the "warm lamp on parchment" eye strain.
+     Still has subtle warm undertone but closer to neutral charcoal. */
+  --bg: #15130f;
+  --bg-secondary: #1d1a15;
+  --surface: #1d1a15;
+  --surface-2: #26221c;
+  /* Ink — cooler, brighter cream. Higher contrast against the deeper bg. */
+  --ink: #faf3e1;
+  --ink-muted: #b8aa92;
+  --ink-faint: #7a7262;
+  /* Accent — brighter, more saturated sage so it actually pops on dark. */
+  --accent: #8fbe89;
+  --accent-hover: #a4d09e;
+  --accent-light: rgba(143,190,137,0.18);
+  --accent-glow: rgba(143,190,137,0.32);
+  /* Borders — visible without overpowering */
+  --border: #3a342a;
+  --border-subtle: #26221c;
+  /* Shadows — deeper for honest separation on dark bg */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.5);
+  --shadow-md: 0 6px 18px rgba(0,0,0,0.6);
+  --shadow-lg: 0 18px 44px rgba(0,0,0,0.7);
+  --shadow-card: 0 2px 12px rgba(0,0,0,0.55);
+  /* Pastels — saturated for dark-mode pop. */
+  --pastel-rose: #e89898;
+  --pastel-rose-light: rgba(232,152,152,0.20);
+  --pastel-rose-ink: #fac4c4;
+  --pastel-butter: #e8c870;
+  --pastel-butter-light: rgba(232,200,112,0.20);
+  --pastel-butter-ink: #f5dca0;
+  --pastel-sky: #95b8d0;
+  --pastel-sky-light: rgba(149,184,208,0.20);
+  --pastel-sky-ink: #d4e4ed;
+}
+
+/* ─── TYPOGRAPHY ────────────────────────────────────────────────────────── */
+/* Body / UI — Inter; headings — Fraunces (editorial serif with personality) */
+[data-style="pastel-paper"] body,
+[data-style="pastel-paper"] input,
+[data-style="pastel-paper"] select,
+[data-style="pastel-paper"] textarea,
+[data-style="pastel-paper"] button,
+[data-style="pastel-paper"] p,
+[data-style="pastel-paper"] span,
+[data-style="pastel-paper"] a,
+[data-style="pastel-paper"] li,
+[data-style="pastel-paper"] td,
+[data-style="pastel-paper"] th,
+[data-style="pastel-paper"] label {
+  font-family: 'Inter', sans-serif;
+}
+
+[data-style="pastel-paper"] h1,
+[data-style="pastel-paper"] h2,
+[data-style="pastel-paper"] h3,
+[data-style="pastel-paper"] h4,
+[data-style="pastel-paper"] h5,
+[data-style="pastel-paper"] h6,
+[data-style="pastel-paper"] .hero-title,
+[data-style="pastel-paper"] .banner-title,
+[data-style="pastel-paper"] .banner--overlay-title,
+[data-style="pastel-paper"] .section-title,
+[data-style="pastel-paper"] .card-name,
+[data-style="pastel-paper"] .cart-item-name,
+[data-style="pastel-paper"] .auth-logo,
+[data-style="pastel-paper"] .nav-logo,
+[data-style="pastel-paper"] .footer-logo,
+[data-style="pastel-paper"] .admin-stat-n,
+[data-style="pastel-paper"] .card-img-placeholder,
+[data-style="pastel-paper"] .modal-title,
+[data-style="pastel-paper"] .admin-dashboard-header h1 {
+  font-family: 'Fraunces', 'DM Serif Display', serif !important;
+  font-weight: 500 !important;
+  letter-spacing: -0.02em !important;
+  font-style: normal !important;
+}
+[data-style="pastel-paper"] .hero-title { letter-spacing: -0.028em !important; line-height: 1.04 !important; }
+[data-style="pastel-paper"] .nav-logo { letter-spacing: -0.005em !important; font-weight: 500 !important; }
+/* Italic emphasis — the signature Fraunces move. Keep <em> in titles italic
+   for the editorial pull-quote feel. */
+[data-style="pastel-paper"] .hero-title em,
+[data-style="pastel-paper"] .banner-title em,
+[data-style="pastel-paper"] .banner--overlay-title em,
+[data-style="pastel-paper"] .nav-logo span,
+[data-style="pastel-paper"] .auth-logo span,
+[data-style="pastel-paper"] .footer-logo span {
+  font-family: 'Fraunces', serif !important;
+  font-style: italic !important;
+  font-weight: 500 !important;
+  color: var(--accent) !important;
+}
+
+/* Eyebrows / labels — Inter, wide-tracked all-caps */
+[data-style="pastel-paper"] .hero-eyebrow,
+[data-style="pastel-paper"] .banner-eyebrow,
+[data-style="pastel-paper"] .banner--overlay-eyebrow,
+[data-style="pastel-paper"] .card-category,
+[data-style="pastel-paper"] .label-sm,
+[data-style="pastel-paper"] .form-label,
+[data-style="pastel-paper"] .footer-col h4,
+[data-style="pastel-paper"] .admin-stat-l,
+[data-style="pastel-paper"] .card-chip-label,
+[data-style="pastel-paper"] .modal-section-title {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.16em !important;
+  text-transform: uppercase;
+}
+
+/* Editorial subtitles — Fraunces italic for the pull-quote feel */
+[data-style="pastel-paper"] .hero-sub,
+[data-style="pastel-paper"] .banner-sub,
+[data-style="pastel-paper"] .banner--overlay-sub {
+  font-family: 'Fraunces', serif !important;
+  font-style: italic !important;
+  font-weight: 400 !important;
+  letter-spacing: -0.005em !important;
+}
+[data-style="pastel-paper"] .card-desc,
+[data-style="pastel-paper"] .modal-subtitle,
+[data-style="pastel-paper"] .admin-dashboard-subtitle {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 400 !important;
+}
+
+/* Catch-all attribute selectors — same trick as Origami. Any inline
+   font-family targeting DM Serif Display gets rewritten to Fraunces;
+   inline DM Sans becomes Inter. */
+[data-style="pastel-paper"] [style*="DM Serif Display"] {
+  font-family: 'Fraunces', 'DM Serif Display', serif !important;
+  font-weight: 500 !important;
+  font-style: normal !important;
+  letter-spacing: -0.018em !important;
+}
+[data-style="pastel-paper"] [style*="DM Sans"] {
+  font-family: 'Inter', sans-serif !important;
+}
+
+/* ─── PAPER GRAIN ───────────────────────────────────────────────────────── */
+/* Subtle SVG noise overlay so the surface reads as paper, not glass.
+   Fixed-position, pointer-events-none, ~5% opacity. Reusable inline-encoded
+   SVG using feTurbulence. */
+[data-style="pastel-paper"] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' seed='4' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  mix-blend-mode: multiply;
+}
+[data-style="pastel-paper"][data-theme="dark"] body::before {
+  opacity: 0.03;             /* much subtler — was causing flicker on dark */
+  mix-blend-mode: screen;
+}
+/* Ensure overlays / modals / nav sit above the grain */
+[data-style="pastel-paper"] .ok-nav,
+[data-style="pastel-paper"] .modal-overlay,
+[data-style="pastel-paper"] #ok-toast,
+[data-style="pastel-paper"] [role="status"] {
+  z-index: 200;
+}
+
+/* ─── PRODUCT CARDS — Paper-lift hover ─────────────────────────────────── */
+[data-style="pastel-paper"] .product-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  transition:
+    transform var(--transition),
+    box-shadow var(--transition),
+    border-color var(--transition);
+}
+[data-style="pastel-paper"] .product-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border);
+}
+[data-style="pastel-paper"] .card-img,
+[data-style="pastel-paper"] .card-img-placeholder {
+  background: var(--surface-2);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+[data-style="pastel-paper"] .card-img .card-img-primary,
+[data-style="pastel-paper"] .card-img .card-img-secondary {
+  transition: opacity 0.4s ease, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+[data-style="pastel-paper"] .product-card:hover .card-img-primary { opacity: 0; transform: scale(1.04); }
+[data-style="pastel-paper"] .product-card:hover .card-img-secondary { opacity: 1; transform: scale(1.04); }
+[data-style="pastel-paper"] .product-card:hover .card-img-primary:only-of-type { opacity: 1; transform: scale(1.04); }
+[data-style="pastel-paper"] .product-card:hover .card-name { color: var(--accent); }
+[data-style="pastel-paper"] .card-badge {
+  border-radius: var(--radius-pill);
+  background: var(--pastel-rose);
+  color: var(--pastel-rose-ink);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+[data-style="pastel-paper"] .card-badge.out { background: var(--ink-muted); color: var(--bg); }
+[data-style="pastel-paper"] .card-badge.low-stock { background: var(--pastel-rose); color: var(--pastel-rose-ink); }
+[data-style="pastel-paper"] .card-add-btn {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--accent); color: #fff;
+  font-size: 1.2rem;
+  box-shadow: 0 2px 10px var(--accent-glow);
+  transition: transform var(--transition-bounce), background var(--transition), box-shadow var(--transition);
+}
+[data-style="pastel-paper"] .card-add-btn:hover {
+  background: var(--accent-hover);
+  transform: scale(1.1) rotate(8deg);
+  box-shadow: 0 6px 18px var(--accent-glow);
+}
+[data-style="pastel-paper"] .card-add-btn:active {
+  transform: translateY(1px) scale(1);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ─── BUTTONS — Pill, sage primary, paper press-down on active ─────────── */
+[data-style="pastel-paper"] .btn-primary,
+[data-style="pastel-paper"] .btn-dark,
+[data-style="pastel-paper"] .btn-light,
+[data-style="pastel-paper"] .btn-outline,
+[data-style="pastel-paper"] .btn-accent,
+[data-style="pastel-paper"] .btn-ghost,
+[data-style="pastel-paper"] .btn-ghost-white,
+[data-style="pastel-paper"] .nav-cart-btn,
+[data-style="pastel-paper"] .nav-auth-link {
+  border-radius: var(--radius-pill) !important;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 0.92rem;
+  padding: 12px 26px;
+  transition: background var(--transition), color var(--transition), transform var(--transition), box-shadow var(--transition);
+}
+[data-style="pastel-paper"] .btn-dark::before,
+[data-style="pastel-paper"] .nav-cart-btn::before { display: none !important; }
+
+/* Primary = filled sage */
+[data-style="pastel-paper"] .btn-primary,
+[data-style="pastel-paper"] .btn-accent,
+[data-style="pastel-paper"] .btn-dark {
+  background: var(--accent); color: #fff; border: none;
+  box-shadow: 0 1px 3px var(--accent-glow);
+}
+[data-style="pastel-paper"] .btn-primary:hover,
+[data-style="pastel-paper"] .btn-accent:hover,
+[data-style="pastel-paper"] .btn-dark:hover {
+  background: var(--accent-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px var(--accent-glow);
+  color: #fff;
+}
+[data-style="pastel-paper"] .btn-primary:active,
+[data-style="pastel-paper"] .btn-accent:active,
+[data-style="pastel-paper"] .btn-dark:active {
+  transform: translateY(1px);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Outline = transparent w/ sage ring */
+[data-style="pastel-paper"] .btn-outline {
+  background: transparent; color: var(--accent);
+  border: 1.5px solid var(--accent);
+}
+[data-style="pastel-paper"] .btn-outline:hover {
+  background: var(--accent); color: #fff;
+  transform: translateY(-2px);
+}
+[data-style="pastel-paper"] .btn-outline:active { transform: translateY(1px); }
+
+/* Light = white pill */
+[data-style="pastel-paper"] .btn-light {
+  background: #fff; color: var(--ink); border: none;
+  box-shadow: 0 1px 3px rgba(82,68,50,0.12);
+}
+[data-style="pastel-paper"] .btn-light:hover {
+  background: #fff; transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(82,68,50,0.18);
+}
+
+/* Ghost = soft frosted */
+[data-style="pastel-paper"] .btn-ghost {
+  background: rgba(255,255,255,0.2);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.35);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+}
+[data-style="pastel-paper"] .btn-ghost:hover {
+  background: rgba(255,255,255,0.3);
+  border-color: rgba(255,255,255,0.55);
+  transform: translateY(-2px);
+  color: #fff;
+}
+
+[data-style="pastel-paper"] .nav-cart-btn {
+  background: var(--accent); color: #fff; padding: 9px 18px;
+  font-size: 0.86rem;
+  box-shadow: 0 1px 3px var(--accent-glow);
+}
+[data-style="pastel-paper"] .nav-cart-btn:hover {
+  background: var(--accent-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px var(--accent-glow);
+}
+[data-style="pastel-paper"] .section-cta:hover { transform: translateY(-2px); }
+
+/* ─── PILLS / VARIANTS / TAGS — Pastel rotation rest state ─────────────── */
+[data-style="pastel-paper"] .pill,
+[data-style="pastel-paper"] .variant-btn,
+[data-style="pastel-paper"] .admin-toggle,
+[data-style="pastel-paper"] .admin-search {
+  border-radius: var(--radius-pill) !important;
+  transition: all var(--transition);
+}
+[data-style="pastel-paper"] .pill { border: 1px solid var(--border); padding: 8px 18px; background: var(--surface); }
+[data-style="pastel-paper"] .pill:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+[data-style="pastel-paper"] .pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+[data-style="pastel-paper"] .variant-btn { border: 1px solid var(--border); padding: 9px 20px; background: var(--surface); }
+[data-style="pastel-paper"] .variant-btn:hover:not(.active):not(.variant-btn-fixed) {
+  border-color: var(--accent); color: var(--accent); background: var(--accent-light); transform: translateY(-1px);
+}
+[data-style="pastel-paper"] .variant-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+[data-style="pastel-paper"] .section-link {
+  background: var(--pastel-butter-light); color: var(--pastel-butter-ink);
+  padding: 7px 16px; border-radius: var(--radius-pill);
+  transition: all var(--transition);
+}
+[data-style="pastel-paper"] .section-link:hover {
+  background: var(--pastel-butter); color: var(--pastel-butter-ink);
+  gap: 8px; transform: translateY(-1px);
+}
+[data-style="pastel-paper"] .status-badge { border-radius: var(--radius-pill); }
+[data-style="pastel-paper"] .status-select { border-radius: var(--radius-pill); }
+[data-style="pastel-paper"] .banner--overlay-eyebrow { border-radius: var(--radius-pill); }
+
+/* Category strip pills — alternating pastel hover effect */
+[data-style="pastel-paper"] .cat-link { transition: all var(--transition); }
+[data-style="pastel-paper"] .cat-link:hover {
+  color: var(--accent);
+  transform: translateY(-2px) rotate(-1deg);
+  box-shadow: none;
+}
+
+/* ─── NAVBAR — Frosted with warm cream tint ────────────────────────────── */
+[data-style="pastel-paper"] .ok-nav {
+  border-bottom: 1px solid var(--border-subtle);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+[data-style="pastel-paper"] .ok-nav.light-bg { background: rgba(250,245,236,0.78); }
+[data-style="pastel-paper"][data-theme="dark"] .ok-nav { border-bottom-color: rgba(255,255,255,0.06); }
+[data-style="pastel-paper"][data-theme="dark"] .ok-nav.dark-bg { background: rgba(35,32,26,0.78); }
+[data-style="pastel-paper"] .nav-links a,
+[data-style="pastel-paper"] .nav-dropdown-trigger { transition: color var(--transition); font-family: 'Inter', sans-serif; }
+[data-style="pastel-paper"] .nav-links a::after,
+[data-style="pastel-paper"] .nav-dropdown-trigger::after { background: var(--accent); }
+
+[data-style="pastel-paper"] .nav-icon-btn,
+[data-style="pastel-paper"] .dark-toggle {
+  border-radius: 50%;
+  transition: all var(--transition);
+}
+[data-style="pastel-paper"] .dark-toggle { border: 1px solid var(--border-subtle); background: var(--surface-2); }
+[data-style="pastel-paper"] .dark-toggle:hover { border-color: var(--accent); color: var(--accent); transform: rotate(10deg); }
+[data-style="pastel-paper"] .nav-icon-btn:hover { color: var(--accent); background: var(--accent-light); transform: translateY(-1px); }
+[data-style="pastel-paper"] .nav-avatar-btn { border-radius: 50%; }
+[data-style="pastel-paper"] .nav-avatar-initials { background: var(--accent-light); color: var(--accent); }
+[data-style="pastel-paper"] .nav-avatar-btn:hover { transform: scale(1.06); box-shadow: 0 2px 12px rgba(82,68,50,0.15); }
+
+[data-style="pastel-paper"] .mobile-menu-btn,
+[data-style="pastel-paper"] .wishlist-btn,
+[data-style="pastel-paper"] .qty-btn,
+[data-style="pastel-paper"] .carousel-arrow,
+[data-style="pastel-paper"] .social-btn {
+  border-radius: 50%;
+  border: 1px solid var(--border-subtle);
+  transition: all var(--transition);
+}
+[data-style="pastel-paper"] .qty-btn:hover,
+[data-style="pastel-paper"] .carousel-arrow:hover {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+  transform: translateY(-1px);
+}
+[data-style="pastel-paper"] .social-btn:hover {
+  background: var(--pastel-sky); color: var(--pastel-sky-ink); border-color: var(--pastel-sky);
+  transform: translateY(-2px) rotate(-3deg);
+}
+[data-style="pastel-paper"] .wishlist-btn:hover {
+  border-color: var(--pastel-rose); color: var(--pastel-rose-ink); background: var(--pastel-rose-light);
+  transform: scale(1.06);
+}
+
+/* ─── HERO — Editorial pull-quote feel ─────────────────────────────────── */
+[data-style="pastel-paper"] .hero-title {
+  font-size: clamp(2.8rem, 6.5vw, 5.4rem);
+  line-height: 1.04;
+}
+[data-style="pastel-paper"] .hero-eyebrow {
+  color: rgba(255,255,255,0.78);
+  letter-spacing: 0.18em;
+}
+[data-style="pastel-paper"] .hero-dot { transition: all var(--transition); }
+[data-style="pastel-paper"] .hero-dot.active { background: #fff; transform: scale(1.35); }
+
+/* ─── BANNERS — Cream paper background variants ────────────────────────── */
+[data-style="pastel-paper"] .banner,
+[data-style="pastel-paper"] .banner.banner--overlay,
+[data-style="pastel-paper"] .banner.banner--stacked {
+  border-radius: var(--radius) !important;
+}
+[data-style="pastel-paper"] .banner {
+  background: linear-gradient(135deg, var(--ink) 0%, #4a4338 100%);
+}
+[data-style="pastel-paper"][data-theme="dark"] .banner {
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+  border: 1px solid var(--border-subtle);
+}
+[data-style="pastel-paper"] .banner::before { display: none; }
+[data-style="pastel-paper"] .banner.banner--stacked {
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
+}
+[data-style="pastel-paper"] .banner-img img { transition: transform 1.0s cubic-bezier(0.16, 1, 0.3, 1), opacity var(--transition); }
+[data-style="pastel-paper"] .banner:hover .banner-img img { transform: scale(1.03); opacity: 0.9; }
+[data-style="pastel-paper"] .banner.banner--overlay:hover .banner--overlay-img { transform: scale(1.04); }
+[data-style="pastel-paper"] .banner--overlay-img { transition: transform 1.0s cubic-bezier(0.16, 1, 0.3, 1); }
+[data-style="pastel-paper"] .banner.banner--fullbleed { border-radius: 0 !important; }
+[data-style="pastel-paper"] .banner--overlay-eyebrow {
+  border: 1px solid rgba(255,255,255,0.4);
+  backdrop-filter: blur(8px);
+}
+
+/* ─── FORMS — Soft cream inputs with sage focus glow ───────────────────── */
+[data-style="pastel-paper"] .form-input,
+[data-style="pastel-paper"] .form-select {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+}
+[data-style="pastel-paper"] .form-input:focus,
+[data-style="pastel-paper"] .form-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-glow);
+  background: var(--surface);
+}
+
+/* ─── CART ─────────────────────────────────────────────────────────────── */
+[data-style="pastel-paper"] .cart-img {
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  transition: transform var(--transition);
+}
+[data-style="pastel-paper"] .cart-row:hover .cart-img { transform: scale(1.03); }
+[data-style="pastel-paper"] .shipping-progress-wrap { border-radius: var(--radius-sm); }
+[data-style="pastel-paper"] .shipping-bar { border-radius: var(--radius-pill); }
+[data-style="pastel-paper"] .shipping-fill {
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+}
+
+/* ─── AUTH ─────────────────────────────────────────────────────────────── */
+[data-style="pastel-paper"] .auth-card {
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow var(--transition);
+}
+[data-style="pastel-paper"] .auth-tabs { border-radius: var(--radius-sm); }
+[data-style="pastel-paper"] .auth-tab { border-radius: calc(var(--radius-sm) - 2px); transition: all var(--transition); }
+[data-style="pastel-paper"] .auth-tab.active { box-shadow: var(--shadow-sm); }
+[data-style="pastel-paper"] .google-btn { border-radius: var(--radius-pill); }
+[data-style="pastel-paper"] .google-btn-wrap:hover .google-btn {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+/* ─── SPINNER + SELECTION ──────────────────────────────────────────────── */
+[data-style="pastel-paper"] .spinner { border-radius: 50%; border-top-color: var(--accent); }
+[data-style="pastel-paper"] ::selection { background: var(--pastel-butter); color: var(--ink); }
+
+/* ─── CATEGORY STRIP ───────────────────────────────────────────────────── */
+[data-style="pastel-paper"] .cat-strip { border-bottom: 1px solid var(--border-subtle); }
+
+/* ─── FOOTER ───────────────────────────────────────────────────────────── */
+[data-style="pastel-paper"] .ok-footer {
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+}
+[data-style="pastel-paper"] .footer-col ul a {
+  transition: color var(--transition), padding-left var(--transition);
+}
+[data-style="pastel-paper"] .footer-col ul a:hover {
+  color: var(--accent); padding-left: 6px;
+}
+
+/* ─── ADMIN PANEL ──────────────────────────────────────────────────────── */
+[data-style="pastel-paper"] .admin-stat {
+  border-radius: var(--radius-sm);
+  transition: border-color var(--transition), transform var(--transition), box-shadow var(--transition);
+}
+[data-style="pastel-paper"] .admin-stat:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+[data-style="pastel-paper"] .admin-tab.active { border-bottom-color: var(--accent); color: var(--accent); }
+
+/* ─── FOCUS VISIBLE ────────────────────────────────────────────────────── */
+[data-style="pastel-paper"] :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+/* ─── INLINE-STYLE CATCH-ALLS ──────────────────────────────────────────── */
+/* Inline border-radius: 50% → keep round only if it's a true icon button;
+   here we keep them round (origami squared them off; pastel paper is friendlier
+   and respects circular avatars/icons). */
+/* Inline pill-radii kept too (pastel-paper has --radius-pill: 999px). No
+   override needed for radius. */
+/* Recolor legacy purple "Variants/Add-on" tags to match the pastel palette. */
+[data-style="pastel-paper"] [style*="rgba(120,80,200"],
+[data-style="pastel-paper"] [style*="rgba(120, 80, 200"] {
+  background: var(--pastel-sky-light) !important;
+  color: var(--pastel-sky-ink) !important;
+}
+
+/* ─── ANIMATIONS ───────────────────────────────────────────────────────── */
+@keyframes paperFadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+[data-style="pastel-paper"] .product-card,
+[data-style="pastel-paper"] .banner,
+[data-style="pastel-paper"] .hero-content > * {
+  animation: paperFadeUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+[data-style="pastel-paper"] .hero-content > *:nth-child(1) { animation-delay: 0.05s; }
+[data-style="pastel-paper"] .hero-content > *:nth-child(2) { animation-delay: 0.15s; }
+[data-style="pastel-paper"] .hero-content > *:nth-child(3) { animation-delay: 0.25s; }
+[data-style="pastel-paper"] .hero-content > *:nth-child(4) { animation-delay: 0.35s; }
+@media (prefers-reduced-motion: reduce) {
+  [data-style="pastel-paper"] .product-card,
+  [data-style="pastel-paper"] .banner,
+  [data-style="pastel-paper"] .hero-content > * { animation: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PASTEL PAPER — Apple-style frosted capsule toast
+   ───────────────────────────────────────────────────────────────────────
+   Refined frosted-glass pill, similar to the macOS volume HUD or the
+   "AirPods connected" notification. No bright colored bg, no rotation,
+   no shouty icons — the text is the focus, the surface is glass.
+
+   react-hot-toast renders each toast as a div with role="status". App.js
+   sets inline styles via toastOptions; we override via !important so the
+   App.js config stays theme-agnostic.
+═══════════════════════════════════════════════════════════════════════ */
+[data-style="pastel-paper"] [role="status"] {
+  background: rgba(255,255,255,0.72) !important;
+  color: var(--ink) !important;
+  border: 1px solid rgba(255,255,255,0.5) !important;
+  border-radius: var(--radius-pill) !important;
+  padding: 10px 22px !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 0.86rem !important;
+  font-weight: 500 !important;
+  letter-spacing: -0.005em !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  box-shadow:
+    0 12px 32px rgba(82,68,50,0.16),
+    0 2px 8px rgba(82,68,50,0.08),
+    inset 0 0 0 0.5px rgba(255,255,255,0.4) !important;
+  transform: none !important;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease !important;
+}
+[data-style="pastel-paper"][data-theme="dark"] [role="status"] {
+  background: rgba(29,26,21,0.72) !important;
+  color: var(--ink) !important;
+  border: 1px solid rgba(255,255,255,0.08) !important;
+  box-shadow:
+    0 12px 32px rgba(0,0,0,0.55),
+    0 2px 8px rgba(0,0,0,0.3),
+    inset 0 0 0 0.5px rgba(255,255,255,0.06) !important;
+}
+/* Error variant — react-hot-toast tags error toasts with aria-live="assertive".
+   We don't change the surface (still frosted), just tint the text and add
+   a subtle rose ring. Restrained, Apple-style. */
+[data-style="pastel-paper"] [role="status"][aria-live="assertive"] {
+  color: var(--pastel-rose-ink) !important;
+  border-color: rgba(201,126,126,0.45) !important;
+  box-shadow:
+    0 12px 32px rgba(82,68,50,0.16),
+    0 2px 8px rgba(201,126,126,0.18),
+    inset 0 0 0 0.5px rgba(255,255,255,0.4) !important;
+}
+[data-style="pastel-paper"][data-theme="dark"] [role="status"][aria-live="assertive"] {
+  color: var(--pastel-rose-ink) !important;
+  border-color: rgba(232,152,152,0.35) !important;
+  box-shadow:
+    0 12px 32px rgba(0,0,0,0.55),
+    0 2px 10px rgba(232,152,152,0.18),
+    inset 0 0 0 0.5px rgba(255,255,255,0.06) !important;
 }

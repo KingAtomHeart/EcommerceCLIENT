@@ -144,13 +144,13 @@ export default function GroupBuyView() {
     });
   }, [selectedOption?.valueId, gb]);
 
-  // Compute total price: basePrice is the foundation; options + config modifiers add on top.
+  // Compute total price: basePrice is the foundation; options + config
+  // modifiers add on top.
   const computedPrice = useMemo(() => {
     let base = gb?.basePrice || 0;
     if (hasOptions && selectedOption) {
       base += (selectedOption.price || 0);
     }
-    // Add configuration modifiers
     if (gb?.configurations?.length > 0) {
       for (const cfg of gb.configurations) {
         const selectedVal = configs[cfg.name];
@@ -162,10 +162,9 @@ export default function GroupBuyView() {
     return base;
   }, [gb, hasOptions, selectedOption, configs]);
 
-  // Build effective image list — stable across selections. Every per-option and
-  // per-config image is included once, alongside the gallery. Selecting an
-  // option/config jumps mainImg to that image (see effect below), so the user
-  // can still freely swipe / arrow-key through every image.
+  // Build effective image list — stable across selections. Every per-option
+  // and per-config image is included once, alongside the gallery. Selecting
+  // an option/config jumps mainImg to that image (see effect below).
   const effectiveImages = useMemo(() => {
     if (!gb) return [];
     const out = [];
@@ -324,9 +323,9 @@ export default function GroupBuyView() {
     : `₱${computedPrice.toLocaleString()}`;
 
   return (
-    <div className="page-body" style={{ padding: '44px var(--page-pad) 80px' }}>
+    <div className="page-body gb-page" style={{ padding: '44px var(--page-pad) 80px' }}>
       {/* Breadcrumb */}
-      <div style={{ fontSize: '0.82rem', color: 'var(--ink-muted)', marginBottom: '40px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+      <div className="gb-breadcrumb" style={{ fontSize: '0.82rem', color: 'var(--ink-muted)', marginBottom: '40px', display: 'flex', gap: '8px', alignItems: 'center' }}>
         <Link to="/group-buys" style={{ color: 'var(--ink-muted)' }}>Group Buys</Link>
         <span style={{ opacity: 0.35 }}>›</span>
         <span style={{ color: 'var(--ink)', fontWeight: 500 }}>{gb.name}</span>
@@ -447,11 +446,23 @@ export default function GroupBuyView() {
               Closes {endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
             </p>
           )}
-          {gb.moq > 0 && (
-            <p style={{ fontSize: '0.84rem', color: 'var(--ink-muted)', marginBottom: '20px' }}>
-              MOQ: {gb.moq} {gb.orderCount >= gb.moq ? '(reached)' : `(${gb.moq - gb.orderCount} more needed)`}
-            </p>
-          )}
+          {/* Auto-rule: hide MOQ progress on add-ons (parented GBs) by default
+              since they piggyback on a parent's MOQ. Admin can flip
+              `showMoqProgress` to true/false to override either way. */}
+          {(() => {
+            const isAddOn = !!(gb.parentGroupBuyId || gb.parent?._id);
+            const auto = !isAddOn;
+            const show = typeof gb.showMoqProgress === 'boolean' ? gb.showMoqProgress : auto;
+            if (!show) return null;
+            if (!(gb.moq > 0 || (gb.milestones || []).length > 0)) return null;
+            return (
+              <MilestoneProgress
+                moq={gb.moq || 0}
+                orderCount={gb.orderCount || 0}
+                milestones={gb.milestones || []}
+              />
+            );
+          })()}
 
           {/* ── OPTIONS (price-setting selectors) ── */}
           {hasOptions && (isOpen || isIC) && (
@@ -597,14 +608,32 @@ export default function GroupBuyView() {
 
       <style>{`
         @media (max-width: 960px) {
-          .product-layout { grid-template-columns: 1fr !important; gap: 40px !important; }
+          .product-layout { grid-template-columns: 1fr !important; gap: 32px !important; }
           .product-image-col { position: static !important; }
+        }
+        @media (max-width: 640px) {
+          /* Tighten page chrome on phones — the desktop 44/80px padding
+             eats too much vertical space and pushes the buy section below
+             the fold. */
+          .gb-page { padding: 24px var(--page-pad) 56px !important; }
+          .gb-breadcrumb { margin-bottom: 20px !important; font-size: 0.78rem !important; }
+          .product-layout { gap: 24px !important; }
+          /* Make the cross-sell card grids actually fit instead of forcing
+             280px columns that overflow on narrow phones. */
+          .gb-related-grid, .gb-addons-grid {
+            grid-template-columns: 1fr !important;
+            gap: 16px !important;
+          }
+          .gb-related-section, .gb-addons-section { margin-top: 40px !important; }
         }
       `}</style>
 
-      {/* Optional marketing page rendered below the buy section. Mirrors
-          ProductView so GB pages and product pages share the same surface.
-          customPageHtml wins over landingPage when both exist. */}
+      {/* Marketing/landing-page content renders below the grid as a full-page
+          sibling. Previously this was moved INSIDE the right column to give
+          sticky-image scroll headroom, but landing-page blocks with
+          fullBleed=true use negative page-pad margins that broke out of the
+          column on mobile. Keeping it full-width restores correct rendering;
+          customPageHtml wins over the block-based landingPage when both set. */}
       {gb.customPageHtml && gb.customPageHtml.trim()
         ? <div dangerouslySetInnerHTML={{ __html: renderCustomPageTokens(gb.customPageHtml, gb) }} />
         : Array.isArray(gb.landingPage) && gb.landingPage.length > 0 && (
@@ -621,12 +650,12 @@ export default function GroupBuyView() {
           : (gb.addOns || []).map(item => ({ kind: 'gb', item }));
         if (list.length === 0) return null;
         return (
-          <div style={{ marginTop: '64px' }}>
+          <div className="gb-addons-section" style={{ marginTop: '64px' }}>
             <h2 className="section-title" style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(1.5rem, 2.4vw, 1.9rem)', letterSpacing: '-0.02em', marginBottom: '8px' }}>Add-ons</h2>
             <p style={{ color: 'var(--ink-muted)', fontSize: '0.92rem', marginBottom: '28px' }}>
               Optional extras for this group buy. Only available alongside {gb.name}.
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
+            <div className="gb-addons-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
               {list.map(({ kind, item }) => kind === 'product'
                 ? <ProductCard key={`p-${item._id}`} product={item} />
                 : <GroupBuyCard key={`gb-${item._id}`} gb={item} />
@@ -637,9 +666,9 @@ export default function GroupBuyView() {
       })()}
 
       {relatedList.length > 0 && (
-        <div style={{ marginTop: '64px' }}>
+        <div className="gb-related-section" style={{ marginTop: '64px' }}>
           <h2 className="section-title" style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(1.5rem, 2.4vw, 1.9rem)', letterSpacing: '-0.02em', marginBottom: '8px' }}>You might also like</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
+          <div className="gb-related-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
             {relatedList.map(({ kind, item }) => kind === 'product'
               ? <ProductCard key={`p-${item._id}`} product={item} />
               : <GroupBuyCard key={`gb-${item._id}`} gb={item} />
@@ -673,6 +702,287 @@ export default function GroupBuyView() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── Progress bar + clickable milestone markers. Bar auto-scales to
+      max(moq, ...milestoneCounts). Hovering a marker highlights it +
+      previews the prize inline; clicking opens a full-detail modal. ── */
+function MilestoneProgress({ moq, orderCount, milestones }) {
+  const [openIdx, setOpenIdx] = useState(null);
+  const [hoverIdx, setHoverIdx] = useState(null);
+
+  const sorted = useMemo(
+    () => (milestones || [])
+      .filter(m => Number(m.count) > 0)
+      .map(m => ({ ...m, count: Number(m.count) }))
+      .sort((a, b) => a.count - b.count),
+    [milestones]
+  );
+  const maxMilestone = sorted.length > 0 ? sorted[sorted.length - 1].count : 0;
+  const barMax = Math.max(moq || 0, maxMilestone, 1);
+  const pct = Math.min(100, (orderCount / barMax) * 100);
+  const moqReached = moq > 0 && orderCount >= moq;
+
+  return (
+    <div style={{ marginBottom: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '4px', flexWrap: 'wrap', gap: 6 }}>
+        <span style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>
+          {moq > 0 ? 'MOQ Progress' : 'Progress'}
+        </span>
+        <span style={{ fontSize: '0.76rem', color: 'var(--ink-muted)' }}>
+          <strong style={{ color: 'var(--ink)' }}>{orderCount}</strong>
+          {moq > 0 && (
+            <> / {moq} {moqReached ? '— reached!' : `(${moq - orderCount} to go)`}</>
+          )}
+          {moq === 0 && sorted.length > 0 && <> orders</>}
+        </span>
+      </div>
+
+      {/* Bar + markers. Vertical padding makes room for the markers (16px tall)
+          centered on the 8px bar — kept tight so the section doesn't dominate.
+          `overflow: visible` lets the hover overlay float above the bar without
+          getting clipped. */}
+      <div style={{ position: 'relative', padding: '10px 0 2px' }}>
+        <div style={{ position: 'relative', height: 8, background: 'var(--accent-light)', borderRadius: 999 }}>
+          <div style={{
+            position: 'absolute', top: 0, left: 0, bottom: 0,
+            width: `${pct}%`,
+            background: moqReached
+              ? 'linear-gradient(90deg, #2ecc71, #27ae60)'
+              : 'var(--accent)',
+            borderRadius: 999,
+            transition: 'width 0.5s ease',
+          }} />
+          {/* MOQ tick (vertical line; label sits in the count strip below) */}
+          {moq > 0 && moq < barMax && (
+            <div style={{
+              position: 'absolute', top: -3, bottom: -3,
+              left: `${(moq / barMax) * 100}%`, width: 2,
+              background: moqReached ? '#27ae60' : 'rgba(0,0,0,0.32)',
+              transform: 'translateX(-50%)', zIndex: 1, pointerEvents: 'none',
+            }} />
+          )}
+          {/* Milestone markers */}
+          {sorted.map((m, idx) => {
+            const reached = orderCount >= m.count;
+            const left = Math.min(100, (m.count / barMax) * 100);
+            const isHover = hoverIdx === idx;
+            return (
+              <button
+                key={m._id || idx}
+                onMouseEnter={() => setHoverIdx(idx)}
+                onMouseLeave={() => setHoverIdx(null)}
+                onFocus={() => setHoverIdx(idx)}
+                onBlur={() => setHoverIdx(null)}
+                onClick={() => setOpenIdx(idx)}
+                title={`${m.title} — at ${m.count} orders`}
+                aria-label={`${m.title}, unlocks at ${m.count} orders${reached ? ' (unlocked)' : ''}`}
+                style={{
+                  position: 'absolute', top: '50%', left: `${left}%`,
+                  transform: `translate(-50%, -50%) scale(${isHover ? 1.25 : 1})`,
+                  width: 18, height: 18, borderRadius: '50%',
+                  background: reached ? '#f5c518' : 'var(--surface)',
+                  border: `2px solid ${reached ? '#c89c08' : 'var(--accent)'}`,
+                  cursor: 'pointer', padding: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '0.6rem', lineHeight: 1,
+                  boxShadow: isHover ? '0 4px 12px rgba(0,0,0,0.22)' : '0 1px 3px rgba(0,0,0,0.12)',
+                  transition: 'transform 0.18s ease, box-shadow 0.18s ease',
+                  zIndex: isHover ? 4 : 3,
+                }}
+              >
+                <span aria-hidden="true" style={{ filter: reached ? 'none' : 'grayscale(0.4)' }}>🎁</span>
+                {/* Floating tooltip — absolutely positioned, doesn't push
+                    anything below. pointer-events:none so the cursor can
+                    glide across markers without dropping the hover. */}
+                {isHover && (
+                  <div style={{
+                    position: 'absolute', bottom: 'calc(100% + 10px)', left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: 'var(--surface)', color: 'var(--ink)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '8px 10px',
+                    minWidth: 180, maxWidth: 240,
+                    boxShadow: '0 10px 28px rgba(0,0,0,0.18)',
+                    pointerEvents: 'none',
+                    zIndex: 10, textAlign: 'left',
+                  }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      {m.image?.url && (
+                        <img src={m.image.url} alt="" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
+                      )}
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: '0.78rem', fontWeight: 600, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {m.title}
+                        </div>
+                        <div style={{ fontSize: '0.66rem', color: 'var(--ink-muted)', lineHeight: 1.2, marginTop: 2 }}>
+                          {reached ? `✓ Unlocked at ${m.count}` : `At ${m.count} (${m.count - orderCount} more)`}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '0.62rem', color: 'var(--ink-faint)', marginTop: 6 }}>Click for details</div>
+                    {/* Down-pointing notch under the tooltip */}
+                    <div aria-hidden="true" style={{
+                      position: 'absolute', top: '100%', left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: 0, height: 0,
+                      borderLeft: '6px solid transparent',
+                      borderRight: '6px solid transparent',
+                      borderTop: '6px solid var(--border)',
+                    }} />
+                    <div aria-hidden="true" style={{
+                      position: 'absolute', top: 'calc(100% - 1px)', left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: 0, height: 0,
+                      borderLeft: '5px solid transparent',
+                      borderRight: '5px solid transparent',
+                      borderTop: '5px solid var(--surface)',
+                    }} />
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Count labels beneath markers (includes MOQ tick label) */}
+        {(sorted.length > 0 || (moq > 0 && moq < barMax)) && (
+          <div style={{ position: 'relative', height: 14, marginTop: 4 }}>
+            {moq > 0 && moq < barMax && (
+              <div style={{
+                position: 'absolute', top: 0, left: `${(moq / barMax) * 100}%`,
+                transform: 'translateX(-50%)',
+                fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.05em',
+                color: moqReached ? '#27ae60' : 'var(--ink-muted)',
+                whiteSpace: 'nowrap',
+              }}>MOQ</div>
+            )}
+            {sorted.map((m, idx) => {
+              const left = Math.min(100, (m.count / barMax) * 100);
+              const reached = orderCount >= m.count;
+              return (
+                <div key={m._id || idx} style={{
+                  position: 'absolute', top: 0, left: `${left}%`,
+                  transform: 'translateX(-50%)',
+                  fontSize: '0.62rem', fontWeight: 600,
+                  color: reached ? 'var(--ink)' : 'var(--ink-muted)',
+                  whiteSpace: 'nowrap',
+                }}>{m.count}</div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Hover preview now lives in a floating tooltip above the marker
+          (rendered inside the marker button). No inline space reserved here
+          — the bar stays the same height whether hovered or not. */}
+
+      {openIdx !== null && sorted[openIdx] && (
+        <MilestoneModal
+          milestone={sorted[openIdx]}
+          reached={orderCount >= sorted[openIdx].count}
+          orderCount={orderCount}
+          onClose={() => setOpenIdx(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Click modal — mirrors the product-page layout (image, title, rich-text
+// description, landing-page blocks) minus add-to-cart since this is a reward
+// preview, not a sellable item. Stays an overlay (fixed, full-screen scrim).
+function MilestoneModal({ milestone, reached, orderCount, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    // Lock body scroll while the overlay is open so the page underneath
+    // doesn't drift while the customer scrolls the milestone content.
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onClose]);
+
+  const customHtml = (milestone.customPageHtml || '').trim();
+  const hasBlocks = Array.isArray(milestone.landingPage) && milestone.landingPage.length > 0;
+  // customPageHtml wins over landingPage when both exist — same precedence
+  // as Product / GB pages so the milestone feels like a mini-product page.
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      background: 'rgba(0,0,0,0.72)',
+      display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+      padding: '40px 16px', overflowY: 'auto', cursor: 'zoom-out',
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: 'var(--surface)', borderRadius: 'var(--radius)',
+        maxWidth: 920, width: '100%', overflow: 'hidden', cursor: 'default',
+        boxShadow: '0 24px 60px rgba(0,0,0,0.55)',
+        position: 'relative',
+      }}>
+        {/* Sticky close button — stays reachable even after scrolling
+            through a long landing page. */}
+        <button onClick={onClose} aria-label="Close"
+          style={{
+            position: 'absolute', top: 14, right: 14, zIndex: 5,
+            width: 36, height: 36, borderRadius: '50%',
+            background: 'rgba(0,0,0,0.6)', color: '#fff',
+            border: 'none', fontSize: '1.1rem', cursor: 'pointer', lineHeight: 1,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>✕</button>
+
+        {milestone.image?.url && (
+          <img src={milestone.image.url} alt={milestone.image?.altText || milestone.title}
+            style={{ width: '100%', maxHeight: 420, objectFit: 'cover', display: 'block' }} />
+        )}
+        <div style={{ padding: '28px 32px 32px' }}>
+          <div style={{
+            fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: reached ? '#c89c08' : 'var(--ink-faint)', marginBottom: 6,
+          }}>
+            {reached ? '✓ Unlocked' : `Unlocks at ${milestone.count} orders`}
+          </div>
+          <h2 style={{
+            fontFamily: "'DM Serif Display', serif",
+            fontSize: 'clamp(1.6rem, 2.6vw, 2.2rem)', margin: '0 0 14px',
+            lineHeight: 1.1, letterSpacing: '-0.02em',
+          }}>
+            {milestone.title}
+          </h2>
+
+          {!reached && (
+            <p style={{ fontSize: '0.86rem', color: 'var(--ink-faint)', margin: '0 0 18px' }}>
+              {milestone.count - orderCount} more order{milestone.count - orderCount === 1 ? '' : 's'} to unlock.
+            </p>
+          )}
+
+          {milestone.description && (
+            <div style={{ fontSize: '0.96rem', color: 'var(--ink-muted)', lineHeight: 1.7, marginBottom: (customHtml || hasBlocks) ? 28 : 0 }}>
+              <RichText content={milestone.description} />
+            </div>
+          )}
+        </div>
+
+        {/* Marketing content — custom HTML wins over block-based landing
+            page when both exist. Same precedence as the GB / product page. */}
+        {customHtml
+          ? <div dangerouslySetInnerHTML={{ __html: renderCustomPageTokens(customHtml, { name: milestone.title, description: milestone.description, images: milestone.image?.url ? [milestone.image] : [] }) }} />
+          : hasBlocks && (
+            <div style={{ paddingBottom: 24 }}>
+              <LandingPageRenderer blocks={milestone.landingPage} />
+            </div>
+          )
+        }
+      </div>
     </div>
   );
 }

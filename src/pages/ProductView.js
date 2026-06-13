@@ -481,9 +481,9 @@ export default function ProductView() {
 
   return (
     <>
-      <div className="page-body" style={{ padding: '44px var(--page-pad) 80px' }}>
+      <div className="page-body pv-page" style={{ padding: '44px var(--page-pad) 80px' }}>
         {/* Breadcrumb */}
-        <div style={{ fontSize: '0.82rem', color: 'var(--ink-muted)', marginBottom: '40px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="pv-breadcrumb" style={{ fontSize: '0.82rem', color: 'var(--ink-muted)', marginBottom: '40px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <Link to="/products" style={{ color: 'var(--ink-muted)' }}>Shop</Link>
           <span style={{ opacity: 0.35 }}>›</span>
           <Link to={`/products?cat=${product.category}`} style={{ color: 'var(--ink-muted)' }}>{categoryLabel(product.category)}</Link>
@@ -808,14 +808,14 @@ export default function ProductView() {
       {/* Add-ons — pinned-or-auto. Each entry carries its kind so we can mix
           products and group buys in the same grid using the matching card. */}
       {addOns.length > 0 && (
-        <section style={{ padding: '56px var(--page-pad) 8px', borderTop: '1px solid var(--border)' }}>
+        <section className="pv-addons-section" style={{ padding: '56px var(--page-pad) 8px', borderTop: '1px solid var(--border)' }}>
           <div className="section-header">
             <h2 className="section-title">Add-ons</h2>
           </div>
           <p style={{ color: 'var(--ink-muted)', fontSize: '0.92rem', marginBottom: '28px' }}>
             Optional extras paired with {product.name}.
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' }}>
+          <div className="pv-addons-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' }}>
             {addOns.map(({ kind, item }) => kind === 'gb'
               ? <GroupBuyCard key={`gb-${item._id}`} gb={item} />
               : <ProductCard key={`p-${item._id}`} product={item} />
@@ -825,12 +825,12 @@ export default function ProductView() {
       )}
 
       {related.length > 0 && (
-        <section style={{ padding: '64px var(--page-pad) 80px', borderTop: '1px solid var(--border)' }}>
+        <section className="pv-related-section" style={{ padding: '64px var(--page-pad) 80px', borderTop: '1px solid var(--border)' }}>
           <div className="section-header">
             <h2 className="section-title">You might also like</h2>
             <Link to="/products" className="section-link">View all →</Link>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' }}>
+          <div className="pv-related-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '20px' }}>
             {related.map(({ kind, item }) => kind === 'gb'
               ? <GroupBuyCard key={`gb-${item._id}`} gb={item} />
               : <ProductCard key={`p-${item._id}`} product={item} />
@@ -841,10 +841,25 @@ export default function ProductView() {
 
       <style>{`
         @media (max-width: 960px) {
-          .product-layout { grid-template-columns: 1fr !important; gap: 40px !important; }
+          .product-layout { grid-template-columns: 1fr !important; gap: 32px !important; }
           /* Stacked layout — sticky has no headroom and would pin the image
              at the top while the user is reading the info underneath. */
           .product-image-col { position: static !important; }
+        }
+        @media (max-width: 640px) {
+          /* Tighten the page chrome on phones — the desktop 44/80px padding
+             eats too much vertical space before the buy section. */
+          .pv-page { padding: 24px var(--page-pad) 56px !important; }
+          .pv-breadcrumb { margin-bottom: 20px !important; font-size: 0.78rem !important; }
+          .product-layout { gap: 24px !important; }
+          /* Cross-sell card grids should stack instead of forcing 240px
+             columns that overflow on narrow phones. */
+          .pv-addons-grid, .pv-related-grid {
+            grid-template-columns: 1fr !important;
+            gap: 16px !important;
+          }
+          .pv-addons-section { padding: 40px var(--page-pad) 0 !important; }
+          .pv-related-section { padding: 40px var(--page-pad) 56px !important; }
         }
       `}</style>
 

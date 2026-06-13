@@ -2,6 +2,8 @@ import { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import GroupBuyCard from '../components/GroupBuyCard';
+import { LandingPageRenderer } from '../components/LandingPage';
+import { renderCustomPageTokens } from '../utils/customPage';
 import { apiFetch } from '../utils/api';
 import { categorySlug } from '../utils/categories';
 
@@ -160,6 +162,15 @@ export default function CategoryPage() {
         </div>
       </section>
 
+      {/* ── Admin-curated page sections (Hero / Banner / Text+Image / Gallery
+            / Feature grid). Rendered between the category hero and the
+            product grid so admins can tell a story before the catalog. ── */}
+      {Array.isArray(category.landingPage) && category.landingPage.length > 0 && (
+        <section style={{ padding: '40px var(--page-pad) 0' }}>
+          <LandingPageRenderer blocks={category.landingPage} />
+        </section>
+      )}
+
       {/* ── Grid ── */}
       <section style={{ padding: '56px var(--page-pad) 80px' }}>
         {cards.length === 0 ? (
@@ -180,6 +191,20 @@ export default function CategoryPage() {
           </>
         )}
       </section>
+
+      {/* ── Optional raw HTML escape hatch — anchored at the bottom for
+            campaign/promo callouts. {{tokens}} are substituted with the
+            category record (name, slug, description, image url). ── */}
+      {(category.customPageHtml || '').trim() && (
+        <section
+          style={{ padding: '0 var(--page-pad) 80px' }}
+          dangerouslySetInnerHTML={{ __html: renderCustomPageTokens(category.customPageHtml, {
+            name: category.name,
+            slug: category.slug,
+            description: category.description,
+            image: category.image,
+          }) }} />
+      )}
     </div>
   );
 }

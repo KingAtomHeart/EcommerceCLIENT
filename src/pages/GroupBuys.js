@@ -50,53 +50,65 @@ export default function GroupBuys() {
   const gridAlign = pageContent?.gridAlign || 'left';
   const gridJustify = gridAlign === 'center' ? 'center' : 'start';
 
-  return (
-    <div className="page-body">
-      {enabledBlocks.length > 0 && (
-        <div style={{ marginBottom: 8 }}>
-          {enabledBlocks.map((block, i) => (
-            <BlockRenderer
-              key={block._id || i}
-              block={block}
-              isFirst={i === 0}
-              products={products}
-              groupBuys={gbs}
-              loading={loading}
-              countByCategory={(slug) => products.filter(p => p.category?.toLowerCase().replace(/\s+/g, '-') === slug).length}
-            />
-          ))}
+  // Live catalog grid extracted so it can render at the admin-chosen position
+  // among the section blocks. When the block list has no `catalog` entry we
+  // append it at the end (legacy behavior — preserves layouts that predate
+  // the moveable catalog feature).
+  const catalogNode = (
+    <div id="group-buys" style={{ scrollMarginTop: 'var(--nav-h, 64px)', padding: '56px var(--page-pad) 80px' }}>
+      <div style={{ marginBottom: '40px' }}>
+        <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(1.7rem, 5.5vw, 2.8rem)', letterSpacing: '-0.025em', marginBottom: '8px' }}>Group Buys</h1>
+        <p style={{ color: 'var(--ink-muted)', fontSize: '0.95rem', maxWidth: 520 }}>
+          Join a group buy to get exclusive keyboards at production pricing. Orders are collected, then manufactured together.
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="loading-center"><div className="spinner" /></div>
+      ) : gbs.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--ink-muted)', background: 'var(--surface)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+          <p style={{ fontSize: '1rem', marginBottom: '8px' }}>No group buys right now.</p>
+          <p style={{ fontSize: '0.84rem' }}>Check back soon or browse our in-stock products.</p>
+          <Link to="/products" className="btn-dark" style={{ marginTop: '20px', display: 'inline-flex' }}><span>Shop In Stock</span></Link>
+        </div>
+      ) : (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: gridAlign === 'center'
+            ? 'repeat(auto-fit, 340px)'
+            : 'repeat(auto-fill, minmax(340px, 1fr))',
+          justifyContent: gridJustify,
+          gap: '24px',
+        }}>
+          {gbs.map(gb => <GroupBuyCard key={gb._id} gb={gb} />)}
         </div>
       )}
+    </div>
+  );
 
-      <div id="group-buys" style={{ scrollMarginTop: 'var(--nav-h, 64px)', padding: '56px var(--page-pad) 80px' }}>
-        <div style={{ marginBottom: '40px' }}>
-          <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(1.7rem, 5.5vw, 2.8rem)', letterSpacing: '-0.025em', marginBottom: '8px' }}>Group Buys</h1>
-          <p style={{ color: 'var(--ink-muted)', fontSize: '0.95rem', maxWidth: 520 }}>
-            Join a group buy to get exclusive keyboards at production pricing. Orders are collected, then manufactured together.
-          </p>
-        </div>
+  const hasCatalogBlock = enabledBlocks.some(b => b.type === 'catalog');
 
-        {loading ? (
-          <div className="loading-center"><div className="spinner" /></div>
-        ) : gbs.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--ink-muted)', background: 'var(--surface)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-            <p style={{ fontSize: '1rem', marginBottom: '8px' }}>No group buys right now.</p>
-            <p style={{ fontSize: '0.84rem' }}>Check back soon or browse our in-stock products.</p>
-            <Link to="/products" className="btn-dark" style={{ marginTop: '20px', display: 'inline-flex' }}><span>Shop In Stock</span></Link>
-          </div>
-        ) : (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: gridAlign === 'center'
-              ? 'repeat(auto-fit, 340px)'
-              : 'repeat(auto-fill, minmax(340px, 1fr))',
-            justifyContent: gridJustify,
-            gap: '24px',
-          }}>
-            {gbs.map(gb => <GroupBuyCard key={gb._id} gb={gb} />)}
-          </div>
-        )}
-      </div>
+  return (
+    <div className="page-body">
+      {enabledBlocks.map((block, i) => {
+        if (block.type === 'catalog') {
+          return <div key={block._id || `catalog-${i}`}>{catalogNode}</div>;
+        }
+        return (
+          <BlockRenderer
+            key={block._id || i}
+            block={block}
+            isFirst={i === 0}
+            products={products}
+            groupBuys={gbs}
+            loading={loading}
+            countByCategory={(slug) => products.filter(p => p.category?.toLowerCase().replace(/\s+/g, '-') === slug).length}
+          />
+        );
+      })}
+      {/* Legacy / default position: end of page when no catalog block exists.
+          Prevents pages from going blank if admin hasn't placed one yet. */}
+      {!hasCatalogBlock && catalogNode}
     </div>
   );
 }

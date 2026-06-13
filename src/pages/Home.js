@@ -107,7 +107,28 @@ function withCatalogAnchor(link) {
 /* Shared section header. `centered=true` stacks eyebrow → title → subtitle on
    the centerline and pulls view-all out (renders SectionFooter below content
    instead). `centered=false` keeps the classic title-left / view-all-right row. */
-function SectionHeader({ eyebrow, title, subtitle, viewAllLink, centered }) {
+/* Renders the section's view-all/CTA in the chosen style. When `cta.style`
+   is undefined or 'link', falls back to the legacy plain text-link so older
+   blocks (no admin choice) keep their look. Otherwise routes through the
+   shared renderSectionCta so the button matches Hero/Banner buttons. */
+function renderViewAllNode(viewAllLink, cta) {
+  if (!viewAllLink) return null;
+  const label = (cta?.label && cta.label.trim()) || 'View all';
+  const style = cta?.style || 'link';
+  if (style === 'link' || !style) {
+    return (
+      <Link to={withCatalogAnchor(viewAllLink)} className="section-link">
+        {label} →
+      </Link>
+    );
+  }
+  return renderSectionCta(
+    { label, link: withCatalogAnchor(viewAllLink), style, size: cta.size, icon: cta.icon, bg: cta.bg, fg: cta.fg },
+    { isLight: false, fallbackStyle: style },
+  );
+}
+
+function SectionHeader({ eyebrow, title, subtitle, viewAllLink, viewAllCta, centered }) {
   if (centered) {
     return (
       <div style={{ textAlign: 'center', marginBottom: '48px', maxWidth: 720, marginLeft: 'auto', marginRight: 'auto' }}>
@@ -136,15 +157,25 @@ function SectionHeader({ eyebrow, title, subtitle, viewAllLink, centered }) {
           <p style={{ color: 'var(--ink-muted)', fontSize: '0.9rem', marginTop: '4px' }}>{subtitle}</p>
         )}
       </div>
-      {viewAllLink && (
-        <Link to={withCatalogAnchor(viewAllLink)} className="section-link">View all →</Link>
-      )}
+      {renderViewAllNode(viewAllLink, viewAllCta)}
     </div>
   );
 }
 
-function SectionFooter({ viewAllLink, label = 'View all' }) {
+function SectionFooter({ viewAllLink, viewAllCta, label = 'View all' }) {
   if (!viewAllLink) return null;
+  // Honor the per-block CTA when provided; otherwise behave like the legacy
+  // centered text-link footer.
+  const cta = viewAllCta?.style && viewAllCta.style !== 'link'
+    ? { ...viewAllCta, label: viewAllCta.label || label }
+    : null;
+  if (cta) {
+    return (
+      <div style={{ textAlign: 'center', marginTop: '40px' }}>
+        {renderViewAllNode(viewAllLink, cta)}
+      </div>
+    );
+  }
   return (
     <div style={{ textAlign: 'center', marginTop: '40px' }}>
       <Link to={withCatalogAnchor(viewAllLink)} className="section-link" style={{ fontSize: '0.95rem' }}>
@@ -239,6 +270,26 @@ export function BlockRenderer({ block, isFirst, products, groupBuys, loading, co
       break;
     case 'categoriesGrid':
       content = <CategoriesGridBlock data={data} />;
+      break;
+    case 'catalog':
+      // Position marker for the Shop / Group Buys live catalog grid. The
+      // surrounding page (Products.js / GroupBuys.js) renders the actual
+      // grid wherever this block sits in the list; here we render a small
+      // placeholder so the admin preview still shows the chosen position.
+      content = (
+        <div style={{
+          padding: '32px var(--page-pad)',
+          border: '1px dashed var(--border)',
+          borderRadius: 'var(--radius-sm)',
+          background: 'var(--bg-secondary)',
+          color: 'var(--ink-muted)',
+          textAlign: 'center',
+          margin: '8px var(--page-pad)',
+        }}>
+          <p style={{ fontSize: '0.78rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', margin: '0 0 6px' }}>Catalog Grid</p>
+          <p style={{ fontSize: '0.84rem', margin: 0 }}>Live product / group-buy listing renders here.</p>
+        </div>
+      );
       break;
     case 'productGrid':
       content = <ProductGridBlock data={data} products={products} loading={loading} />;
@@ -357,6 +408,16 @@ function CategoriesGridBlock({ data }) {
           )}
           {data.subtitle && (
             <p style={{ color: 'var(--ink-muted)', fontSize: '0.95rem', marginTop: 8, maxWidth: 640, marginLeft: align === 'center' ? 'auto' : 0, marginRight: align === 'center' ? 'auto' : 0 }}>{data.subtitle}</p>
+          )}
+        </div>
+      )}
+      {/* Optional admin-set CTA — sits between the header and the grid so it
+          works regardless of header alignment. */}
+      {data?.cta?.label && data?.cta?.link && (
+        <div style={{ display: 'flex', justifyContent: align === 'center' ? 'center' : 'flex-start', marginBottom: 20 }}>
+          {renderSectionCta(
+            { label: data.cta.label, link: data.cta.link, style: data.cta.style, size: data.cta.size, icon: data.cta.icon, bg: data.cta.bg, fg: data.cta.fg },
+            { isLight: false, fallbackStyle: 'outline' },
           )}
         </div>
       )}
@@ -489,6 +550,7 @@ function ProductGridBlock({ data, products, loading }) {
         title={data.title || 'Products'}
         subtitle={data.subtitle}
         viewAllLink={centered ? null : viewAll}
+        viewAllCta={data.viewAllCta}
         centered={centered}
       />
 
@@ -548,7 +610,7 @@ function ProductGridBlock({ data, products, loading }) {
           )}
         </div>
       )}
-      {centered && <SectionFooter viewAllLink={viewAll} />}
+      {centered && <SectionFooter viewAllLink={viewAll} viewAllCta={data.viewAllCta} />}
     </section>
   );
 }
@@ -627,6 +689,7 @@ function GroupBuysBlock({ data, groupBuys, forcedLayout }) {
         title={data.title || defaultTitle}
         subtitle={data.subtitle}
         viewAllLink={centered ? null : viewAll}
+        viewAllCta={data.viewAllCta}
         centered={centered}
       />
       {renderLayout === 'carousel' ? cardsCarousel : (renderLayout === 'grid' ? cardsGrid : (
@@ -634,7 +697,7 @@ function GroupBuysBlock({ data, groupBuys, forcedLayout }) {
           {filtered.map(gb => <GroupBuyCard key={gb._id} gb={gb} presentation={presentation} />)}
         </div>
       ))}
-      {centered && <SectionFooter viewAllLink={viewAll} />}
+      {centered && <SectionFooter viewAllLink={viewAll} viewAllCta={data.viewAllCta} />}
     </section>
   );
 }
@@ -709,7 +772,8 @@ function ProductHeroBlock({ data, products, adminMode }) {
             eyebrow={data.eyebrow}
             title={data.title || ''}
             subtitle={data.subtitle}
-            viewAllLink={null}
+            viewAllLink={headerCentered ? null : (data.viewAllLink || null)}
+            viewAllCta={data.viewAllCta}
             centered={headerCentered}
           />
         </div>
@@ -955,10 +1019,19 @@ function ProductHeroTile({ tile, product, blockDefaults, tileHeight, gridStyle }
   const imageStyle = tile.imageStyle || blockDefaults.imageStyle;
   const tileBg = tile.bg || null;
 
-  const isLight = textColor === 'light';
-  const fg    = isLight ? '#fff' : 'var(--ink)';
-  const subFg = isLight ? 'rgba(255,255,255,0.78)' : 'var(--ink-muted)';
-  const eyeFg = isLight ? 'rgba(255,255,255,0.85)' : 'var(--accent)';
+  // Hero tile text is always LIGHT (white). The dark-text option was removed
+  // because it kept clashing with dark product imagery — matching the main
+  // HeroCarousel keeps the look consistent across the page. The admin
+  // textColor field is ignored here intentionally; CTAs still flow through
+  // renderSectionCta with isLight=true so the buttons match.
+  void textColor;
+  const isLight = true;
+  const fg    = '#fff';
+  const subFg = 'rgba(255,255,255,0.78)';
+  const eyeFg = 'rgba(255,255,255,0.85)';
+  const isOverlayMode = imageStyle !== 'stacked-below' && imageStyle !== 'stacked-above';
+  const titleShadow = isOverlayMode ? '0 2px 18px rgba(0,0,0,0.45)' : 'none';
+  const subShadow   = isOverlayMode ? '0 1px 10px rgba(0,0,0,0.4)' : 'none';
   const alignH = { left: 'flex-start', center: 'center', right: 'flex-end' }[textAlign] || 'center';
   const alignV = { top: 'flex-start', middle: 'center', bottom: 'flex-end' }[verticalAlign] || 'flex-end';
 
@@ -972,18 +1045,19 @@ function ProductHeroTile({ tile, product, blockDefaults, tileHeight, gridStyle }
       {eyebrow && (
         <p style={{
           fontSize: '0.74rem', fontWeight: 600, letterSpacing: '0.16em', textTransform: 'uppercase',
-          color: eyeFg, marginBottom: 16,
+          color: eyeFg, marginBottom: 16, textShadow: subShadow,
         }}>{eyebrow}</p>
       )}
       <h3 style={{
         fontFamily: "'DM Serif Display', serif",
         fontSize: 'clamp(2rem, 3.6vw, 3.4rem)', lineHeight: 1.05,
         letterSpacing: '-0.03em', marginBottom: 14, color: fg,
+        textShadow: titleShadow,
       }}>{name}</h3>
       {subtitle && (
         <p style={{
           fontSize: '1.05rem', lineHeight: 1.5, color: subFg,
-          marginBottom: 26, maxWidth: 420,
+          marginBottom: 26, maxWidth: 420, textShadow: subShadow,
           ...(textAlign === 'center' && { marginLeft: 'auto', marginRight: 'auto' }),
         }}>{subtitle}</p>
       )}
@@ -1343,6 +1417,7 @@ function CollectionMarqueeBlock({ data, products, groupBuys }) {
           title={data.title || defaultTitle}
           subtitle={data.subtitle}
           viewAllLink={centered ? null : viewAll}
+          viewAllCta={data.viewAllCta}
           centered={centered}
         />
       </div>
@@ -1357,7 +1432,7 @@ function CollectionMarqueeBlock({ data, products, groupBuys }) {
         gap={gap}
         cardWidth={cardWidth}
       />
-      {centered && <SectionFooter viewAllLink={viewAll} />}
+      {centered && <SectionFooter viewAllLink={viewAll} viewAllCta={data.viewAllCta} />}
     </section>
   );
 }
@@ -1425,7 +1500,7 @@ function MixedCollectionBlock({ data, layout, products, groupBuys }) {
           />
         </div>
         <MarqueeRow items={items} renderItem={renderItem} speed={speed} gap={gap} cardWidth={cardWidth} />
-        {centered && <SectionFooter viewAllLink={viewAll} />}
+        {centered && <SectionFooter viewAllLink={viewAll} viewAllCta={data.viewAllCta} />}
       </section>
     );
   }
@@ -1440,6 +1515,7 @@ function MixedCollectionBlock({ data, layout, products, groupBuys }) {
           title={defaultTitle}
           subtitle={data.subtitle}
           viewAllLink={centered ? null : viewAll}
+          viewAllCta={data.viewAllCta}
           centered={centered}
         />
         <div className="collection-grid" style={{
@@ -1454,7 +1530,7 @@ function MixedCollectionBlock({ data, layout, products, groupBuys }) {
             <div key={`${item.type}-${item.data._id || i}`}>{renderItem(item)}</div>
           ))}
         </div>
-        {centered && <SectionFooter viewAllLink={viewAll} />}
+        {centered && <SectionFooter viewAllLink={viewAll} viewAllCta={data.viewAllCta} />}
       </section>
     );
   }
@@ -1467,6 +1543,7 @@ function MixedCollectionBlock({ data, layout, products, groupBuys }) {
         title={defaultTitle}
         subtitle={data.subtitle}
         viewAllLink={centered ? null : viewAll}
+        viewAllCta={data.viewAllCta}
         centered={centered}
       />
       <div className="carousel-wrap">
@@ -1478,7 +1555,7 @@ function MixedCollectionBlock({ data, layout, products, groupBuys }) {
           ))}
         </div>
       </div>
-      {centered && <SectionFooter viewAllLink={viewAll} />}
+      {centered && <SectionFooter viewAllLink={viewAll} viewAllCta={data.viewAllCta} />}
     </section>
   );
 }
@@ -1548,7 +1625,8 @@ function GenericHeroRow({ data, items, itemToTile, adminMode, emptyLabel }) {
             eyebrow={data.eyebrow}
             title={data.title || ''}
             subtitle={data.subtitle}
-            viewAllLink={null}
+            viewAllLink={headerCentered ? null : (data.viewAllLink || null)}
+            viewAllCta={data.viewAllCta}
             centered={headerCentered}
           />
         </div>
@@ -1672,7 +1750,11 @@ function HeroCarousel({ isFirst, data, images, fallbackImage, primaryCta, second
 
   const displayImages = images.length > 0 ? images : (fallbackImage ? [fallbackImage] : []);
   const hasImages = displayImages.length > 0;
-  const isLightText = textColor !== 'dark';
+  // Hero text is always LIGHT (white). Dark text was removed — it clashed
+  // with most hero imagery and the textColor admin option is now ignored
+  // for consistency with ProductHeroTile.
+  void textColor;
+  const isLightText = true;
 
   const startTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -1713,9 +1795,17 @@ function HeroCarousel({ isFirst, data, images, fallbackImage, primaryCta, second
   const scrimGradient = buildHeroScrim(scrimStrength, scrimDir, scrimColor);
   const vAlign = { top: 'flex-start', middle: 'center', bottom: 'flex-end' }[contentAlignV] || 'flex-end';
   const hAlign = { left: 'flex-start', center: 'center', right: 'flex-end' }[contentAlignH] || 'flex-start';
-  const titleColor   = isLightText ? '#fff' : 'var(--ink)';
-  const subColor     = isLightText ? 'rgba(255,255,255,0.6)' : 'var(--ink-muted)';
-  const eyebrowColor = isLightText ? 'rgba(255,255,255,0.55)' : 'var(--ink-faint)';
+  // Hardcode the dark-text values so they don't flip when the site theme
+  // toggles to dark mode. The hero image is theme-independent; if the admin
+  // chose dark text, it must stay dark over that image regardless of theme.
+  const titleColor   = '#fff';
+  const subColor     = 'rgba(255,255,255,0.6)';
+  const eyebrowColor = 'rgba(255,255,255,0.55)';
+  // Subtle dark halo so the always-white text stays readable on light images.
+  // Only applied in overlay/gallery layouts where text sits on top of the image.
+  const isOverlayLayout = layout === 'overlay' || layout === 'gallery';
+  const titleShadow = isOverlayLayout ? '0 2px 24px rgba(0,0,0,0.45)' : 'none';
+  const subShadow   = isOverlayLayout ? '0 1px 14px rgba(0,0,0,0.45)' : 'none';
   const sectionMargin = isFirst ? { marginTop: 'var(--nav-h)' } : null;
 
   // Skip the text block entirely in imageOnly mode. Returning null lets each
@@ -1724,13 +1814,13 @@ function HeroCarousel({ isFirst, data, images, fallbackImage, primaryCta, second
   const contentBlock = imageOnly ? null : (
     <div className="hero-text" style={{ maxWidth: contentMaxWidth, textAlign: contentAlignH }}>
       {eyebrow && (
-        <p className="hero-eyebrow animate-fadeUp" style={{ color: eyebrowColor }}>{eyebrow}</p>
+        <p className="hero-eyebrow animate-fadeUp" style={{ color: eyebrowColor, textShadow: subShadow }}>{eyebrow}</p>
       )}
-      <h1 className="hero-title animate-fadeUp" style={{ color: titleColor, animationDelay: '0.15s' }}>
+      <h1 className="hero-title animate-fadeUp" style={{ color: titleColor, animationDelay: '0.15s', textShadow: titleShadow }}>
         {parseItalic(title)}
       </h1>
       {subtitle && (
-        <p className="hero-sub animate-fadeUp" style={{ color: subColor, animationDelay: '0.3s' }}>
+        <p className="hero-sub animate-fadeUp" style={{ color: subColor, animationDelay: '0.3s', textShadow: subShadow }}>
           {subtitle}
         </p>
       )}
@@ -2028,8 +2118,11 @@ function BannerSection({ layout = 'split', imgUrl, eyebrow, title, subtitle, cta
   // Color tokens. Italic em gets a tinted accent for visual weight, matching
   // the original CSS-driven banner. Text shadow adds readability over busy
   // images when text is light (overlay/fullbleed contexts).
-  const fg            = isLight ? '#fff' : (isDark ? 'var(--ink)' : 'inherit');
-  const subFg         = isLight ? 'rgba(255,255,255,0.78)' : 'var(--ink-muted)';
+  // Same theme-pin logic as the hero: when the admin picks dark text, hold
+  // it dark across light/dark site themes since the banner image doesn't
+  // flip. `accent` here stays themed because it's a brand color choice.
+  const fg            = isLight ? '#fff' : (isDark ? '#1a1a18' : 'inherit');
+  const subFg         = isLight ? 'rgba(255,255,255,0.78)' : 'rgba(26,26,24,0.7)';
   const eyeFg         = isLight ? 'rgba(255,255,255,0.92)' : 'var(--accent)';
   const italicColor   = isLight ? '#a8d8be' : 'var(--accent)';
   const overImageText = (layout === 'overlay' || layout === 'fullbleed') && isLight;

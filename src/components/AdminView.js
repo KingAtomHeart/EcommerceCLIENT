@@ -3,6 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
 import { StatusBadge, statusStyle } from '../utils/statusColors';
 import { useTheme } from '../context/ThemeContext';
+import { useSiteStyle } from '../context/SiteStyleContext';
 import toast from 'react-hot-toast';
 import AdminHomepageEditor from './AdminHomepageEditor';
 import GroupBuyAdmin, { UnifiedGBOrderCard } from '../pages/GroupBuyAdmin';
@@ -13,11 +14,12 @@ import GroupBuyAdmin, { UnifiedGBOrderCard } from '../pages/GroupBuyAdmin';
 import { LandingPageEditor, serializeLandingPage } from './LandingPage';
 import { CUSTOM_PAGE_SKELETON, renderCustomPageTokens } from '../utils/customPage';
 import { priceDelta } from '../utils/priceFormat';
+import { useCategories } from '../utils/categories';
 import { getDimValues } from '../utils/variants';
 
 const VALID_TABS = ['products', 'group-buys', 'orders', 'stats', 'homepage', 'categories'];
 
-async function uploadOptionImage(file) {
+export async function uploadOptionImage(file) {
   const fd = new FormData();
   fd.append('image', file);
   const data = await apiFetch('/upload/single', { method: 'POST', body: fd });
@@ -26,7 +28,7 @@ async function uploadOptionImage(file) {
 
 /* Move an array element from `from` to `to` and return the new array. Used
    by every reorder-by-drag UI here (image previews, etc.). */
-function arrayMove(arr, from, to) {
+export function arrayMove(arr, from, to) {
   const next = [...arr];
   const [moved] = next.splice(from, 1);
   next.splice(to, 0, moved);
@@ -158,7 +160,7 @@ export default function AdminView({ products, fetchData, loading }) {
   if (loading && tab === 'products') return <div className="loading-center"><div className="spinner" /></div>;
 
   return (
-    <div>
+    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
       <div className="admin-dashboard-header" style={{ marginBottom: '36px' }}>
         <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '2.4rem', letterSpacing: '-0.025em', marginBottom: '8px' }}>Dashboard</h1>
         <p className="admin-dashboard-subtitle" style={{ color: 'var(--ink-muted)', fontSize: '0.9rem' }}>Manage your products, images, and orders.</p>
@@ -294,7 +296,12 @@ export default function AdminView({ products, fetchData, loading }) {
 
       {tab === 'stats' && <StatsPanel orders={orders} loading={ordersLoading} />}
 
-      {tab === 'homepage' && <AdminHomepageEditor />}
+      {tab === 'homepage' && (
+        <>
+          <AppearancePanel />
+          <AdminHomepageEditor />
+        </>
+      )}
 
       {tab === 'categories' && <CategoriesPanel />}
 
@@ -371,6 +378,133 @@ function Caret({ open }) {
   );
 }
 
+/* ═══════════════════════════════════════════════
+   ACTION MENU — single-pill grouped dropdown
+   ───────────────────────────────────────────────
+   Used by ProductCard / GroupBuy admin cards to collapse the row of action
+   pills (Edit ▼ | Orders ▼ | Add-ons | CSV | Publish | Archive) into one
+   "Manage" pill with grouped sections.
+
+   sections: [{ heading, items: [{ key, label, onClick, active, hidden,
+                                   destructive, badge }] }]
+═══════════════════════════════════════════════ */
+export function ActionMenu({ label = 'Manage', active = false, sections = [], minWidth = 220 }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const [hovered, setHovered] = useState(null);
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
+
+  const toggle = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      // Anchor under the trigger; if the menu would overflow the right edge,
+      // shift it left so it stays in-viewport (margin 16).
+      const left = Math.min(r.left, window.innerWidth - minWidth - 16);
+      setPos({ top: r.bottom + 4, left: Math.max(8, left) });
+    }
+    setOpen(o => !o);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target) &&
+          btnRef.current && !btnRef.current.contains(e.target)) setOpen(false);
+    };
+    const onScroll = () => setOpen(false);
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDocClick);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', onScroll);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const handleItem = (item) => {
+    setOpen(false);
+    item.onClick && item.onClick();
+  };
+
+  // Drop empty sections so a hidden-all section doesn't leave an orphan heading.
+  const visibleSections = sections
+    .map(s => ({ ...s, items: (s.items || []).filter(i => !i.hidden) }))
+    .filter(s => s.items.length > 0);
+
+  return (
+    <>
+      <div ref={btnRef} style={{ display: 'inline-block' }}>
+        <Pill onClick={toggle} active={open || active}>
+          {label} <Caret open={open} />
+        </Pill>
+      </div>
+      {open && (
+        <div ref={menuRef} style={{
+          position: 'fixed', top: pos.top, left: pos.left, zIndex: 1000,
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)',
+          boxShadow: '0 14px 36px rgba(0,0,0,0.18), 0 3px 8px rgba(0,0,0,0.08)',
+          minWidth, padding: 4,
+        }}>
+          {visibleSections.map((sec, si) => (
+            <div key={sec.heading || si} style={{ marginTop: si === 0 ? 0 : 4, paddingTop: si === 0 ? 0 : 4, borderTop: si === 0 ? 'none' : '1px solid var(--border-subtle)' }}>
+              {sec.heading && (
+                <p style={{
+                  margin: 0, padding: '6px 10px 4px',
+                  fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.1em',
+                  textTransform: 'uppercase', color: 'var(--ink-faint)',
+                }}>
+                  {sec.heading}
+                </p>
+              )}
+              {sec.items.map(item => {
+                const isHovered = hovered === item.key;
+                const isActive = !!item.active;
+                const destructive = !!item.destructive;
+                let bg = 'transparent';
+                let color = 'var(--ink)';
+                if (isActive) { bg = 'var(--accent)'; color = '#fff'; }
+                else if (isHovered) {
+                  if (destructive) { bg = 'rgba(192,57,43,0.10)'; color = '#c0392b'; }
+                  else { bg = 'var(--accent-light)'; color = 'var(--accent)'; }
+                }
+                return (
+                  <button key={item.key} onClick={() => handleItem(item)}
+                    onMouseEnter={() => setHovered(item.key)}
+                    onMouseLeave={() => setHovered(null)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                      width: '100%', textAlign: 'left',
+                      padding: '8px 12px', background: bg, border: 'none', cursor: 'pointer',
+                      fontSize: '0.8rem', fontFamily: "'DM Sans', sans-serif",
+                      color, fontWeight: 500, borderRadius: 6,
+                      transition: 'background 0.12s, color 0.12s',
+                    }}>
+                    <span>{item.label}</span>
+                    {item.badge != null && (
+                      <span style={{
+                        fontSize: '0.66rem', fontWeight: 600,
+                        padding: '2px 8px', borderRadius: 10,
+                        background: isActive ? 'rgba(255,255,255,0.22)' : 'var(--border-subtle)',
+                        color: isActive ? '#fff' : 'var(--ink-muted)',
+                      }}>{item.badge}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 function PanelHeader({ title, onClose }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
@@ -389,38 +523,7 @@ function PanelHeader({ title, onClose }) {
    PRODUCT CARD (Admin Grid View)
 ═══════════════════════════════════════════════ */
 function ProductCard({ product, fetchData, panel, onTogglePanel, allProducts = [], orders = [], ordersLoading = false, ordersLoaded = true, fetchOrders, updateOrderLocal }) {
-  const [editMenuOpen, setEditMenuOpen] = useState(false);
-  const [editMenuPos, setEditMenuPos] = useState({ top: 0, left: 0 });
-  const [hoveredMenuKey, setHoveredMenuKey] = useState(null);
-  const editMenuRef = useRef(null);
-  const editBtnRef = useRef(null);
-
-  const togglePanel = (p) => { setEditMenuOpen(false); onTogglePanel(p); };
   const closePanel = () => onTogglePanel(null);
-  const toggleEditMenu = () => {
-    if (!editMenuOpen && editBtnRef.current) {
-      const r = editBtnRef.current.getBoundingClientRect();
-      setEditMenuPos({ top: r.bottom + 4, left: r.left });
-    }
-    setEditMenuOpen(o => !o);
-  };
-
-  useEffect(() => {
-    if (!editMenuOpen) return;
-    const onDocClick = (e) => {
-      if (editMenuRef.current && !editMenuRef.current.contains(e.target) &&
-          editBtnRef.current && !editBtnRef.current.contains(e.target)) setEditMenuOpen(false);
-    };
-    const onScroll = () => setEditMenuOpen(false);
-    document.addEventListener('mousedown', onDocClick);
-    window.addEventListener('scroll', onScroll, true);
-    window.addEventListener('resize', onScroll);
-    return () => {
-      document.removeEventListener('mousedown', onDocClick);
-      window.removeEventListener('scroll', onScroll, true);
-      window.removeEventListener('resize', onScroll);
-    };
-  }, [editMenuOpen]);
 
   const toggleActive = async () => {
     const action = product.isActive ? 'archive' : 'activate';
@@ -473,9 +576,31 @@ function ProductCard({ product, fetchData, panel, onTogglePanel, allProducts = [
     ? `${variantCount} variant${variantCount === 1 ? '' : 's'}`
     : (stockInfo.unlimited ? 'Unlimited stock' : `${totalStock} in stock`);
 
-  const editKeys = ['details', 'images', 'options', 'variants-config'];
   const isOpen = !!panel;
-  const exportCSV = () => { toast('CSV export coming soon'); };
+  // CSV export — hits the manufacturer-friendly endpoint that returns one
+  // row per line item plus a production-totals (BOM) block at the bottom.
+  // apiFetch isn't used since we need the raw response stream for download.
+  const exportCSV = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const API = process.env.REACT_APP_API_BASE_URL;
+      const res = await fetch(`${API}/products/${product._id}/export-orders-csv`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || 'Export failed');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(product.name || 'product').replace(/[^a-zA-Z0-9]/g, '_')}_orders.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('CSV downloaded');
+    } catch (err) { toast.error(err.message); }
+  };
 
   return (
     <div style={{
@@ -513,44 +638,36 @@ function ProductCard({ product, fetchData, panel, onTogglePanel, allProducts = [
           {product.isQueued ? 'Queued' : (product.isActive ? 'Active' : 'Archived')}
         </span>
         <div className="admin-product-actions" style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-          <div ref={editBtnRef} style={{ display: 'inline-block' }}>
-            <Pill onClick={toggleEditMenu} active={editMenuOpen || editKeys.includes(panel)}>
-              Edit <Caret open={editMenuOpen} />
-            </Pill>
-          </div>
-          {editMenuOpen && (
-            <div ref={editMenuRef} style={{ position: 'fixed', top: editMenuPos.top, left: editMenuPos.left, zIndex: 1000, background: 'var(--surface)', border: '1px solid var(--ink-faint)', borderRadius: 'var(--radius-sm)', boxShadow: '0 14px 36px rgba(0,0,0,0.22), 0 3px 8px rgba(0,0,0,0.10)', minWidth: 180, overflow: 'hidden', padding: '4px' }}>
-              <p style={{ margin: 0, padding: '4px 10px 6px', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-faint)', borderBottom: '1px solid var(--border-subtle)', marginBottom: '4px' }}>Edit</p>
-              {[
-                { key: 'details', label: 'Details' },
-                { key: 'images', label: 'Images' },
-                { key: 'options', label: 'Options' },
-                { key: 'variants-config', label: 'Variants / Config' },
-              ].map(item => {
-                const isActive = panel === item.key;
-                const isHovered = hoveredMenuKey === item.key;
-                const bg = isActive ? 'var(--accent)' : (isHovered ? 'var(--accent-light)' : 'transparent');
-                const color = isActive ? '#fff' : (isHovered ? 'var(--accent)' : 'var(--ink)');
-                return (
-                  <button key={item.key} onClick={() => togglePanel(item.key)}
-                    onMouseEnter={() => setHoveredMenuKey(item.key)}
-                    onMouseLeave={() => setHoveredMenuKey(null)}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: bg, border: 'none', cursor: 'pointer', fontSize: '0.78rem', fontFamily: "'DM Sans', sans-serif", color, fontWeight: 500, borderRadius: '6px', transition: 'background 0.12s, color 0.12s' }}>
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          <Pill onClick={() => togglePanel('orders')} active={panel === 'orders'}>
-            Orders <Caret open={panel === 'orders'} />
-          </Pill>
-          <Pill onClick={() => togglePanel('addons')} active={panel === 'addons'}>
-            Add-ons <Caret open={panel === 'addons'} />
-          </Pill>
-          <Pill onClick={exportCSV}>CSV</Pill>
-          {product.isQueued && <Pill onClick={publish}>Publish</Pill>}
-          <Pill onClick={toggleActive}>{product.isActive ? 'Archive' : 'Activate'}</Pill>
+          <ActionMenu
+            label="Manage"
+            active={isOpen}
+            sections={[
+              {
+                heading: 'Edit',
+                items: [
+                  { key: 'details', label: 'Details', onClick: () => onTogglePanel('details'), active: panel === 'details' },
+                  { key: 'images', label: 'Images', onClick: () => onTogglePanel('images'), active: panel === 'images' },
+                  { key: 'options', label: 'Options', onClick: () => onTogglePanel('options'), active: panel === 'options' },
+                  { key: 'variants-config', label: 'Variants / Config', onClick: () => onTogglePanel('variants-config'), active: panel === 'variants-config' },
+                ],
+              },
+              {
+                heading: 'View',
+                items: [
+                  { key: 'orders', label: 'Orders', onClick: () => onTogglePanel('orders'), active: panel === 'orders' },
+                  { key: 'addons', label: 'Add-ons', onClick: () => onTogglePanel('addons'), active: panel === 'addons' },
+                ],
+              },
+              {
+                heading: 'Actions',
+                items: [
+                  { key: 'csv', label: 'Export CSV', onClick: exportCSV },
+                  { key: 'publish', label: 'Publish', onClick: publish, hidden: !product.isQueued },
+                  { key: 'toggle', label: product.isActive ? 'Archive' : 'Activate', onClick: toggleActive, destructive: product.isActive },
+                ],
+              },
+            ]}
+          />
         </div>
       </div>
       {panel === 'details' && <EditProductCard product={product} fetchData={fetchData} onClose={closePanel} inline allProducts={allProducts} />}
@@ -608,7 +725,7 @@ function ProductOrdersPanel({ product, allProducts, orders, loading, ordersLoade
 
   if (loading || !ordersLoaded) {
     return (
-      <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border-subtle)' }}>
+      <div className="admin-inline-panel">
         <PanelHeader title="Orders" onClose={onClose} />
         <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}><div className="spinner" /></div>
       </div>
@@ -616,7 +733,7 @@ function ProductOrdersPanel({ product, allProducts, orders, loading, ordersLoade
   }
 
   return (
-    <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+    <div className="admin-inline-panel admin-inline-panel-muted">
       <PanelHeader title={`Orders (${filtered.length})`} onClose={onClose} />
       {filtered.length === 0 ? (
         <p style={{ fontSize: '0.84rem', color: 'var(--ink-muted)', padding: '20px 0' }}>No orders for this product yet.</p>
@@ -646,8 +763,8 @@ function ProductAddonsPanel({ parent, allProducts, fetchData, orders, ordersLoad
   });
 
   return (
-    <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-secondary)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: '14px' }}>
+    <div className="admin-inline-panel admin-inline-panel-muted">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: '10px' }}>
         <PanelHeader title={`Add-ons (${addons.length})`} onClose={onClose} />
         <button type="button" onClick={() => setShowCreate(true)}
           style={{ padding: '6px 14px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: 'pointer', fontSize: '0.78rem', fontFamily: "'DM Sans', sans-serif", fontWeight: 500 }}>
@@ -740,108 +857,93 @@ function EditProductCard({ product, fetchData, onClose, inline, allProducts = []
     } catch (err) { toast.error(err.message); } finally { setSaving(false); }
   };
 
+  const wrapperClass = inline ? 'admin-inline-panel admin-inline-panel-form' : '';
   const wrapperStyle = inline
-    ? { padding: '16px 24px 20px', borderTop: '1px solid var(--border-subtle)' }
+    ? null
     : { padding: '20px', border: '2px solid var(--accent)', background: 'var(--surface)', borderRadius: 'var(--radius)' };
 
+  // Summary counters drive the collapsed-section labels so admins can see
+  // what's populated without expanding every panel — same UX as CreateProductModal.
+  const specCount  = specs.filter(s => s.label.trim() && s.value.trim()).length;
+  const landingLen = landingPage.length;
+  const htmlLen    = (customPageHtml || '').trim().length;
+
   return (
-    <div style={wrapperStyle}>
+    <div className={wrapperClass} style={wrapperStyle}>
       <div>
         <PanelHeader title={inline ? 'Edit Details' : 'Edit Product'} onClose={onClose} />
+
+        {/* ── Header block — same always-visible fields as CreateProductModal:
+              name, short description, then the price/stock/category row. ── */}
         <div className="form-group"><label className="form-label">Name</label>
           <input className="form-input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
         </div>
 
-        {/* Description — short blurb shown next to the buy button. Marketing
-            content lives in Product Page Sections below; keeping description
-            small prevents it from pushing the buy/options below the fold. */}
         <div className="form-group">
           <label className="form-label">Description</label>
           <MarkdownEditor
             value={form.description}
             onChange={v => setForm(f => ({ ...f, description: v }))}
-            minHeight={110}
+            minHeight={80}
             placeholder="A short blurb shown next to the buy button. Use Product Page Sections below for long-form content." />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <div className="form-group"><label className="form-label">Price (₱) — used when no options set</label>
-            <input type="number" className="form-input" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} />
+        <div className="modal-row-3">
+          <div className="form-group">
+            <label className="form-label">Price (₱)</label>
+            <input type="number" className="form-input" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="Foundation; options/variants add on top" />
           </div>
           <div className="form-group">
             <label className="form-label">Stock <span style={{ fontWeight: 400, color: 'var(--ink-faint)', fontSize: '0.7rem' }}>— optional</span></label>
-            <input type="number" className="form-input" min="0" value={form.stocks} onChange={e => setForm(f => ({ ...f, stocks: e.target.value }))} placeholder="Blank = unlimited / set per option or variant" />
+            <input type="number" className="form-input" min="0" value={form.stocks} onChange={e => setForm(f => ({ ...f, stocks: e.target.value }))} placeholder="Blank = unlimited" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Category</label>
+            <CategoryPicker value={form.category} onChange={v => setForm(f => ({ ...f, category: v }))} options={knownCategories} />
           </div>
         </div>
-        <div className="form-group">
-          <label className="form-label">Category</label>
-          <CategoryPicker value={form.category} onChange={v => setForm(f => ({ ...f, category: v }))} options={knownCategories} />
-        </div>
 
-        {/* Specifications editor */}
-        <div className="form-group">
-          <label className="form-label">Specifications <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>(optional)</span></label>
-          <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
+        {/* ── Optional sections — collapsibles, same titles/summaries as
+              CreateProductModal so the look matches. Images + Variants live
+              in their own dedicated panels (separate dropdowns on the row)
+              and aren't repeated here. ── */}
+        <CollapsibleSection title="Specifications" summary={specCount > 0 ? `${specCount} row${specCount === 1 ? '' : 's'}` : 'optional'}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
             Custom rows shown on the product page (e.g. Layout → 65%, Weight → 1.2kg).
             <span style={{ display: 'block', marginTop: 4, color: 'var(--ink-faint)' }}>Tip: press Enter to jump from Label → Value, and again on Value to add the next row.</span>
           </p>
           <SpecsEditor value={specs} onChange={setSpecs} />
-        </div>
+        </CollapsibleSection>
 
-        {/* Product Page Sections — matches the create modal so customers see
-            the same shape regardless of when a section was added. */}
-        <div className="form-group">
-          <label className="form-label">
-            Product Page Sections <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>(optional)</span>
-          </label>
-          <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
-            Rendered below the buy section. Add a Hero image, Banner text, Text+Image split, Gallery, or Feature grid.
+        <CollapsibleSection title="Product Page Sections" summary={landingLen > 0 ? `${landingLen} section${landingLen === 1 ? '' : 's'}` : 'optional'}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
+            Rendered <strong>below the buy section</strong>. Add a Hero image, Banner text, Text+Image split, Gallery, or Feature grid.
           </p>
           <LandingPageEditor value={landingPage} onChange={setLandingPage} />
-        </div>
+        </CollapsibleSection>
 
-        {/* Custom HTML override — overrides Product Page Sections when set. */}
-        <div className="form-group">
-          <label className="form-label">
-            Custom HTML{' '}
-            <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>
-              {customPageHtml.trim() ? `(${customPageHtml.length.toLocaleString()} chars — overrides sections)` : '(optional)'}
-            </span>
-          </label>
-          <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
-            Paste raw HTML + CSS. Replaces Product Page Sections when set. Use it for hand-coded flagship pages.
+        <CollapsibleSection title="Custom HTML" summary={htmlLen > 0 ? `${htmlLen.toLocaleString()} chars` : 'optional'}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '8px' }}>
+            Paste raw HTML + CSS. Rendered <strong>below the buy section</strong>, replacing Product Page Sections when set.
           </p>
           <CustomHtmlEditor value={customPageHtml} onChange={setCustomPageHtml} previewProduct={product} />
-        </div>
+        </CollapsibleSection>
 
-        {/* Cross-sell pickers — empty = auto-derive on the customer page. */}
-        <div className="form-group">
-          <label className="form-label">
-            Add-ons{' '}
-            <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>
-              {pinnedAddOnIds.length > 0 ? `(${pinnedAddOnIds.length} pinned)` : '(auto)'}
-            </span>
-          </label>
-          <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
-            Pin specific products. Empty = auto-show this product's child add-ons.
-          </p>
-          <PinnedProductsPicker value={pinnedAddOnIds} onChange={setPinnedAddOnIds} />
-        </div>
+        <CollapsibleSection title="Add-ons" summary={pinnedAddOnIds.length > 0 ? `${pinnedAddOnIds.length} pinned` : 'auto'}>
+          <PinnedProductsPicker
+            value={pinnedAddOnIds}
+            onChange={setPinnedAddOnIds}
+            helpText="Items shown in the Add-ons section below the buy section. Leave empty to auto-show products tagged with this product as their parent." />
+        </CollapsibleSection>
 
-        <div className="form-group">
-          <label className="form-label">
-            You might also like{' '}
-            <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>
-              {pinnedRelatedIds.length > 0 ? `(${pinnedRelatedIds.length} pinned)` : '(auto)'}
-            </span>
-          </label>
-          <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
-            Pin specific products. Empty = auto-pick from the same category.
-          </p>
-          <PinnedProductsPicker value={pinnedRelatedIds} onChange={setPinnedRelatedIds} />
-        </div>
+        <CollapsibleSection title="You might also like" summary={pinnedRelatedIds.length > 0 ? `${pinnedRelatedIds.length} pinned` : 'auto'}>
+          <PinnedProductsPicker
+            value={pinnedRelatedIds}
+            onChange={setPinnedRelatedIds}
+            helpText="Items shown in the 'You might also like' section at the bottom of the page. Leave empty to auto-pick from the same category." />
+        </CollapsibleSection>
 
-        <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+        <div style={{ display: 'flex', gap: '8px', marginTop: '14px' }}>
           <button className="btn-dark" disabled={saving} onClick={save} style={{ padding: '10px 24px' }}><span>{saving ? 'Saving...' : 'Save'}</span></button>
           <button className="btn-outline" onClick={onClose} style={{ padding: '10px 24px' }}>Cancel</button>
         </div>
@@ -914,7 +1016,7 @@ function ImageManager({ product, fetchData, onClose }) {
   };
 
   return (
-    <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-subtle)' }}>
+    <div className="admin-inline-panel">
       <PanelHeader title="Images" onClose={onClose} />
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
         <label className="admin-card-btn" style={{ cursor: 'pointer', opacity: uploading ? 0.5 : 1 }}>
@@ -961,24 +1063,219 @@ function ImageManager({ product, fetchData, onClose }) {
    typo-driven duplicates like "keyboards" vs "Keyboards") OR type a brand-new
    category inline. No extra buttons; typing a fresh value creates it on submit.
 ═══════════════════════════════════════════════ */
-let __catListCounter = 0;
-export function CategoryPicker({ value, onChange, options = [], placeholder = 'Pick existing or type new...', required }) {
-  // Stable id per mount — avoids datalist collisions when multiple pickers render.
-  const [listId] = useState(() => `cat-list-${++__catListCounter}`);
+/* Chip-style category picker.
+   Source of truth is the canonical Category collection (managed in the
+   Categories admin tab) — pulled live via useCategories. The legacy
+   `options` prop is intentionally ignored: it used to be built from
+   `[...new Set(products.map(p => p.category))]` which dragged every typo
+   and test entry into the picker. Renaming a category in the admin tab
+   automatically cleans up what shows here.
+
+   "+ New" opens an inline input — confirming POSTs a fresh Category
+   record so it persists across reloads instead of being a one-off string
+   on a single product. The product's `category` field is still a plain
+   string (the canonical name), so callers don't change. */
+export function CategoryPicker({ value, onChange, options: _ignored = [], placeholder = 'Select category', required }) {
+  void _ignored;
+  const { categories, refresh } = useCategories();
+  const [open, setOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [creating, setCreating] = useState(false);
+  const wrapRef = useRef(null);
+
+  // Canonical names only. Preserves admin sortOrder from the Categories tab.
+  const names = (categories || []).map(c => c.name).filter(Boolean);
+  // If the stored value isn't in the canonical list (renamed / deleted),
+  // surface it anyway so the admin can see + replace it.
+  const list = [...names];
+  if (value && !list.some(n => n.toLowerCase() === value.toLowerCase())) {
+    list.unshift(value);
+  }
+
+  // Click-outside to close. Bound only while open so we don't leak listeners.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false); setAdding(false); setDraft('');
+      }
+    };
+    window.addEventListener('mousedown', onDown);
+    return () => window.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const pick = (name) => {
+    onChange(name);
+    setOpen(false);
+    setAdding(false);
+    setDraft('');
+  };
+
+  const commitNew = async () => {
+    const next = draft.trim();
+    if (!next) { setAdding(false); return; }
+    // Case-insensitive match → select existing instead of duplicating.
+    const existing = list.find(n => n.toLowerCase() === next.toLowerCase());
+    if (existing) { pick(existing); return; }
+
+    // POST a real Category record so the new name persists. ensureCategoryExists
+    // on the product save would create it anyway, but doing it here means the
+    // canonical list shows it immediately for the next picker.
+    setCreating(true);
+    try {
+      await apiFetch('/categories', { method: 'POST', body: JSON.stringify({ name: next }) });
+      await refresh();
+    } catch {
+      /* swallow — pick() below still records the choice */
+    } finally {
+      setCreating(false);
+    }
+    pick(next);
+  };
+
+  const display = value || placeholder;
+  const isPlaceholder = !value;
+
   return (
-    <>
-      <input
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
         className="form-input"
-        list={listId}
-        required={required}
-        value={value || ''}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-      />
-      <datalist id={listId}>
-        {options.map(c => <option key={c} value={c} />)}
-      </datalist>
-    </>
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          width: '100%', textAlign: 'left', cursor: 'pointer',
+          color: isPlaceholder ? 'var(--ink-faint)' : 'inherit',
+          fontFamily: "'DM Sans', sans-serif",
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{display}</span>
+        <span aria-hidden="true" style={{
+          color: 'var(--ink-faint)', fontSize: '0.7rem',
+          transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'none',
+        }}>▾</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)', boxShadow: '0 14px 36px rgba(0,0,0,0.22), 0 3px 8px rgba(0,0,0,0.10)',
+          zIndex: 50, maxHeight: 280, overflowY: 'auto', overflowX: 'hidden',
+          padding: 4, boxSizing: 'border-box',
+        }}>
+          {list.length === 0 && !adding && (
+            <p style={{ fontSize: '0.76rem', color: 'var(--ink-faint)', padding: '10px 12px', margin: 0 }}>
+              No categories yet — add one below.
+            </p>
+          )}
+          {list.map(cat => {
+            const active = (value || '').toLowerCase() === cat.toLowerCase();
+            return (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => pick(cat)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  width: '100%', textAlign: 'left',
+                  padding: '8px 12px', borderRadius: 6,
+                  border: 'none',
+                  background: active ? 'var(--accent-light)' : 'transparent',
+                  color: active ? 'var(--accent)' : 'var(--ink)',
+                  fontWeight: active ? 600 : 400,
+                  cursor: 'pointer',
+                  fontSize: '0.84rem', fontFamily: "'DM Sans', sans-serif",
+                }}
+                onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--bg-secondary)'; }}
+                onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cat}</span>
+                {active && <span style={{ fontSize: '0.78rem' }}>✓</span>}
+              </button>
+            );
+          })}
+
+          {/* Footer: + New trigger / inline create input */}
+          <div style={{ borderTop: '1px solid var(--border-subtle)', marginTop: 4, paddingTop: 4 }}>
+            {adding ? (
+              // `minWidth: 0` on the flex input lets it shrink to fit narrow
+              // popover widths (default <input> minWidth would push the Add /
+              // ✕ buttons off the edge and trigger horizontal scroll on the
+              // surrounding modal). Flex-shrink: 0 on the buttons keeps them
+              // sized; the input absorbs whatever's left.
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px', minWidth: 0 }}>
+                <input
+                  autoFocus
+                  value={draft}
+                  onChange={e => setDraft(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { e.preventDefault(); commitNew(); }
+                    if (e.key === 'Escape') { e.preventDefault(); setAdding(false); setDraft(''); }
+                  }}
+                  placeholder="New category name"
+                  style={{
+                    flex: 1, minWidth: 0, padding: '6px 10px',
+                    border: '1px solid var(--accent)', borderRadius: 6,
+                    background: 'var(--bg-secondary)', color: 'inherit',
+                    fontSize: '0.84rem', fontFamily: "'DM Sans', sans-serif",
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <button type="button" onClick={commitNew} disabled={creating || !draft.trim()}
+                  style={{
+                    padding: '6px 10px', borderRadius: 6, border: 'none',
+                    background: 'var(--accent)', color: '#fff',
+                    fontSize: '0.76rem', cursor: creating ? 'wait' : 'pointer',
+                    opacity: (!draft.trim() || creating) ? 0.5 : 1,
+                    flexShrink: 0,
+                  }}>
+                  {creating ? '…' : 'Add'}
+                </button>
+                <button type="button" onClick={() => { setAdding(false); setDraft(''); }}
+                  aria-label="Cancel"
+                  style={{
+                    padding: '6px 8px', borderRadius: 6, border: '1px solid var(--border)',
+                    background: 'transparent', color: 'var(--ink-muted)',
+                    fontSize: '0.76rem', cursor: 'pointer',
+                    flexShrink: 0,
+                  }}>
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAdding(true)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  width: '100%', padding: '8px 12px', borderRadius: 6,
+                  border: 'none', background: 'transparent',
+                  color: 'var(--accent)', fontWeight: 500,
+                  cursor: 'pointer', textAlign: 'left',
+                  fontSize: '0.82rem', fontFamily: "'DM Sans', sans-serif",
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--accent-light)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                + New category
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Hidden mirror input — preserves form-level `required` validation. */}
+      {required && (
+        <input
+          type="text" required tabIndex={-1}
+          value={value || ''}
+          onChange={() => {}}
+          style={{ position: 'absolute', opacity: 0, height: 0, width: 0, padding: 0, border: 'none', pointerEvents: 'none' }}
+        />
+      )}
+    </div>
   );
 }
 
@@ -1306,6 +1603,104 @@ function PickerTile({ name, image, tag, selected, order, onClick }) {
    the slug continue to render the stub. To truly retire a category, the
    admin has to retag the underlying products.
 ═══════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════
+   APPEARANCE PANEL
+   ───────────────────────────────────────────────
+   Site-wide visual style toggle. Reads/writes the singleton SiteSettings
+   document via /site-settings. Changing the style applies to every visitor
+   on next render — the SiteStyleContext provider lives at App root and
+   sets data-style on <html>, which globals.css keys off of.
+═══════════════════════════════════════════════ */
+function AppearancePanel() {
+  const { style, setStyle } = useSiteStyle();
+  const [saving, setSaving] = useState(false);
+
+  const STYLES = [
+    {
+      id: 'classic',
+      name: 'Classic',
+      tagline: 'The original look',
+      desc: 'Warm cream backgrounds, serif headings, rounded corners, soft shadows. The current site.',
+    },
+    {
+      id: 'minimal',
+      name: 'Origami',
+      tagline: 'Crisp, modern, brand green',
+      desc: 'Inter typography, sharp angular edges with the slightest softening, brand green accent. Smooth hover lifts, image zoom, frosted-glass navbar.',
+    },
+    {
+      id: 'pastel-paper',
+      name: 'Pastel Paper',
+      tagline: 'Editorial cream with Apple-style polish',
+      desc: 'Cream paper background, deep sage primary with rose / butter / sky pastel accents, Fraunces editorial serif headings, soft warm shadows, frosted-glass capsule notifications.',
+    },
+  ];
+
+  const choose = async (next) => {
+    if (next === style || saving) return;
+    setSaving(true);
+    try {
+      await setStyle(next);
+      toast.success(`Switched to ${STYLES.find(s => s.id === next)?.name || next}`);
+    } catch (err) {
+      toast.error(err.message || 'Failed to update theme');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: 32, padding: 24, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+      <div style={{ marginBottom: 18 }}>
+        <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.5rem', letterSpacing: '-0.02em', marginBottom: 4 }}>Site appearance</h2>
+        <p style={{ color: 'var(--ink-muted)', fontSize: '0.86rem' }}>
+          Visual style applied to every visitor. Light/dark mode stays per-visitor.
+        </p>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
+        {STYLES.map(s => {
+          const active = style === s.id;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => choose(s.id)}
+              disabled={saving}
+              style={{
+                textAlign: 'left',
+                padding: 18,
+                borderRadius: 'var(--radius-sm)',
+                border: active ? '2px solid var(--accent)' : '1.5px solid var(--border)',
+                background: active ? 'var(--accent-light)' : 'var(--bg)',
+                cursor: saving ? 'progress' : 'pointer',
+                transition: 'all var(--transition)',
+                fontFamily: 'inherit',
+                color: 'var(--ink)',
+                opacity: saving && !active ? 0.6 : 1,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.15rem' }}>{s.name}</span>
+                {active && (
+                  <span style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent)', background: 'var(--surface)', padding: '3px 9px', borderRadius: 20 }}>
+                    Active
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 8 }}>
+                {s.tagline}
+              </div>
+              <div style={{ fontSize: '0.84rem', color: 'var(--ink-muted)', lineHeight: 1.55 }}>
+                {s.desc}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function CategoriesPanel() {
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1442,6 +1837,13 @@ function CategoryEditModal({ category, onClose, onSaved }) {
   const [pinnedGroupBuyIds, setPinnedGroupBuyIds] = useState(
     (category.pinnedGroupBuyIds || []).map(g => g?._id ?? g)
   );
+  // Rich page content — same editors that EditProductCard uses, so admins
+  // get the full block-editor (Hero / Banner / Text+Image / Gallery / Feature
+  // grid) plus a custom HTML escape hatch.
+  const [landingPage, setLandingPage] = useState(
+    Array.isArray(category.landingPage) ? category.landingPage : []
+  );
+  const [customPageHtml, setCustomPageHtml] = useState(category.customPageHtml || '');
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
@@ -1499,6 +1901,8 @@ function CategoryEditModal({ category, onClose, onSaved }) {
         sortOrder: Number(form.sortOrder) || 1000,
         pinnedProductIds,
         pinnedGroupBuyIds,
+        landingPage: serializeLandingPage(landingPage),
+        customPageHtml,
       };
       if (category._id) {
         await apiFetch(`/categories/${category._id}`, { method: 'PATCH', body: JSON.stringify(payload) });
@@ -1577,6 +1981,22 @@ function CategoryEditModal({ category, onClose, onSaved }) {
           </p>
           <PinnedProductsPicker value={combinedPinned} onChange={handleCombinedChange} />
         </div>
+
+        {/* ── Optional rich page content — same editor as product/GB landing
+              pages. Renders between the category hero and the product grid. ── */}
+        <CollapsibleSection title="Page Sections" summary={landingPage.length > 0 ? `${landingPage.length} section${landingPage.length === 1 ? '' : 's'}` : 'optional'}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
+            Hero image, Banner, Text + Image, Gallery, Feature grid — rendered between the category header and the product list. Same blocks as product pages.
+          </p>
+          <LandingPageEditor value={landingPage} onChange={setLandingPage} />
+        </CollapsibleSection>
+
+        <CollapsibleSection title="Custom HTML" summary={(customPageHtml || '').trim().length > 0 ? `${(customPageHtml || '').trim().length.toLocaleString()} chars` : 'optional'}>
+          <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '8px' }}>
+            Raw HTML + CSS rendered <strong>below the product grid</strong>. Useful for one-off promo callouts.
+          </p>
+          <CustomHtmlEditor value={customPageHtml} onChange={setCustomPageHtml} />
+        </CollapsibleSection>
 
         <div className="modal-actions">
           <button onClick={save} disabled={saving} className="btn-dark" style={{ flex: 1, justifyContent: 'center' }}>
@@ -1919,7 +2339,7 @@ function OptionsManager({ product, fetchData, onClose }) {
   };
 
   return (
-    <div style={{ padding: '16px 24px 20px', borderTop: '1px solid var(--border-subtle)' }}>
+    <div className="admin-inline-panel">
       <PanelHeader title="Options — additional-price selectors (added on top of base price)" onClose={onClose} />
       <OptionGroupsField value={groups} onChange={setGroups} />
       <div style={{ display: 'flex', gap: '8px', marginTop: 12 }}>
@@ -2034,7 +2454,7 @@ function ProductConfigManager({ product, fetchData, onClose }) {
   const inputSm = { fontSize: '0.72rem', padding: '5px 7px' };
 
   return (
-    <div style={{ padding: '16px 24px 20px', borderTop: '1px solid var(--border-subtle)' }}>
+    <div className="admin-inline-panel">
       <PanelHeader title="Configs" onClose={onClose} />
       {/* Variant system toggle */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px', padding: '8px 12px', background: useVariants ? 'var(--accent-light)' : 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: `1px solid ${useVariants ? 'var(--accent)' : 'var(--border)'}` }}>
@@ -2462,12 +2882,11 @@ function VariantEditor({ product, fetchData, onClose, embedded }) {
     replace: true
   }, null, 2);
 
-  const wrapperStyle = embedded
-    ? { paddingTop: '12px' }
-    : { padding: '16px 24px 20px', borderTop: '1px solid var(--border-subtle)' };
+  const wrapperClass = embedded ? '' : 'admin-inline-panel';
+  const wrapperStyle = embedded ? { paddingTop: '12px' } : null;
 
   return (
-    <div style={wrapperStyle}>
+    <div className={wrapperClass} style={wrapperStyle}>
       {!embedded && <PanelHeader title="Variants — each row is one sellable SKU with its own stock" onClose={onClose} />}
       {embedded && (
         <p style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: '10px' }}>
@@ -3822,7 +4241,7 @@ export function AddressBlock({ title, addr, sameAsShipping }) {
 /* ═══════════════════════════════════════════════
    CREATE PRODUCT MODAL
 ═══════════════════════════════════════════════ */
-function CollapsibleSection({ title, summary, defaultOpen = false, children }) {
+export function CollapsibleSection({ title, summary, defaultOpen = false, children }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="modal-section" style={{ padding: 0 }}>
@@ -3853,7 +4272,7 @@ function CollapsibleSection({ title, summary, defaultOpen = false, children }) {
 // Per-row variant editor — wraps to the container width so admins never have
 // to scroll horizontally regardless of how many dimensions exist. Each row owns:
 // dimension selectors (or read-only labels in matrix), stock, price, image URL.
-function VariantRowCard({ row, idx, mode, dimensions, onUpdateAttr, onUpdateField, onRemove }) {
+export function VariantRowCard({ row, idx, mode, dimensions, onUpdateAttr, onUpdateField, onRemove }) {
   const [uploadingImg, setUploadingImg] = useState(false);
   const handleImageFile = async (e) => {
     const file = e.target.files?.[0];

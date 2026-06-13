@@ -193,9 +193,15 @@ export default function Checkout() {
 
           <div style={{ maxHeight: '280px', overflowY: 'auto', marginBottom: '16px', paddingRight: '4px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {items.map((item, idx) => {
+              // Cart populates BOTH productId (regular) and groupBuyId (GB)
+              // with name + images. GB items previously fell through to the
+              // 'Product' string because we only read from productId.
               const prod = item.productId;
-              const prodName = prod && typeof prod === 'object' ? prod.name : 'Product';
-              const imgUrl = prod && typeof prod === 'object' ? prod.images?.[0]?.url : null;
+              const gb = item.groupBuyId;
+              const prodObj = (prod && typeof prod === 'object') ? prod : null;
+              const gbObj   = (gb   && typeof gb   === 'object') ? gb   : null;
+              const prodName = gbObj?.name || prodObj?.name || item.name || 'Item';
+              const imgUrl   = gbObj?.images?.[0]?.url || prodObj?.images?.[0]?.url || null;
               let displayName = prodName;
               if (item.selectedOption?.value) displayName = `${prodName} — ${item.selectedOption.value}`;
               const variantAttrs = item.variantAttributes && typeof item.variantAttributes === 'object' && !Array.isArray(item.variantAttributes)

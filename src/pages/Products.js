@@ -137,24 +137,13 @@ export default function Products() {
   const gridAlign = pageContent?.gridAlign || 'left';
   const gridJustify = gridAlign === 'center' ? 'center' : 'start';
 
-  return (
-    <div className="page-body">
-      {enabledBlocks.length > 0 && (
-        <div style={{ marginBottom: 8 }}>
-          {enabledBlocks.map((block, i) => (
-            <BlockRenderer
-              key={block._id || i}
-              block={block}
-              isFirst={i === 0}
-              products={products}
-              groupBuys={groupBuys}
-              loading={loading}
-              countByCategory={(slug) => products.filter(p => p.category?.toLowerCase().replace(/\s+/g, '-') === slug).length}
-            />
-          ))}
-        </div>
-      )}
+  const hasCatalogBlock = enabledBlocks.some(b => b.type === 'catalog');
 
+  // Catalog grid extracted so it can render at the admin-chosen position
+  // among the section blocks. Without a 'catalog' block in the list we fall
+  // back to rendering it at the end (legacy layout behavior).
+  const catalogNode = (
+    <>
       <div id="products" className="shop-header" style={{ scrollMarginTop: 'var(--nav-h, 64px)', padding: '56px var(--page-pad) 0', display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '24px', flexWrap: 'wrap' }}>
         <div className="shop-header-title">
           <h1 style={{ fontFamily: "'DM Serif Display', serif", fontSize: 'clamp(1.7rem, 5.5vw, 2.8rem)', letterSpacing: '-0.025em', marginBottom: '8px' }}>Shop</h1>
@@ -246,6 +235,29 @@ export default function Products() {
           )}
         </>
       )}
+    </>
+  );
+
+  return (
+    <div className="page-body">
+      {enabledBlocks.map((block, i) => {
+        if (block.type === 'catalog') {
+          return <div key={block._id || `catalog-${i}`}>{catalogNode}</div>;
+        }
+        return (
+          <BlockRenderer
+            key={block._id || i}
+            block={block}
+            isFirst={i === 0}
+            products={products}
+            groupBuys={groupBuys}
+            loading={loading}
+            countByCategory={(slug) => products.filter(p => p.category?.toLowerCase().replace(/\s+/g, '-') === slug).length}
+          />
+        );
+      })}
+      {/* Legacy / default position: end of page when no catalog block exists. */}
+      {!hasCatalogBlock && catalogNode}
     </div>
   );
 }

@@ -4,16 +4,9 @@ import UserContext from '../context/UserContext';
 import { apiFetch } from '../utils/api';
 import { statusPaletteKey, StatusBadge, statusStyle } from '../utils/statusColors';
 import toast from 'react-hot-toast';
-import { RichText, AddressBlock, Detail, CopyButton, OptionGroupsField, CategoryPicker, DraggableThumbList, MarkdownEditor, CustomHtmlEditor, PinnedProductsPicker } from '../components/AdminView';
+import { RichText, AddressBlock, Detail, CopyButton, OptionGroupsField, CategoryPicker, DraggableThumbList, MarkdownEditor, CustomHtmlEditor, PinnedProductsPicker, SpecsEditor, CollapsibleSection, ActionMenu, arrayMove, uploadOptionImage } from '../components/AdminView';
 import { LandingPageEditor, serializeLandingPage } from '../components/LandingPage';
 import { priceDelta } from '../utils/priceFormat';
-
-async function uploadOptionImage(file) {
-  const fd = new FormData();
-  fd.append('image', file);
-  const data = await apiFetch('/upload/single', { method: 'POST', body: fd });
-  return data.url;
-}
 
 const STATUSES = ['interest-check', 'open', 'closing-soon', 'closed', 'production', 'completed'];
 const SL = { 'interest-check': 'Interest Check', 'open': 'Open', 'closing-soon': 'Closing Soon', 'closed': 'Closed', 'production': 'In Production', 'completed': 'Completed' };
@@ -141,7 +134,9 @@ export default function GroupBuyAdmin({
   if (embedded) return inner;
   return (
     <div className="page-body" style={{ padding: '56px var(--page-pad) 80px' }}>
-      {inner}
+      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+        {inner}
+      </div>
     </div>
   );
 }
@@ -172,36 +167,7 @@ function PanelHeader({ title, onClose }) {
 }
 
 function GBCard({ gb, gbs, fetchGbs, updateGbLocal, isExpanded, panel, onTogglePanel }) {
-  const [editMenuOpen, setEditMenuOpen] = useState(false);
-  const [editMenuPos, setEditMenuPos] = useState({ top: 0, left: 0 });
-  const [hoveredMenuKey, setHoveredMenuKey] = useState(null);
-  const editMenuRef = useRef(null);
-  const editBtnRef = useRef(null);
-  const togglePanel = (p) => { setEditMenuOpen(false); onTogglePanel(p); };
   const closePanel = () => onTogglePanel(null);
-  const toggleEditMenu = () => {
-    if (!editMenuOpen && editBtnRef.current) {
-      const r = editBtnRef.current.getBoundingClientRect();
-      setEditMenuPos({ top: r.bottom + 4, left: r.left });
-    }
-    setEditMenuOpen(o => !o);
-  };
-  useEffect(() => {
-    if (!editMenuOpen) return;
-    const onDocClick = (e) => {
-      if (editMenuRef.current && !editMenuRef.current.contains(e.target) &&
-          editBtnRef.current && !editBtnRef.current.contains(e.target)) setEditMenuOpen(false);
-    };
-    const onScroll = () => setEditMenuOpen(false);
-    document.addEventListener('mousedown', onDocClick);
-    window.addEventListener('scroll', onScroll, true);
-    window.addEventListener('resize', onScroll);
-    return () => {
-      document.removeEventListener('mousedown', onDocClick);
-      window.removeEventListener('scroll', onScroll, true);
-      window.removeEventListener('resize', onScroll);
-    };
-  }, [editMenuOpen]);
   const updateStatus = async (s) => {
     const prev = gb.status;
     updateGbLocal(gb._id, { status: s });
@@ -281,50 +247,38 @@ function GBCard({ gb, gbs, fetchGbs, updateGbLocal, isExpanded, panel, onToggleP
           {STATUSES.map(s => <option key={s} value={s}>{SL[s]}</option>)}
         </select>
         <div className="admin-product-actions" style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-          <div ref={editBtnRef} style={{ display: 'inline-block' }}>
-            <Pill onClick={toggleEditMenu} active={editMenuOpen || ['details','images','options','configs'].includes(panel)}>
-              Edit <Caret open={editMenuOpen} />
-            </Pill>
-          </div>
-          {editMenuOpen && (
-            <div ref={editMenuRef} style={{ position: 'fixed', top: editMenuPos.top, left: editMenuPos.left, zIndex: 1000, background: 'var(--surface)', border: '1px solid var(--ink-faint)', borderRadius: 'var(--radius-sm)', boxShadow: '0 14px 36px rgba(0,0,0,0.22), 0 3px 8px rgba(0,0,0,0.10)', minWidth: 160, overflow: 'hidden', padding: '4px' }}>
-              <p style={{ margin: 0, padding: '4px 10px 6px', fontSize: '0.62rem', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-faint)', borderBottom: '1px solid var(--border-subtle)', marginBottom: '4px' }}>Edit</p>
-              {[
-                { key: 'details', label: 'Details' },
-                { key: 'images', label: 'Images' },
-                { key: 'options', label: 'Options' },
-                { key: 'configs', label: 'Configs' },
-              ].map(item => {
-                const isActive = panel === item.key;
-                const isHovered = hoveredMenuKey === item.key;
-                const bg = isActive ? 'var(--accent)' : (isHovered ? 'var(--accent-light)' : 'transparent');
-                const color = isActive ? '#fff' : (isHovered ? 'var(--accent)' : 'var(--ink)');
-                return (
-                  <button key={item.key} onClick={() => { togglePanel(item.key); }}
-                    onMouseEnter={() => setHoveredMenuKey(item.key)}
-                    onMouseLeave={() => setHoveredMenuKey(null)}
-                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', background: bg, border: 'none', cursor: 'pointer', fontSize: '0.78rem', fontFamily: "'DM Sans', sans-serif", color, fontWeight: 500, borderRadius: '6px', transition: 'background 0.12s, color 0.12s' }}>
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          {!parentGb && (
-            <Pill onClick={() => togglePanel('orders')} active={panel === 'orders'}>
-              Orders <Caret open={panel === 'orders'} />
-            </Pill>
-          )}
-          {!parentGb && (
-            <Pill onClick={() => togglePanel('addons')} active={panel === 'addons'}>
-              Add-ons <Caret open={panel === 'addons'} />
-            </Pill>
-          )}
-          {!parentGb && <Pill onClick={() => exportCSV('orders')}>CSV</Pill>}
-          {!parentGb && (gb.addOns?.length > 0) && <Pill onClick={() => exportCSV('addons')}>Add-ons CSV</Pill>}
-          {gb.status === 'interest-check' && <Pill onClick={() => togglePanel('interest')} active={panel === 'interest'}>IC ({icCount})</Pill>}
-          {gb.isQueued && <Pill onClick={publish}>Publish</Pill>}
-          <Pill onClick={toggleActive}>{gb.isActive ? 'Archive' : 'Activate'}</Pill>
+          <ActionMenu
+            label="Manage"
+            active={isOpen}
+            sections={[
+              {
+                heading: 'Edit',
+                items: [
+                  { key: 'details', label: 'Details', onClick: () => onTogglePanel('details'), active: panel === 'details' },
+                  { key: 'images', label: 'Images', onClick: () => onTogglePanel('images'), active: panel === 'images' },
+                  { key: 'options', label: 'Options', onClick: () => onTogglePanel('options'), active: panel === 'options' },
+                  { key: 'configs', label: 'Configs', onClick: () => onTogglePanel('configs'), active: panel === 'configs' },
+                ],
+              },
+              {
+                heading: 'View',
+                items: [
+                  { key: 'orders', label: 'Orders', onClick: () => onTogglePanel('orders'), active: panel === 'orders', hidden: !!parentGb },
+                  { key: 'addons', label: 'Add-ons', onClick: () => onTogglePanel('addons'), active: panel === 'addons', hidden: !!parentGb },
+                  { key: 'interest', label: 'Interest checks', onClick: () => onTogglePanel('interest'), active: panel === 'interest', hidden: gb.status !== 'interest-check', badge: icCount || undefined },
+                ],
+              },
+              {
+                heading: 'Actions',
+                items: [
+                  { key: 'csv', label: 'Export orders CSV', onClick: () => exportCSV('orders'), hidden: !!parentGb },
+                  { key: 'csv-addons', label: 'Export add-ons CSV', onClick: () => exportCSV('addons'), hidden: !!parentGb || !(gb.addOns?.length > 0) },
+                  { key: 'publish', label: 'Publish', onClick: publish, hidden: !gb.isQueued },
+                  { key: 'toggle', label: gb.isActive ? 'Archive' : 'Activate', onClick: toggleActive, destructive: gb.isActive },
+                ],
+              },
+            ]}
+          />
         </div>
       </div>
       {panel === 'details' && <EditGBCard gb={gb} gbs={gbs} fetchGbs={fetchGbs} onClose={closePanel} inline />}
@@ -350,6 +304,7 @@ function EditGBCard({ gb, gbs, fetchGbs, onClose, inline }) {
     moq: gb.moq || 0,
     maxOrders: gb.maxOrders || 0,
     category: gb.category || '',
+    status: gb.status || 'interest-check',
     startDate: gb.startDate ? gb.startDate.slice(0, 10) : '',
     endDate: gb.endDate ? gb.endDate.slice(0, 10) : '',
     parentGroupBuyId: gb.parentGroupBuyId?._id || gb.parentGroupBuyId || '',
@@ -359,10 +314,18 @@ function EditGBCard({ gb, gbs, fetchGbs, onClose, inline }) {
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const knownCategories = Array.from(new Set((gbs || []).map(g => (g.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   // Pre-load existing sections so admins can tweak them in place.
+  const [specs, setSpecs] = useState((gb.specifications || []).map(s => ({ label: s.label, value: s.value })));
   const [landingPage, setLandingPage] = useState(Array.isArray(gb.landingPage) ? gb.landingPage : []);
   const [customPageHtml, setCustomPageHtml] = useState(gb.customPageHtml || '');
   const [pinnedAddOnIds, setPinnedAddOnIds] = useState(Array.isArray(gb.pinnedAddOnIds) ? gb.pinnedAddOnIds : []);
   const [pinnedRelatedIds, setPinnedRelatedIds] = useState(Array.isArray(gb.pinnedRelatedIds) ? gb.pinnedRelatedIds : []);
+  const [milestones, setMilestones] = useState(Array.isArray(gb.milestones) ? gb.milestones : []);
+  // Tri-state: 'auto' uses the renderer default (hidden on add-ons, shown
+  // otherwise). 'show' / 'hide' force the visibility.
+  const initialMoqMode = typeof gb.showMoqProgress === 'boolean'
+    ? (gb.showMoqProgress ? 'show' : 'hide')
+    : 'auto';
+  const [moqProgressMode, setMoqProgressMode] = useState(initialMoqMode);
 
   const save = async () => {
     setSaving(true);
@@ -375,27 +338,88 @@ function EditGBCard({ gb, gbs, fetchGbs, onClose, inline }) {
           moq: Number(form.moq),
           maxOrders: Number(form.maxOrders),
           parentGroupBuyId: form.parentGroupBuyId || null,
+          specifications: specs.filter(s => s.label.trim() && s.value.trim()),
           landingPage: serializeLandingPage(landingPage),
           customPageHtml,
           pinnedAddOnIds,
           pinnedRelatedIds,
+          milestones: milestones
+            .filter(m => Number(m.count) > 0 && (m.title || '').trim())
+            .map(m => ({
+              count: Number(m.count),
+              title: m.title.trim(),
+              description: (m.description || '').trim(),
+              image: { url: (m.image?.url || '').trim(), altText: (m.image?.altText || m.title || '').trim() },
+              landingPage: serializeLandingPage(Array.isArray(m.landingPage) ? m.landingPage : []),
+              customPageHtml: typeof m.customPageHtml === 'string' ? m.customPageHtml : '',
+            })),
+          // Send true/false to force visibility, or null to clear back to
+          // auto (renderer falls back to the "hide for add-ons" rule).
+          showMoqProgress: moqProgressMode === 'auto' ? null : (moqProgressMode === 'show'),
         })
       });
       toast.success('Updated'); onClose(); fetchGbs();
     } catch (err) { toast.error(err.message); } finally { setSaving(false); }
   };
 
+  const wrapperClass = inline ? 'admin-inline-panel admin-inline-panel-form' : '';
   const wrapperStyle = inline
-    ? { padding: '16px 24px 20px', borderTop: '1px solid var(--border-subtle)' }
+    ? null
     : { background: 'var(--surface)', border: '2px solid var(--accent)', borderRadius: 'var(--radius)', padding: '24px' };
 
+  // Summary counters for the collapsible labels (mirrors CreateGBModal).
+  const specCount      = specs.filter(s => s.label.trim() && s.value.trim()).length;
+  const milestoneCount = milestones.filter(m => Number(m.count) > 0 && (m.title || '').trim()).length;
+  const landingLen     = landingPage.length;
+  const htmlLen        = (customPageHtml || '').trim().length;
+
   return (
-    <div style={wrapperStyle}>
+    <div className={wrapperClass} style={wrapperStyle}>
       <PanelHeader title={inline ? 'Edit Details' : `Edit: ${gb.name}`} onClose={onClose} />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-        <div className="form-group"><label className="form-label">Name</label><input className="form-input" value={form.name} onChange={set('name')} /></div>
-        <div className="form-group"><label className="form-label">Base Price (₱) — used if no options</label><input type="number" className="form-input" value={form.basePrice} onChange={set('basePrice')} /></div>
+
+      {/* ── Header block — always-visible GB-essential fields. Matches the
+            CreateGBModal layout: name, description, then the 3-up row
+            (base price / MOQ / max), then the 4-up row (category / status
+            / start / end). ── */}
+      <div className="form-group"><label className="form-label">Name</label><input className="form-input" value={form.name} onChange={set('name')} /></div>
+
+      <div className="form-group">
+        <label className="form-label">Description</label>
+        <MarkdownEditor
+          value={form.description}
+          onChange={v => setForm(f => ({ ...f, description: v }))}
+          minHeight={80}
+          placeholder="A short blurb shown next to the buy button. Use Product Page Sections below for long-form content." />
       </div>
+
+      <div className="modal-row-3">
+        <div className="form-group"><label className="form-label">Base Price (₱)</label><input type="number" className="form-input" value={form.basePrice} onChange={set('basePrice')} placeholder="Foundation; options add on top" /></div>
+        <div className="form-group"><label className="form-label">MOQ</label><input type="number" className="form-input" value={form.moq} onChange={set('moq')} placeholder="0" /></div>
+        <div className="form-group"><label className="form-label">Max Orders</label><input type="number" className="form-input" value={form.maxOrders} onChange={set('maxOrders')} placeholder="0 = unlimited" /></div>
+      </div>
+      {/* Split into 2x2 so Status keeps full label width + dates aren't squeezed. */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+        <div className="form-group">
+          <label className="form-label">Category</label>
+          <CategoryPicker value={form.category} onChange={v => setForm(f => ({ ...f, category: v }))} options={knownCategories} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Status</label>
+          <select className="form-input" value={form.status} onChange={set('status')}>
+            <option value="interest-check">Interest Check</option>
+            <option value="open">Open</option>
+            <option value="closing-soon">Closing Soon</option>
+            <option value="closed">Closed</option>
+            <option value="production">In Production</option>
+            <option value="completed">Completed</option>
+          </select>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+        <div className="form-group"><label className="form-label">Start Date</label><input type="date" className="form-input" value={form.startDate} onChange={set('startDate')} /></div>
+        <div className="form-group"><label className="form-label">End Date</label><input type="date" className="form-input" value={form.endDate} onChange={set('endDate')} /></div>
+      </div>
+
       {eligibleParents.length > 0 && (
         <div className="form-group">
           <label className="form-label">Parent Group Buy (make this an add-on)</label>
@@ -406,78 +430,77 @@ function EditGBCard({ gb, gbs, fetchGbs, onClose, inline }) {
         </div>
       )}
 
-      {/* Short description for the buy section. Long-form marketing content
-          goes in Product Page Sections below. */}
-      <div className="form-group">
-        <label className="form-label">Description</label>
-        <MarkdownEditor
-          value={form.description}
-          onChange={v => setForm(f => ({ ...f, description: v }))}
-          minHeight={110}
-          placeholder="A short blurb shown next to the buy button. Use Product Page Sections below for long-form content." />
-      </div>
+      {/* ── Optional sections — collapsibles, same titles + summaries as
+            CreateGBModal so the look matches. Images, Options, and Configs
+            live in their own dedicated panels (separate row dropdowns) and
+            aren't repeated here. ── */}
+      <CollapsibleSection title="Specifications" summary={specCount > 0 ? `${specCount} row${specCount === 1 ? '' : 's'}` : 'optional'}>
+        <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
+          Custom rows shown on the GB page (e.g. Layout → 65%, Weight → 1.2kg).
+          <span style={{ display: 'block', marginTop: 4, color: 'var(--ink-faint)' }}>Tip: press Enter to jump from Label → Value, and again on Value to add the next row.</span>
+        </p>
+        <SpecsEditor value={specs} onChange={setSpecs} />
+      </CollapsibleSection>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px' }}>
-        <div className="form-group"><label className="form-label">MOQ</label><input type="number" className="form-input" value={form.moq} onChange={set('moq')} /></div>
-        <div className="form-group"><label className="form-label">Max</label><input type="number" className="form-input" value={form.maxOrders} onChange={set('maxOrders')} /></div>
-        <div className="form-group"><label className="form-label">Start</label><input type="date" className="form-input" value={form.startDate} onChange={set('startDate')} /></div>
-        <div className="form-group"><label className="form-label">End</label><input type="date" className="form-input" value={form.endDate} onChange={set('endDate')} /></div>
-      </div>
-      <div className="form-group">
-        <label className="form-label">Category</label>
-        <CategoryPicker value={form.category} onChange={v => setForm(f => ({ ...f, category: v }))} options={knownCategories} />
-      </div>
+      <CollapsibleSection title="Milestones" summary={milestoneCount > 0 ? `${milestoneCount} reward${milestoneCount === 1 ? '' : 's'}` : 'optional'}>
+        <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
+          Bonus rewards unlocked at specific order counts. Each shows as a clickable marker on the customer-side progress bar.
+        </p>
+        {/* MOQ progress bar visibility — tri-state toggle. Auto follows the
+            rule "hide on add-ons (parented GBs), show on standalone." */}
+        <div style={{ marginBottom: 14, padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+          <p style={{ fontSize: '0.74rem', fontWeight: 600, marginBottom: 6 }}>Progress bar visibility</p>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {[
+              { v: 'auto', label: gb.parentGroupBuyId ? 'Auto (hidden — add-on)' : 'Auto (shown)' },
+              { v: 'show', label: 'Always show' },
+              { v: 'hide', label: 'Always hide' },
+            ].map(opt => (
+              <button key={opt.v} type="button"
+                onClick={() => setMoqProgressMode(opt.v)}
+                style={{
+                  fontSize: '0.72rem', padding: '4px 9px', borderRadius: 'var(--radius-pill)',
+                  border: '1px solid ' + (moqProgressMode === opt.v ? 'var(--accent)' : 'var(--border)'),
+                  background: moqProgressMode === opt.v ? 'var(--accent-light)' : 'var(--surface)',
+                  color: moqProgressMode === opt.v ? 'var(--accent)' : 'var(--ink-muted)',
+                  cursor: 'pointer',
+                }}>{opt.label}</button>
+            ))}
+          </div>
+          <p style={{ fontSize: '0.68rem', color: 'var(--ink-faint)', marginTop: 6 }}>
+            Add-ons hide the bar by default. Use "Always show" if this add-on tracks its own MOQ.
+          </p>
+        </div>
+        <MilestonesEditor value={milestones} onChange={setMilestones} />
+      </CollapsibleSection>
 
-      {/* Product Page Sections — same editor as the in-stock product modal so
-          GB product pages look consistent with regular product pages. */}
-      <div className="form-group">
-        <label className="form-label">
-          Product Page Sections <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>(optional)</span>
-        </label>
-        <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
-          Rendered below the buy section. Add a Hero image, Banner text, Text+Image split, Gallery, or Feature grid.
+      <CollapsibleSection title="Product Page Sections" summary={landingLen > 0 ? `${landingLen} section${landingLen === 1 ? '' : 's'}` : 'optional'}>
+        <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
+          Rendered <strong>below the buy section</strong>. Add a Hero image, Banner text, Text+Image split, Gallery, or Feature grid.
         </p>
         <LandingPageEditor value={landingPage} onChange={setLandingPage} />
-      </div>
+      </CollapsibleSection>
 
-      <div className="form-group">
-        <label className="form-label">
-          Custom HTML{' '}
-          <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>
-            {customPageHtml.trim() ? `(${customPageHtml.length.toLocaleString()} chars — overrides sections)` : '(optional)'}
-          </span>
-        </label>
-        <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
-          Paste raw HTML + CSS. Replaces Product Page Sections when set.
+      <CollapsibleSection title="Custom HTML" summary={htmlLen > 0 ? `${htmlLen.toLocaleString()} chars` : 'optional'}>
+        <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '8px' }}>
+          Paste raw HTML + CSS. Rendered <strong>below the buy section</strong>, replacing Product Page Sections when set.
         </p>
         <CustomHtmlEditor value={customPageHtml} onChange={setCustomPageHtml} previewProduct={gb} />
-      </div>
+      </CollapsibleSection>
 
-      <div className="form-group">
-        <label className="form-label">
-          Add-ons{' '}
-          <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>
-            {pinnedAddOnIds.length > 0 ? `(${pinnedAddOnIds.length} pinned)` : '(auto)'}
-          </span>
-        </label>
-        <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
-          Pin specific products / group buys. Empty = auto-show GBs tagged with this as their parent.
-        </p>
-        <PinnedProductsPicker value={pinnedAddOnIds} onChange={setPinnedAddOnIds} />
-      </div>
+      <CollapsibleSection title="Add-ons" summary={pinnedAddOnIds.length > 0 ? `${pinnedAddOnIds.length} pinned` : 'auto'}>
+        <PinnedProductsPicker
+          value={pinnedAddOnIds}
+          onChange={setPinnedAddOnIds}
+          helpText="Items shown in the Add-ons section below the buy section. Leave empty to auto-show GBs tagged with this as their parent." />
+      </CollapsibleSection>
 
-      <div className="form-group">
-        <label className="form-label">
-          You might also like{' '}
-          <span style={{ fontWeight: 400, color: 'var(--ink-faint)' }}>
-            {pinnedRelatedIds.length > 0 ? `(${pinnedRelatedIds.length} pinned)` : '(auto)'}
-          </span>
-        </label>
-        <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', marginBottom: '8px', marginTop: '2px' }}>
-          Pin specific items. Empty = auto-pick from the same category.
-        </p>
-        <PinnedProductsPicker value={pinnedRelatedIds} onChange={setPinnedRelatedIds} />
-      </div>
+      <CollapsibleSection title="You might also like" summary={pinnedRelatedIds.length > 0 ? `${pinnedRelatedIds.length} pinned` : 'auto'}>
+        <PinnedProductsPicker
+          value={pinnedRelatedIds}
+          onChange={setPinnedRelatedIds}
+          helpText="Items shown at the bottom of the page. Leave empty to auto-pick from the same category." />
+      </CollapsibleSection>
 
       <div style={{ display: 'flex', gap: '8px' }}>
         <button className="btn-dark" disabled={saving} onClick={save} style={{ padding: '9px 22px' }}><span>{saving ? 'Saving...' : 'Save'}</span></button>
@@ -546,7 +569,7 @@ function ImagePanel({ gbId, images, fetchGbs, onClose }) {
   };
 
   return (
-    <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-subtle)' }}>
+    <div className="admin-inline-panel">
       <PanelHeader title="Images" onClose={onClose} />
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
         <label style={{ padding: '4px 12px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', fontSize: '0.72rem', cursor: 'pointer', color: 'var(--accent)', fontWeight: 500, fontFamily: "'DM Sans', sans-serif" }}>
@@ -637,7 +660,7 @@ function GBOptionsManager({ gb, fetchGbs, onClose }) {
   const inputSm = { fontSize: '0.72rem', padding: '5px 7px' };
 
   return (
-    <div style={{ padding: '16px 24px 20px', borderTop: '1px solid var(--border-subtle)' }}>
+    <div className="admin-inline-panel">
       <PanelHeader title="Options — price-setting selectors (e.g., Kit: Base Kit / Novelties)" onClose={onClose} />
 
       {groups.map((grp, gi) => (
@@ -765,7 +788,7 @@ function GBConfigManager({ gb, fetchGbs, onClose }) {
   const inputSm = { fontSize: '0.72rem', padding: '5px 7px' };
 
   return (
-    <div style={{ padding: '16px 24px 20px', borderTop: '1px solid var(--border-subtle)' }}>
+    <div className="admin-inline-panel">
       <PanelHeader title="Configs — add-on selectors that affect the final price" onClose={onClose} />
 
       {configs.map((cfg, ci) => (
@@ -854,8 +877,8 @@ function InterestPanel({ gb, exportCSV }) {
   const ics = gb.interestChecks || [];
   const configNames = (gb.configurations || []).map(c => c.name);
   return (
-    <div style={{ borderTop: '1px solid var(--border)', padding: '16px 24px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+    <div className="admin-inline-panel">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
         <p style={{ fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Interest Registrations ({ics.length})</p>
         {ics.length > 0 && <Pill onClick={exportCSV}>Export CSV</Pill>}
       </div>
@@ -935,7 +958,7 @@ function OrdersPanel({ groupBuyId }) {
   useEffect(() => { fetchOrders(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [groupBuyId]);
   const updateOrderLocal = (id, patch) => setOrders(prev => prev.map(o => o._id === id ? { ...o, ...patch } : o));
   if (loading) return <div style={{ padding: '24px', textAlign: 'center' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>;
-  if (!orders.length) return <div style={{ padding: '20px 24px', borderTop: '1px solid var(--border)', color: 'var(--ink-muted)', fontSize: '0.82rem' }}>No orders.</div>;
+  if (!orders.length) return <div className="admin-inline-panel" style={{ color: 'var(--ink-muted)', fontSize: '0.82rem' }}>No orders.</div>;
 
   // Group by cartCheckoutId; solo orders (no cartCheckoutId) become single-item groups
   const groups = [];
@@ -1423,26 +1446,179 @@ function AddItemToOrder({ parentGbId, cartOrderCode, cartCheckoutId, shippingAdd
 }
 
 /* ═══════════════════════════════════════════════
-   CREATE GROUP BUY MODAL
+   MILESTONES EDITOR — shared between CreateGBModal and EditGBCard. Each
+   milestone unlocks a reward when orderCount reaches `count`; rendered on
+   the customer page as a clickable marker on the progress bar.
+═══════════════════════════════════════════════ */
+function MilestonesEditor({ value, onChange }) {
+  const list = Array.isArray(value) ? value : [];
+  const inputSm = { fontSize: '0.78rem', padding: '7px 9px' };
+  const update = (idx, patch) =>
+    onChange(list.map((m, i) => i !== idx ? m : { ...m, ...patch }));
+  const remove = (idx) => onChange(list.filter((_, i) => i !== idx));
+  const add = () => onChange([...list, { count: '', title: '', description: '', landingPage: [], image: { url: '', altText: '' } }]);
+
+  return (
+    <div>
+      {list.length === 0 && (
+        <p style={{ fontSize: '0.75rem', color: 'var(--ink-faint)', margin: '0 0 10px' }}>
+          No milestones yet. Add a bonus that unlocks when the group buy reaches a specific order count.
+        </p>
+      )}
+      {list.map((m, i) => (
+        <MilestoneRow key={i} milestone={m} onUpdate={p => update(i, p)} onRemove={() => remove(i)} inputSm={inputSm} />
+      ))}
+      <button type="button" onClick={add} className="config-add-btn">+ Add Milestone</button>
+    </div>
+  );
+}
+
+// One row in the MilestonesEditor. Header (count + title + remove) is always
+// visible; the rest — description, image, landing-page blocks — lives in a
+// collapsible to keep the page scannable when there are many milestones.
+function MilestoneRow({ milestone, onUpdate, onRemove, inputSm }) {
+  const [open, setOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
+  const m = milestone;
+  const blockCount = Array.isArray(m.landingPage) ? m.landingPage.length : 0;
+  const summary = [
+    m.image?.url ? 'image' : null,
+    (m.description || '').trim() ? 'desc' : null,
+    blockCount > 0 ? `${blockCount} block${blockCount === 1 ? '' : 's'}` : null,
+  ].filter(Boolean).join(' · ') || 'click to add details';
+
+  const onFile = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const url = await uploadOptionImage(file);
+      onUpdate({ image: { url, altText: m.image?.altText || m.title || '' } });
+    } catch (err) { toast.error(err.message || 'Upload failed'); }
+    finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
+  };
+
+  return (
+    <div style={{ marginBottom: '10px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr auto auto', gap: '6px', alignItems: 'center', marginBottom: open ? '10px' : 0 }}>
+        <input type="number" min="1" className="form-input" style={inputSm} placeholder="@ count"
+          value={m.count ?? ''} onChange={e => onUpdate({ count: e.target.value === '' ? '' : Number(e.target.value) })} />
+        <input className="form-input" style={inputSm} placeholder="Prize title (e.g. Free keycap set)"
+          value={m.title || ''} onChange={e => onUpdate({ title: e.target.value })} />
+        <button type="button" onClick={() => setOpen(o => !o)}
+          style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '4px 10px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          {open ? 'Hide details' : summary}
+        </button>
+        <button type="button" onClick={onRemove}
+          style={{ fontSize: '0.78rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 8px', cursor: 'pointer' }}>✕</button>
+      </div>
+      {open && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {/* Image: URL or upload */}
+          <div>
+            <p style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--ink-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 4 }}>Image</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, alignItems: 'center' }}>
+              <input className="form-input" style={inputSm} placeholder="Paste image URL or upload →"
+                value={m.image?.url || ''}
+                onChange={e => onUpdate({ image: { url: e.target.value, altText: m.image?.altText || m.title || '' } })} />
+              <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading}
+                style={{ fontSize: '0.74rem', padding: '6px 12px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: uploading ? 'wait' : 'pointer', whiteSpace: 'nowrap' }}>
+                {uploading ? 'Uploading…' : '↑ Upload'}
+              </button>
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" hidden
+                onChange={e => onFile(e.target.files?.[0])} />
+            </div>
+            {m.image?.url && (
+              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <img src={m.image.url} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} />
+                <button type="button" onClick={() => onUpdate({ image: { url: '', altText: '' } })}
+                  style={{ fontSize: '0.72rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove image</button>
+              </div>
+            )}
+          </div>
+
+          {/* Description (markdown) */}
+          <div>
+            <p style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--ink-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 4 }}>Description</p>
+            <MarkdownEditor
+              value={m.description || ''}
+              onChange={v => onUpdate({ description: v })}
+              minHeight={90}
+              placeholder="What customers get at this tier (markdown supported)."
+            />
+          </div>
+
+          {/* Landing-page blocks (same editor as the GB landing page) */}
+          <div>
+            <p style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--ink-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 4 }}>
+              Landing-page sections <span style={{ textTransform: 'none', color: 'var(--ink-faint)', fontWeight: 400 }}>(optional — shown in the milestone modal)</span>
+            </p>
+            <LandingPageEditor value={Array.isArray(m.landingPage) ? m.landingPage : []} onChange={blocks => onUpdate({ landingPage: blocks })} />
+          </div>
+
+          {/* Custom HTML — escape hatch for flagship milestone pages. When
+              set, overrides the block-based landing page above (same
+              precedence as Product / GB customPageHtml). */}
+          <div>
+            <p style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--ink-muted)', letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 4 }}>
+              Custom HTML{' '}
+              <span style={{ textTransform: 'none', color: 'var(--ink-faint)', fontWeight: 400 }}>
+                {(m.customPageHtml || '').trim()
+                  ? `(${(m.customPageHtml || '').length.toLocaleString()} chars — overrides sections)`
+                  : '(optional)'}
+              </span>
+            </p>
+            <CustomHtmlEditor
+              value={m.customPageHtml || ''}
+              onChange={v => onUpdate({ customPageHtml: v })}
+              previewProduct={{ name: m.title || 'Milestone', description: m.description || '', images: m.image?.url ? [m.image] : [] }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════
+   CREATE GROUP BUY MODAL — mirrors CreateProductModal layout but keeps
+   group-buy-specific bits (MOQ / max orders / status / start+end / parent).
+   Inventory is modelled via the legacy `configurations` system (selectors
+   like Plate / Layout with priceModifier per option) instead of the
+   product-side variant matrix — kept that way intentionally because GBs
+   were designed around configs and existing data + GBConfigManager rely
+   on this shape.
 ═══════════════════════════════════════════════ */
 function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
-  const [form, setForm] = useState({ name: '', description: '', basePrice: '', moq: '', maxOrders: '', category: 'keyboards', startDate: '', endDate: '', status: 'interest-check', parentGroupBuyId: forcedParentId || '' });
+  const [form, setForm] = useState({
+    name: '', description: '',
+    basePrice: '', moq: '', maxOrders: '',
+    category: 'keyboards', status: 'interest-check',
+    startDate: '', endDate: '',
+    parentGroupBuyId: forcedParentId || '',
+  });
   const eligibleParents = (gbs || []).filter(g => g.isActive && !g.parentGroupBuyId);
   const forcedParent = forcedParentId ? eligibleParents.find(g => g._id === forcedParentId) : null;
-  const [optionGroups, setOptionGroups] = useState([]);
-  const [configs, setConfigs] = useState([]);
-  const [newCfgGroup, setNewCfgGroup] = useState({ name: '' });
-  const [newCfgOpts, setNewCfgOpts] = useState({});
+
   const [images, setImages] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
   const [urlInputCreate, setUrlInputCreate] = useState('');
   const [urlPreviews, setUrlPreviews] = useState([]);
-  // Long-form marketing content rendered below the buy section. Optional.
+  const [optionGroups, setOptionGroups] = useState([]);
+  const [specs, setSpecs] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
+  // Configurations (legacy GB system — kept on GBs instead of the variant
+  // matrix). Each config is a named selector with priceModifier options.
+  const [configs, setConfigs] = useState([]);
+  const [newCfgGroup, setNewCfgGroup] = useState({ name: '' });
+  const [newCfgOpts, setNewCfgOpts] = useState({});
   const [landingPage, setLandingPage] = useState([]);
   const [customPageHtml, setCustomPageHtml] = useState('');
   const [pinnedAddOnIds, setPinnedAddOnIds] = useState([]);
   const [pinnedRelatedIds, setPinnedRelatedIds] = useState([]);
-  const [sub, setSub] = useState(false);
+  const [milestones, setMilestones] = useState([]);
+  // 'auto' = let the renderer apply the add-on-hide rule; explicit override otherwise.
+  const [moqProgressMode, setMoqProgressMode] = useState('auto');
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
   // Esc closes — backdrop click is intentionally disabled to protect in-progress
@@ -1472,23 +1648,20 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
   };
   const removeUrlPreview = (idx) => setUrlPreviews(prev => prev.filter((_, i) => i !== idx));
 
-  // Drag-drop reorder for the two image preview rows — uploads and URL-added
-  // entries shuffle independently. Files + previews move together so the
-  // underlying File[] stays in sync with what the admin sees.
-  const moveItem = (arr, from, to) => {
-    const next = [...arr]; const [m] = next.splice(from, 1); next.splice(to, 0, m); return next;
-  };
   const reorderUploads = (from, to) => {
     if (from === to) return;
-    setImages(prev => moveItem(prev, from, to));
-    setImagePreviews(prev => moveItem(prev, from, to));
+    setImages(prev => arrayMove(prev, from, to));
+    setImagePreviews(prev => arrayMove(prev, from, to));
   };
   const reorderUrls = (from, to) => {
     if (from === to) return;
-    setUrlPreviews(prev => moveItem(prev, from, to));
+    setUrlPreviews(prev => arrayMove(prev, from, to));
   };
 
-
+  /* ── Configurations — legacy GB system, kept here because group buys use
+        configs (Plate, Layout, etc.) for the matrix of choices instead of
+        the product-side variants schema. Each config has a name + an array
+        of option values with optional priceModifier and per-option image. */
   const addCfgGroup = () => {
     if (!newCfgGroup.name.trim()) return;
     const idx = configs.length;
@@ -1505,31 +1678,55 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
     setNewCfgOpts(v => ({ ...v, [ci]: { value: '', priceModifier: 0, imageUrl: '' } }));
   };
 
+  /* ── Submit — single POST sends everything; create endpoint already accepts
+        options/configurations/specifications/landingPage/customPageHtml/pinned
+        cross-sell. No PATCH follow-up needed since GBs don't use the variant
+        Map-cast workaround. ── */
   const submitGB = async (queued) => {
-    setSub(true);
+    setSubmitting(true);
     try {
+      const filteredSpecs = specs.filter(s => s.label.trim() && s.value.trim());
       const lpBlocks = serializeLandingPage(landingPage);
       const trimmedCustomHtml = (customPageHtml || '').trim();
       const created = await apiFetch('/group-buys/create', {
         method: 'POST',
         body: JSON.stringify({
-          name: form.name, description: form.description,
+          name: form.name,
+          description: form.description,
           basePrice: Number(form.basePrice) || 0,
-          moq: Number(form.moq) || 0, maxOrders: Number(form.maxOrders) || 0,
-          category: form.category, status: form.status,
-          startDate: form.startDate || null, endDate: form.endDate || null,
-          options: optionGroups, configurations: configs,
+          moq: Number(form.moq) || 0,
+          maxOrders: Number(form.maxOrders) || 0,
+          category: form.category,
+          status: form.status,
+          startDate: form.startDate || null,
+          endDate: form.endDate || null,
           parentGroupBuyId: form.parentGroupBuyId || null,
           isQueued: !!queued,
+          options: optionGroups,
+          configurations: configs,
+          specifications: filteredSpecs,
           ...(lpBlocks.length > 0 ? { landingPage: lpBlocks } : {}),
           ...(trimmedCustomHtml.length > 0 ? { customPageHtml } : {}),
           ...(pinnedAddOnIds.length > 0 ? { pinnedAddOnIds } : {}),
           ...(pinnedRelatedIds.length > 0 ? { pinnedRelatedIds } : {}),
+          milestones: milestones
+            .filter(m => Number(m.count) > 0 && (m.title || '').trim())
+            .map(m => ({
+              count: Number(m.count),
+              title: m.title.trim(),
+              description: (m.description || '').trim(),
+              image: { url: (m.image?.url || '').trim(), altText: (m.image?.altText || m.title || '').trim() },
+              landingPage: serializeLandingPage(Array.isArray(m.landingPage) ? m.landingPage : []),
+              customPageHtml: typeof m.customPageHtml === 'string' ? m.customPageHtml : '',
+            })),
+          // Only send the override when admin picked an explicit mode —
+          // leaving 'auto' lets the renderer's add-on rule apply.
+          ...(moqProgressMode === 'auto' ? {} : { showMoqProgress: moqProgressMode === 'show' }),
         })
       });
+
+      // Image uploads (chunked, multer cap is 20/request).
       if (images.length > 0) {
-        // Chunked to 20 per request — multer's per-request file cap
-        // rejects the 21st file with a misleading "Unexpected field" error.
         const BATCH = 20;
         for (let i = 0; i < images.length; i += BATCH) {
           const slice = images.slice(i, i + BATCH);
@@ -1543,14 +1740,13 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
           method: 'POST', body: JSON.stringify({ url: up.url }),
         });
       }
-      toast.success(queued ? 'Group buy queued' : 'Created'); onCreated();
-    } catch (err) { toast.error(err.message); } finally { setSub(false); }
+
+      toast.success(queued ? 'Group buy queued' : 'Group buy created');
+      onCreated();
+    } catch (err) { toast.error(err.message); } finally { setSubmitting(false); }
   };
   const submit = async (e) => { e.preventDefault(); await submitGB(false); };
 
-  // Enter on a plain text input advances to the next form element instead of
-  // submitting (matches CreateProductModal). Inputs that need to handle Enter
-  // themselves (Add URL, Add Config) opt out via data-enter-action="custom".
   const handleFormKeyDown = (e) => {
     if (e.key === 'Enter' && e.target.tagName === 'INPUT' && !e.target.dataset.enterAction) {
       e.preventDefault();
@@ -1587,18 +1783,26 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
             <div className="form-group"><label className="form-label">MOQ</label><input type="number" className="form-input" value={form.moq} onChange={set('moq')} placeholder="0" /></div>
             <div className="form-group"><label className="form-label">Max Orders</label><input type="number" className="form-input" value={form.maxOrders} onChange={set('maxOrders')} placeholder="0 = unlimited" /></div>
           </div>
-          <div className="modal-row-4">
+          {/* Category + Status share one row; Start/End share the next row.
+              Previously these were in a single 4-up grid which left the Status
+              <select> too narrow to show "Interest Check" without truncation
+              and squeezed the date pickers' calendar buttons against their
+              placeholders. */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <div className="form-group">
               <label className="form-label">Category</label>
               <CategoryPicker value={form.category} onChange={v => setForm(f => ({ ...f, category: v }))} options={knownCategories} />
             </div>
-            <div className="form-group"><label className="form-label">Status</label>
+            <div className="form-group">
+              <label className="form-label">Status</label>
               <select className="form-input" value={form.status} onChange={set('status')}>
                 <option value="interest-check">Interest Check</option>
                 <option value="open">Open</option>
                 <option value="closing-soon">Closing Soon</option>
               </select>
             </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <div className="form-group"><label className="form-label">Start Date</label><input type="date" className="form-input" value={form.startDate} onChange={set('startDate')} /></div>
             <div className="form-group"><label className="form-label">End Date</label><input type="date" className="form-input" value={form.endDate} onChange={set('endDate')} /></div>
           </div>
@@ -1620,20 +1824,13 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
           )}
 
           {/* Images */}
-          <div className="modal-section">
-            <p className="modal-section-title">Images</p>
+          <CollapsibleSection title="Images" summary={(imagePreviews.length + urlPreviews.length) > 0 ? `${imagePreviews.length + urlPreviews.length} added` : 'optional'}>
             <div className="img-upload-zone">
               <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
               <p>Click or drag to upload images (max 10MB each)</p>
               <input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={handleImageChange} />
             </div>
-            <DraggableThumbList
-              items={imagePreviews}
-              getSrc={p => p.url}
-              getAlt={p => p.name}
-              onReorder={reorderUploads}
-              onRemove={removeImagePreview}
-            />
+            <DraggableThumbList items={imagePreviews} getSrc={p => p.url} getAlt={p => p.name} onReorder={reorderUploads} onRemove={removeImagePreview} />
             <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
               <input className="form-input" style={{ fontSize: '0.78rem', padding: '6px 9px', flex: 1 }}
                 placeholder="Or paste image URL..." value={urlInputCreate}
@@ -1645,32 +1842,36 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
                 + Add URL
               </button>
             </div>
-            <DraggableThumbList
-              items={urlPreviews}
-              getSrc={p => p.url}
-              onReorder={reorderUrls}
-              onRemove={removeUrlPreview}
-              extraStyle={{ marginTop: '8px' }}
-            />
+            <DraggableThumbList items={urlPreviews} getSrc={p => p.url} onReorder={reorderUrls} onRemove={removeUrlPreview} extraStyle={{ marginTop: '8px' }} />
             {(imagePreviews.length + urlPreviews.length) > 1 && (
               <p style={{ fontSize: '0.68rem', color: 'var(--ink-faint)', marginTop: '6px' }}>
                 Drag thumbnails to reorder. The first image is the main/cover image. Uploads and URL-added images keep their own order; uploads come first on save.
               </p>
             )}
-          </div>
+          </CollapsibleSection>
+
+          {/* Specifications */}
+          <CollapsibleSection title="Specifications" summary={specs.filter(s => s.label.trim() && s.value.trim()).length > 0 ? `${specs.filter(s => s.label.trim() && s.value.trim()).length} row${specs.filter(s => s.label.trim() && s.value.trim()).length === 1 ? '' : 's'}` : 'optional'}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
+              Optional. Add custom spec rows shown on the group-buy page (e.g. Layout → 65%, Weight → 1.2kg).
+              <span style={{ display: 'block', marginTop: 4, color: 'var(--ink-faint)' }}>Tip: press Enter to jump from Label → Value, and again on Value to add the next row.</span>
+            </p>
+            <SpecsEditor value={specs} onChange={setSpecs} />
+          </CollapsibleSection>
 
           {/* Add Options */}
-          <div className="modal-section">
-            <p className="modal-section-title">Add Options</p>
+          <CollapsibleSection title="Add Options" summary={optionGroups.length > 0 ? `${optionGroups.length} group${optionGroups.length === 1 ? '' : 's'}` : 'optional'}>
             <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
               Each option's price is <strong>added on top of the base price</strong> above (e.g. base ₱5,000 + Novelties +₱2,300 = ₱7,300).
+              Leave this section empty if the group buy has a single price.
             </p>
             <OptionGroupsField value={optionGroups} onChange={setOptionGroups} />
-          </div>
+          </CollapsibleSection>
 
-          {/* Add Configs */}
-          <div className="modal-section">
-            <p className="modal-section-title">Add Configs</p>
+          {/* Configs — legacy GB selectors (e.g. Plate → Brass +₱200). Each
+              config has a name + a list of option values with optional
+              priceModifier and per-option image. */}
+          <CollapsibleSection title="Add Configs" summary={configs.length > 0 ? `${configs.length} group${configs.length === 1 ? '' : 's'}` : 'optional'}>
             <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
               Configs add to the base/option price (e.g., Plate → Brass +₱200). Add unlimited groups.
             </p>
@@ -1697,80 +1898,99 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
                   </div>
                 ))}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 1fr auto', gap: '5px', marginTop: '6px' }}>
-                  <input className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="Option value" value={newCfgOpts[ci]?.value || ''} onChange={e => setNewCfgOpts(v => ({ ...v, [ci]: { ...(v[ci] || {}), value: e.target.value } }))} />
-                  <input type="number" className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="+₱" value={newCfgOpts[ci]?.priceModifier || ''} onChange={e => setNewCfgOpts(v => ({ ...v, [ci]: { ...(v[ci] || {}), priceModifier: e.target.value } }))} />
-                  <input className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="Image URL (optional)" value={newCfgOpts[ci]?.imageUrl || ''} onChange={e => setNewCfgOpts(v => ({ ...v, [ci]: { ...(v[ci] || {}), imageUrl: e.target.value } }))} />
+                  <input className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="Option value"
+                    value={newCfgOpts[ci]?.value || ''}
+                    onChange={e => setNewCfgOpts(v => ({ ...v, [ci]: { ...(v[ci] || {}), value: e.target.value } }))}
+                    data-enter-action="custom"
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCfgOpt(ci); } }} />
+                  <input type="number" className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="+₱"
+                    value={newCfgOpts[ci]?.priceModifier || ''}
+                    onChange={e => setNewCfgOpts(v => ({ ...v, [ci]: { ...(v[ci] || {}), priceModifier: e.target.value } }))} />
+                  <input className="form-input" style={{ ...inputSm, borderStyle: 'dashed' }} placeholder="Image URL (optional)"
+                    value={newCfgOpts[ci]?.imageUrl || ''}
+                    onChange={e => setNewCfgOpts(v => ({ ...v, [ci]: { ...(v[ci] || {}), imageUrl: e.target.value } }))} />
                   <button type="button" onClick={() => addCfgOpt(ci)} className="config-add-btn">+</button>
                 </div>
               </div>
             ))}
             <div style={{ display: 'flex', gap: '6px' }}>
-              <input className="form-input" style={inputSm} placeholder="Config group name (e.g. Layout)" value={newCfgGroup.name} onChange={e => setNewCfgGroup({ name: e.target.value })}
+              <input className="form-input" style={inputSm} placeholder="Config group name (e.g. Layout)"
+                value={newCfgGroup.name}
+                onChange={e => setNewCfgGroup({ name: e.target.value })}
                 data-enter-action="custom"
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCfgGroup(); } }} />
               <button type="button" onClick={addCfgGroup} className="config-add-btn">+ Add Config</button>
             </div>
-          </div>
+          </CollapsibleSection>
 
-          {/* Product Page Sections — block-based marketing content rendered
-              under the buy section on the customer product page. */}
-          <div className="modal-section">
-            <p className="modal-section-title">
-              Product Page Sections{' '}
-              <span style={{ fontWeight: 400, color: 'var(--ink-faint)', textTransform: 'none', letterSpacing: 0 }}>
-                {landingPage.length > 0 ? `· ${landingPage.length} section${landingPage.length === 1 ? '' : 's'}` : '(optional)'}
-              </span>
-            </p>
+          {/* Milestones — each tier shows as a clickable marker on the GB
+              page's progress bar. Counts can exceed MOQ; the bar auto-scales. */}
+          <CollapsibleSection title="Milestones" summary={milestones.filter(m => Number(m.count) > 0 && (m.title || '').trim()).length > 0 ? `${milestones.filter(m => Number(m.count) > 0 && (m.title || '').trim()).length} reward${milestones.filter(m => Number(m.count) > 0 && (m.title || '').trim()).length === 1 ? '' : 's'}` : 'optional'}>
             <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
-              Rendered below the buy section. Add a Hero image, Banner text, Text+Image split, Gallery, or Feature grid.
+              Bonus rewards unlocked at specific order counts (e.g. free keycaps at 50, free case at 100). Each milestone shows as a clickable marker on the progress bar.
+            </p>
+            {/* MOQ progress visibility — only meaningful when MOQ or milestones
+                are set. Auto hides the bar on add-ons (parented GBs). */}
+            <div style={{ marginBottom: 14, padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+              <p style={{ fontSize: '0.74rem', fontWeight: 600, marginBottom: 6 }}>Progress bar visibility</p>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {[
+                  { v: 'auto', label: forcedParentId || form.parentGroupBuyId ? 'Auto (hidden — add-on)' : 'Auto (shown)' },
+                  { v: 'show', label: 'Always show' },
+                  { v: 'hide', label: 'Always hide' },
+                ].map(opt => (
+                  <button key={opt.v} type="button"
+                    onClick={() => setMoqProgressMode(opt.v)}
+                    style={{
+                      fontSize: '0.72rem', padding: '4px 9px', borderRadius: 'var(--radius-pill)',
+                      border: '1px solid ' + (moqProgressMode === opt.v ? 'var(--accent)' : 'var(--border)'),
+                      background: moqProgressMode === opt.v ? 'var(--accent-light)' : 'var(--surface)',
+                      color: moqProgressMode === opt.v ? 'var(--accent)' : 'var(--ink-muted)',
+                      cursor: 'pointer',
+                    }}>{opt.label}</button>
+                ))}
+              </div>
+              <p style={{ fontSize: '0.68rem', color: 'var(--ink-faint)', marginTop: 6 }}>
+                Add-ons hide the bar by default. Use "Always show" if this add-on tracks its own MOQ.
+              </p>
+            </div>
+            <MilestonesEditor value={milestones} onChange={setMilestones} />
+          </CollapsibleSection>
+
+          {/* Product Page Sections */}
+          <CollapsibleSection title="Product Page Sections" summary={landingPage.length > 0 ? `${landingPage.length} section${landingPage.length === 1 ? '' : 's'}` : 'optional'}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
+              Optional. Build a marketing page rendered <strong>below the buy section</strong>.
+              Add a Hero image, Banner text, Text+Image split, Gallery, or Feature grid.
             </p>
             <LandingPageEditor value={landingPage} onChange={setLandingPage} />
-          </div>
+          </CollapsibleSection>
 
-          {/* Custom HTML override — replaces Product Page Sections when set. */}
-          <div className="modal-section">
-            <p className="modal-section-title">
-              Custom HTML{' '}
-              <span style={{ fontWeight: 400, color: 'var(--ink-faint)', textTransform: 'none', letterSpacing: 0 }}>
-                {customPageHtml.trim() ? `· ${customPageHtml.length.toLocaleString()} chars — overrides sections` : '(optional)'}
-              </span>
-            </p>
-            <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
-              Paste raw HTML + CSS for a hand-coded flagship page. Replaces Product Page Sections when set.
+          {/* Custom HTML */}
+          <CollapsibleSection title="Custom HTML" summary={customPageHtml.trim() ? `${customPageHtml.length.toLocaleString()} chars` : 'optional'}>
+            <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '8px' }}>
+              Paste raw HTML + CSS. Rendered <strong>below the buy section</strong>, replacing Product Page Sections when set.
             </p>
             <CustomHtmlEditor value={customPageHtml} onChange={setCustomPageHtml} />
-          </div>
+          </CollapsibleSection>
 
-          <div className="modal-section">
-            <p className="modal-section-title">
-              Add-ons{' '}
-              <span style={{ fontWeight: 400, color: 'var(--ink-faint)', textTransform: 'none', letterSpacing: 0 }}>
-                {pinnedAddOnIds.length > 0 ? `· ${pinnedAddOnIds.length} pinned` : '(auto)'}
-              </span>
-            </p>
-            <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
-              Pin items shown in the Add-ons section. Empty = auto-show GBs tagged with this as their parent.
-            </p>
-            <PinnedProductsPicker value={pinnedAddOnIds} onChange={setPinnedAddOnIds} />
-          </div>
+          {/* Add-ons */}
+          <CollapsibleSection title="Add-ons" summary={pinnedAddOnIds.length > 0 ? `${pinnedAddOnIds.length} pinned` : 'auto'}>
+            <PinnedProductsPicker value={pinnedAddOnIds} onChange={setPinnedAddOnIds}
+              helpText="Items shown in the Add-ons section below the buy section. Leave empty to auto-show GBs tagged with this as their parent." />
+          </CollapsibleSection>
 
-          <div className="modal-section">
-            <p className="modal-section-title">
-              You might also like{' '}
-              <span style={{ fontWeight: 400, color: 'var(--ink-faint)', textTransform: 'none', letterSpacing: 0 }}>
-                {pinnedRelatedIds.length > 0 ? `· ${pinnedRelatedIds.length} pinned` : '(auto)'}
-              </span>
-            </p>
-            <p style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
-              Pin items shown at the bottom of the page. Empty = auto-pick from the same category.
-            </p>
-            <PinnedProductsPicker value={pinnedRelatedIds} onChange={setPinnedRelatedIds} />
-          </div>
+          <CollapsibleSection title="You might also like" summary={pinnedRelatedIds.length > 0 ? `${pinnedRelatedIds.length} pinned` : 'auto'}>
+            <PinnedProductsPicker value={pinnedRelatedIds} onChange={setPinnedRelatedIds}
+              helpText="Items shown at the bottom of the page. Leave empty to auto-pick from the same category." />
+          </CollapsibleSection>
 
           <div className="modal-actions">
-            <button type="submit" className="btn-dark" disabled={sub} style={{ flex: 1, justifyContent: 'center' }}><span>{sub ? 'Creating...' : 'Create Group Buy'}</span></button>
-            <button type="button" className="btn-outline" disabled={sub} onClick={() => submitGB(true)} title="Save as draft, hidden from customers">
-              <span>{sub ? '…' : 'Queue'}</span>
+            <button type="submit" className="btn-dark" disabled={submitting} style={{ flex: 1, justifyContent: 'center' }}>
+              <span>{submitting ? 'Creating...' : 'Create Group Buy'}</span>
+            </button>
+            <button type="button" className="btn-outline" disabled={submitting} onClick={() => submitGB(true)} title="Save as draft, hidden from customers">
+              <span>{submitting ? '…' : 'Queue'}</span>
             </button>
             <button type="button" className="btn-outline" onClick={onClose}>Cancel</button>
           </div>
