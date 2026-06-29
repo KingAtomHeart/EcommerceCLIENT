@@ -340,7 +340,7 @@ export default function AdminView({ products, fetchData, loading }) {
         .admin-card-actions { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 20px; border-top: 1px solid var(--border-subtle); }
         .admin-card-btn { padding: 6px 14px; border-radius: var(--radius-pill); border: 1px solid var(--border); background: none; font-family: 'DM Sans', sans-serif; font-size: 0.75rem; font-weight: 500; cursor: pointer; transition: all var(--transition); color: var(--ink-muted); }
         .admin-card-btn:hover { border-color: var(--ink-muted); color: var(--ink); background: var(--bg-secondary); }
-        .admin-card-btn.danger { color: #c0392b; border-color: rgba(192,57,43,0.2); }
+        .admin-card-btn.danger { color: var(--danger); border-color: rgba(192,57,43,0.2); }
         .admin-card-btn.danger:hover { background: rgba(192,57,43,0.06); border-color: #c0392b; }
         .admin-card-btn.success { color: var(--accent); border-color: rgba(46,93,75,0.2); }
         .admin-card-btn.success:hover { background: var(--accent-light); border-color: var(--accent); }
@@ -470,7 +470,7 @@ export function ActionMenu({ label = 'Manage', active = false, sections = [], mi
                 let color = 'var(--ink)';
                 if (isActive) { bg = 'var(--accent)'; color = '#fff'; }
                 else if (isHovered) {
-                  if (destructive) { bg = 'rgba(192,57,43,0.10)'; color = '#c0392b'; }
+                  if (destructive) { bg = 'rgba(192,57,43,0.10)'; color = 'var(--danger)'; }
                   else { bg = 'var(--accent-light)'; color = 'var(--accent)'; }
                 }
                 return (
@@ -631,7 +631,7 @@ function ProductCard({ product, fetchData, panel, onTogglePanel, allProducts = [
           </div>
           <div style={{ display: 'flex', gap: '10px', fontSize: '0.78rem', color: 'var(--ink-muted)', flexWrap: 'wrap' }}>
             <span>{displayPrice}</span><span>{stockText}</span>
-            {!product.isActive && <span style={{ color: '#c0392b' }}>Archived</span>}
+            {!product.isActive && <span style={{ color: 'var(--danger)' }}>Archived</span>}
           </div>
         </div>
         <span className={`status-select ${product.isQueued ? 'status-purple' : (product.isActive ? 'status-green' : 'status-red')}`} style={{ cursor: 'default' }}>
@@ -1406,7 +1406,7 @@ export function CustomHtmlEditor({ value, onChange, previewProduct }) {
           </button>
           {value && (
             <button type="button" onClick={clearAll}
-              style={{ fontSize: '0.72rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: '4px 11px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
+              style={{ fontSize: '0.72rem', color: 'var(--danger)', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: '4px 11px', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif" }}>
               Clear
             </button>
           )}
@@ -1529,7 +1529,7 @@ export function PinnedProductsPicker({ value, onChange, includeGroupBuys = true,
                 <button type="button" onClick={() => move(i, 1)} disabled={i === selectedRows.length - 1} title="Move down"
                   style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--ink-muted)', cursor: i === selectedRows.length - 1 ? 'not-allowed' : 'pointer', opacity: i === selectedRows.length - 1 ? 0.4 : 1, fontSize: '0.7rem' }}>↓</button>
                 <button type="button" onClick={() => removeAt(i)} title="Remove"
-                  style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: '#c0392b', cursor: 'pointer', fontSize: '0.78rem' }}>✕</button>
+                  style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.78rem' }}>✕</button>
               </div>
             ))}
           </div>
@@ -1633,6 +1633,12 @@ function AppearancePanel() {
       name: 'Pastel Paper',
       tagline: 'Editorial cream with Apple-style polish',
       desc: 'Cream paper background, deep sage primary with rose / butter / sky pastel accents, Fraunces editorial serif headings, soft warm shadows, frosted-glass capsule notifications.',
+    },
+    {
+      id: 'pixel',
+      name: 'Pixel',
+      tagline: 'Modern pixel-art game UI',
+      desc: 'Deep navy surfaces, electric-blue primary with lime / coral / gold accents, Pixelify Sans pixel font, sharp square corners, crisp 2px borders, hard offset pixel shadows, press-to-click buttons, and snappy stepped motion.',
     },
   ];
 
@@ -1810,7 +1816,7 @@ function CategoryCard({ category, onEdit, onChanged }) {
             View
           </Link>
           {!isStub && (
-            <button onClick={deleteThis} style={{ padding: '6px 12px', fontSize: '0.78rem', background: 'none', border: '1px solid var(--border)', color: '#c0392b', borderRadius: 'var(--radius-pill)', cursor: 'pointer' }}>
+            <button onClick={deleteThis} style={{ padding: '6px 12px', fontSize: '0.78rem', background: 'none', border: '1px solid var(--border)', color: 'var(--danger)', borderRadius: 'var(--radius-pill)', cursor: 'pointer' }}>
               ✕
             </button>
           )}
@@ -2071,7 +2077,7 @@ export function SpecsEditor({ value, onChange }) {
             onKeyDown={onValueKey(i)}
             onChange={e => updateRow(i, 'value', e.target.value)} />
           <button type="button" onClick={() => removeRow(i)}
-            style={{ padding: '0 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: '#c0392b', cursor: 'pointer', fontSize: '0.8rem', lineHeight: 1 }}>✕</button>
+            style={{ padding: '0 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.8rem', lineHeight: 1 }}>✕</button>
         </div>
       ))}
       <button type="button" onClick={addRow}
@@ -2146,7 +2152,7 @@ export function EditableDimensionRow({ dim, onRename, onUpdateValue, onRemoveVal
           style={{ border: '1px dashed var(--border)', background: 'transparent', padding: '2px 8px', borderRadius: 999, fontSize: '0.72rem', width: '8ch', color: 'inherit', outline: 'none' }} />
       </div>
       <button type="button" onClick={onRemove}
-        style={{ fontSize: '0.7rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>
+        style={{ fontSize: '0.7rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}>
         Remove
       </button>
     </div>
@@ -2223,7 +2229,7 @@ export function OptionGroupsField({ value, onChange }) {
             <input className="form-input" style={{ ...inputSm, fontWeight: 600, fontSize: '0.82rem', width: 'auto', minWidth: 140 }}
               value={grp.name}
               onChange={e => setGroups(g => g.map((gg, i) => i !== gi ? gg : { ...gg, name: e.target.value }))} />
-            <button type="button" onClick={() => removeGroup(gi)} style={{ fontSize: '0.68rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove Group</button>
+            <button type="button" onClick={() => removeGroup(gi)} style={{ fontSize: '0.68rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}>Remove Group</button>
           </div>
 
           {grp.values?.length > 0 && (
@@ -2271,7 +2277,7 @@ export function OptionGroupsField({ value, onChange }) {
                     {val.available !== false ? 'On' : 'Off'}
                   </button>
                   <button type="button" onClick={() => removeValue(gi, vi)}
-                    style={{ fontSize: '0.78rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 8px', cursor: 'pointer' }}>✕</button>
+                    style={{ fontSize: '0.78rem', color: 'var(--danger)', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 8px', cursor: 'pointer' }}>✕</button>
                 </div>
               ))}
             </div>
@@ -2483,7 +2489,7 @@ function ProductConfigManager({ product, fetchData, onClose }) {
             <input className="form-input" style={{ ...inputSm, fontWeight: 600, fontSize: '0.82rem', width: 'auto', minWidth: 140 }}
               value={cfg.name}
               onChange={e => setConfigs(p => p.map((c, i) => i !== ci ? c : { ...c, name: e.target.value }))} />
-            <button onClick={() => removeConfig(ci)} style={{ fontSize: '0.68rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
+            <button onClick={() => removeConfig(ci)} style={{ fontSize: '0.68rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
           </div>
 
           {cfg.options.length > 0 && (
@@ -2526,7 +2532,7 @@ function ProductConfigManager({ product, fetchData, onClose }) {
                 color: opt.available ? 'var(--accent)' : 'var(--ink-faint)',
                 borderColor: opt.available ? 'var(--accent)' : 'var(--border)',
               }}>{opt.available ? 'On' : 'Off'}</button>
-              <button onClick={() => removeOpt(ci, oi)} style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+              <button onClick={() => removeOpt(ci, oi)} style={{ fontSize: '0.65rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
             </div>
           ))}
 
@@ -2605,7 +2611,7 @@ function ProductConfigManager({ product, fetchData, onClose }) {
                     {(rule.conditions || []).length > 1 && (
                       <button onClick={() => setRules(r => r.map((rr, i) => i !== ri ? rr : {
                         ...rr, conditions: rr.conditions.filter((_, j) => j !== ci)
-                      }))} style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+                      }))} style={{ fontSize: '0.65rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
                     )}
                   </div>
                 ))}
@@ -2647,14 +2653,14 @@ function ProductConfigManager({ product, fetchData, onClose }) {
                     })}
                   </div>
                   {rule.conditions?.every(c => !c.configName || !c.selectedValue) && (
-                    <span style={{ fontSize: '0.64rem', color: '#c0392b', marginLeft: 4 }}>⚠ incomplete conditions</span>
+                    <span style={{ fontSize: '0.64rem', color: 'var(--danger)', marginLeft: 4 }}>⚠ incomplete conditions</span>
                   )}
                 </div>
 
                 {/* Remove rule */}
                 <div style={{ textAlign: 'right', marginTop: '4px' }}>
                   <button onClick={() => setRules(r => r.filter((_, i) => i !== ri))}
-                    style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove rule</button>
+                    style={{ fontSize: '0.65rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}>Remove rule</button>
                 </div>
               </div>
             );
@@ -2768,7 +2774,7 @@ function EditVariantRowCard({ variant, idx, dimensions, onChange, onChangeAttr, 
         </button>
       </div>
       <button type="button" onClick={onRemove}
-        style={{ alignSelf: 'flex-start', fontSize: '0.78rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '4px 8px', cursor: 'pointer' }}>
+        style={{ alignSelf: 'flex-start', fontSize: '0.78rem', color: 'var(--danger)', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '4px 8px', cursor: 'pointer' }}>
         ✕
       </button>
     </div>
@@ -2911,7 +2917,7 @@ function VariantEditor({ product, fetchData, onClose, embedded }) {
             <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '6px' }}>
               <input className="form-input" style={{ ...inputSm, fontWeight: 600, width: 120 }} value={d.name}
                 onChange={e => setDims(p => p.map((dd, i) => i !== di ? dd : { ...dd, name: e.target.value }))} />
-              <button onClick={() => setDims(p => p.filter((_, i) => i !== di))} style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
+              <button onClick={() => setDims(p => p.filter((_, i) => i !== di))} style={{ fontSize: '0.65rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>
               {d.values.map((v, vi) => (
@@ -3017,7 +3023,7 @@ function VariantEditor({ product, fetchData, onClose, embedded }) {
               </div>
             </div>
             <button onClick={() => handleDeleteVImage(img._id)}
-              style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer', paddingTop: '4px' }}>✕</button>
+              style={{ fontSize: '0.65rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer', paddingTop: '4px' }}>✕</button>
           </div>
         ))}
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
@@ -3948,7 +3954,7 @@ function OrderRow({ order, fetchOrders, updateOrderLocal, typeTag, expanded: ext
                       {!cancelled ? (
                         <button type="button" onClick={() => updateItemStatus(item._id, 'Cancelled')} disabled={busy}
                           title="Cancel this item — restores stock"
-                          style={{ fontSize: '0.7rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: '3px 9px', cursor: 'pointer' }}>
+                          style={{ fontSize: '0.7rem', color: 'var(--danger)', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: '3px 9px', cursor: 'pointer' }}>
                           Cancel
                         </button>
                       ) : (
@@ -4358,7 +4364,7 @@ export function VariantRowCard({ row, idx, mode, dimensions, onUpdateAttr, onUpd
       </div>
       {mode === 'list' && (
         <button type="button" onClick={() => onRemove(idx)}
-          style={{ alignSelf: 'flex-start', fontSize: '0.78rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '4px 8px', cursor: 'pointer' }}>
+          style={{ alignSelf: 'flex-start', fontSize: '0.78rem', color: 'var(--danger)', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '4px 8px', cursor: 'pointer' }}>
           ✕
         </button>
       )}
@@ -5233,7 +5239,7 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
                       </div>
                     </div>
                     <button type="button" onClick={() => setVariantImages(p => p.filter((_, i) => i !== ii))}
-                      style={{ fontSize: '0.78rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 8px', cursor: 'pointer' }}>✕</button>
+                      style={{ fontSize: '0.78rem', color: 'var(--danger)', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 8px', cursor: 'pointer' }}>✕</button>
                   </div>
                 ))}
                 <div style={{ display: 'flex', gap: '6px' }}>

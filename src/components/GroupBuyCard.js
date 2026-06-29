@@ -73,7 +73,14 @@ export default function GroupBuyCard({ gb, presentation }) {
   return (
     <Link to={`/group-buys/${gb._id}`} className="product-card" style={{ textDecoration: 'none', ...styleOverrides }}>
       <div className="card-img" style={{ aspectRatio }}>
-        <span className={`status-badge status-${colorKey}`} style={{ position: 'absolute', top: 14, left: 14, zIndex: 3 }}>
+        {/* Type tag (top-left) — marks the card as a group buy. Neutral ink/bg
+            inverting pair stays readable in every theme + light/dark mode and
+            reads distinctly from the coloured status badge. */}
+        <span className="status-badge" style={{ position: 'absolute', top: 14, left: 14, zIndex: 3, background: 'var(--ink)', color: 'var(--bg)' }}>
+          Group Buy
+        </span>
+        {/* Status (top-right) — Open / Closing Soon / In Production / etc. */}
+        <span className={`status-badge status-${colorKey}`} style={{ position: 'absolute', top: 14, right: 14, zIndex: 3 }}>
           {statusLabel[gb.status]}
         </span>
         {imgUrl ? (

@@ -3,7 +3,7 @@ import { apiFetch } from '../utils/api';
 
 const SiteStyleContext = createContext();
 
-export const VALID_STYLES = ['classic', 'minimal', 'pastel-paper'];
+export const VALID_STYLES = ['classic', 'minimal', 'pastel-paper', 'pixel'];
 
 // Persists the admin-chosen site-wide visual style. Mirrors ThemeContext (which
 // handles light/dark per-visitor) but the source of truth is the server so

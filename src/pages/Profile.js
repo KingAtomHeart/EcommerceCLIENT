@@ -376,7 +376,7 @@ export default function Profile() {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
                           <button onClick={() => startEdit(a)} className="profile-addr-btn">Edit</button>
                           {!a.isDefault && <button onClick={() => makeDefault(a._id)} className="profile-addr-btn">Set default</button>}
-                          <button onClick={() => removeAddress(a._id)} className="profile-addr-btn" style={{ color: '#c0392b' }}>Remove</button>
+                          <button onClick={() => removeAddress(a._id)} className="profile-addr-btn" style={{ color: 'var(--danger)' }}>Remove</button>
                         </div>
                       </div>
                     ))}

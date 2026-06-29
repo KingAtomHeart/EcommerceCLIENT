@@ -613,7 +613,7 @@ function BlockBtn({ children, onClick, disabled, title, danger }) {
     <button type="button" onClick={onClick} disabled={disabled} title={title}
       style={{
         width: 26, height: 26, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
-        background: 'var(--surface)', color: danger ? '#c0392b' : 'var(--ink-muted)',
+        background: 'var(--surface)', color: danger ? 'var(--danger)' : 'var(--ink-muted)',
         cursor: disabled ? 'not-allowed' : 'pointer', fontSize: '0.78rem', lineHeight: 1,
         opacity: disabled ? 0.4 : 1,
       }}>
@@ -811,7 +811,7 @@ function GalleryBlockEditor({ data, onChange }) {
           <input className="form-input" value={im.alt || ''} onChange={e => setImageAt(i, { alt: e.target.value })}
             placeholder="Alt text" style={{ alignSelf: 'flex-start' }} />
           <button type="button" onClick={() => removeImage(i)}
-            style={{ padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: '#c0392b', cursor: 'pointer', fontSize: '0.78rem' }}>✕</button>
+            style={{ padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.78rem' }}>✕</button>
         </div>
       ))}
       <button type="button" onClick={addImage}
@@ -853,7 +853,7 @@ function SpecListBlockEditor({ data, onChange }) {
           <input className="form-input" value={r.value || ''} onChange={e => setRowAt(i, { value: e.target.value })}
             placeholder="Value" />
           <button type="button" onClick={() => removeRow(i)}
-            style={{ padding: '0 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: '#c0392b', cursor: 'pointer', fontSize: '0.8rem' }}>✕</button>
+            style={{ padding: '0 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.8rem' }}>✕</button>
         </div>
       ))}
       <button type="button" onClick={addRow}
@@ -898,7 +898,7 @@ function ColumnsBlockEditor({ data, onChange }) {
                 <button type="button" onClick={() => moveCol(i, 1)} disabled={i === cols.length - 1} title="Move right"
                   style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--ink-muted)', cursor: i === cols.length - 1 ? 'not-allowed' : 'pointer', opacity: i === cols.length - 1 ? 0.4 : 1, fontSize: '0.7rem' }}>→</button>
                 <button type="button" onClick={() => removeCol(i)} title="Remove column"
-                  style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: '#c0392b', cursor: 'pointer', fontSize: '0.78rem' }}>✕</button>
+                  style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.78rem' }}>✕</button>
               </div>
             </div>
             <input className="form-input" value={c.title || ''} onChange={e => setColAt(i, { title: e.target.value })}
@@ -1028,7 +1028,7 @@ function ProductsBlockEditor({ data, onChange }) {
                 <button type="button" onClick={() => moveSelected(i, 1)} disabled={i === selectedRows.length - 1} title="Move down"
                   style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--ink-muted)', cursor: i === selectedRows.length - 1 ? 'not-allowed' : 'pointer', opacity: i === selectedRows.length - 1 ? 0.4 : 1, fontSize: '0.7rem' }}>↓</button>
                 <button type="button" onClick={() => removeAt(row.kind, row.id)} title="Remove"
-                  style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: '#c0392b', cursor: 'pointer', fontSize: '0.78rem' }}>✕</button>
+                  style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.78rem' }}>✕</button>
               </div>
             ))}
           </div>

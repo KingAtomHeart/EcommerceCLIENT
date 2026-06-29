@@ -212,7 +212,7 @@ export default function Checkout() {
                   <div style={{ position: 'relative', width: 52, height: 52, borderRadius: 10, background: 'var(--accent-light)', overflow: 'hidden' }}>
                     {imgUrl ? <img src={imgUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> :
                       <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', fontFamily: "'DM Serif Display', serif" }}>{prodName?.[0]}</div>}
-                    <span style={{ position: 'absolute', top: -6, right: -6, background: 'var(--ink)', color: '#fff', fontSize: '0.68rem', fontWeight: 600, minWidth: 18, height: 18, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>{item.quantity}</span>
+                    <span style={{ position: 'absolute', top: -6, right: -6, background: 'var(--ink)', color: 'var(--bg)', fontSize: '0.68rem', fontWeight: 600, minWidth: 18, height: 18, borderRadius: 10, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 5px' }}>{item.quantity}</span>
                   </div>
                   <div style={{ minWidth: 0 }}>
                     <p style={{ fontSize: '0.86rem', fontWeight: 500, lineHeight: 1.3, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayName}</p>
@@ -302,7 +302,7 @@ function AddressCard({ address, selected, onSelect }) {
         </p>
       </div>
       {address.isDefault && (
-        <span style={{ fontSize: '0.64rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', background: 'var(--ink)', color: '#fff', padding: '3px 8px', borderRadius: '6px', whiteSpace: 'nowrap' }}>Default</span>
+        <span className="status-badge status-green" style={{ fontSize: '0.64rem', padding: '3px 8px', borderRadius: '6px', whiteSpace: 'nowrap' }}>Default</span>
       )}
     </button>
   );

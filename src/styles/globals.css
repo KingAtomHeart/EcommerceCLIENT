@@ -5,17 +5,25 @@
 
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
 /* Origami (minimal) theme typography pair:
-   - Space Grotesk for displays/headings: angular geometric letterforms with
-     subtle character; reads as folded-paper sharp. Used by Linear and Cash App.
+   - Tinos for displays/headings: metrically compatible with Times New Roman,
+     a classic professional serif that renders consistently across every
+     device (devices without TNR installed get an identical-shaped webfont).
    - Inter for UI/body: the most professional neutral sans-serif, optimised
      for screen at every weight.
    Classic theme stays on DM Sans + DM Serif Display. */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Tinos:ital,wght@0,400;0,700;1,400;1,700&display=swap');
 /* Pastel Paper theme typography:
    - Fraunces for editorial displays/headings: modern variable serif with
      personality and a distinctive italic. Used by Stripe's marketing site.
    - Inter for body/UI (shared with Origami). */
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&display=swap');
+/* Pixel theme typography:
+   - Pixelify Sans for ALL pixel chrome (headings, buttons, labels, badges, nav).
+     It's a modern pixel font that stays legible at small sizes — unlike true
+     bitmap faces (Silkscreen/Press Start 2P) which the spec warns go unreadable.
+   - Inter for body/paragraph (shared).
+   display=swap avoids layout-shift while the font loads. */
+@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -32,6 +40,10 @@
   --accent-hover: #245040;
   --accent-light: #d6ebe3;
   --accent-glow: rgba(46,93,75,0.12);
+  /* Danger/destructive text + icons. Defined per theme so the red stays
+     readable on both light and dark surfaces (a single fixed red can't
+     contrast both). Light keeps the original brick red. */
+  --danger: #c0392b;
   --border: #e2e0da;
   --border-subtle: #eeede8;
   --shadow-sm: 0 2px 8px rgba(26,26,24,0.06);
@@ -62,6 +74,8 @@
   --accent-hover: #5aa07f;
   --accent-light: rgba(74,140,111,0.15);
   --accent-glow: rgba(74,140,111,0.15);
+  /* Lighter red so destructive text/icons stay legible on dark surfaces. */
+  --danger: #ef6b6b;
   --border: #2e2e2b;
   --border-subtle: #252523;
   --shadow-sm: 0 2px 8px rgba(0,0,0,0.3);
@@ -726,7 +740,7 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
   background: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
   color: var(--ink-muted); transition: all var(--transition);
 }
-.wishlist-btn:hover { border-color: #c0392b; color: #c0392b; background: rgba(192,57,43,0.06); transform: scale(1.06); }
+.wishlist-btn:hover { border-color: #c0392b; color: var(--danger); background: rgba(192,57,43,0.06); transform: scale(1.06); }
 
 /* ══════════════════════════════════
    SPECS TABLE
@@ -767,7 +781,7 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
   background: none; border: none; cursor: pointer;
   color: var(--ink-faint); padding: 6px; border-radius: 6px; transition: all var(--transition);
 }
-.cart-remove:hover { color: #c0392b; background: rgba(192,57,43,0.08); }
+.cart-remove:hover { color: var(--danger); background: rgba(192,57,43,0.08); }
 
 /* Shipping progress */
 .shipping-progress-wrap { margin-bottom: 24px; padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-sm); }
@@ -1317,7 +1331,7 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
   display: flex; align-items: center; justify-content: center;
   transition: all 0.15s;
 }
-.config-remove-btn:hover { border-color: #c0392b; color: #c0392b; background: rgba(192,57,43,0.06); }
+.config-remove-btn:hover { border-color: #c0392b; color: var(--danger); background: rgba(192,57,43,0.06); }
 
 /* Config block in modal */
 .config-block {
@@ -1719,8 +1733,8 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
   --shadow-card: 0 1px 8px rgba(0,0,0,0.4);
 }
 
-/* Body font — Inter for crisp geometric letterforms. Headings use Space
-   Grotesk for the distinctive folded-paper character. */
+/* Body font — Inter for crisp, readable UI copy. Headings use Tinos
+   (Times New Roman) for a classic, professional serif voice. */
 [data-style="minimal"] body,
 [data-style="minimal"] input,
 [data-style="minimal"] select,
@@ -1741,19 +1755,19 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
 /* Catch-all attribute selectors — any element with an inline
    `font-family: 'DM Serif Display'` style (used liberally across the
    JSX for product names, modal titles, hero text, etc.) gets rewritten
-   to Space Grotesk. Same for inline DM Sans → Inter. Specificity high
-   enough to beat inline styles thanks to !important. */
+   to Tinos (Times New Roman). Same for inline DM Sans → Inter. Specificity
+   high enough to beat inline styles thanks to !important. */
 [data-style="minimal"] [style*="DM Serif Display"] {
-  font-family: 'Space Grotesk', 'Inter', sans-serif !important;
+  font-family: 'Tinos', 'Times New Roman', Times, serif !important;
   font-style: normal !important;
-  font-weight: 600 !important;
-  letter-spacing: -0.02em !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em !important;
 }
 [data-style="minimal"] [style*="DM Sans"] {
   font-family: 'Inter', sans-serif !important;
 }
 
-/* Headings — Space Grotesk for the distinctive geometric character */
+/* Headings — Tinos (Times New Roman) for a classic, professional serif voice */
 [data-style="minimal"] h1,
 [data-style="minimal"] h2,
 [data-style="minimal"] h3,
@@ -1773,14 +1787,16 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
 [data-style="minimal"] .card-img-placeholder,
 [data-style="minimal"] .modal-title,
 [data-style="minimal"] .admin-dashboard-header h1 {
-  font-family: 'Space Grotesk', 'Inter', sans-serif !important;
-  font-weight: 600 !important;
-  letter-spacing: -0.02em !important;
+  font-family: 'Tinos', 'Times New Roman', Times, serif !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em !important;
   font-style: normal !important;
 }
-[data-style="minimal"] .section-title { letter-spacing: -0.025em !important; }
-[data-style="minimal"] .hero-title { letter-spacing: -0.035em !important; line-height: 1.02 !important; }
-[data-style="minimal"] .nav-logo { letter-spacing: -0.01em !important; }
+/* Serifs don't want the tight negative tracking the geometric sans did —
+   relax to near-normal so the letterforms breathe. */
+[data-style="minimal"] .section-title { letter-spacing: -0.01em !important; }
+[data-style="minimal"] .hero-title { letter-spacing: -0.012em !important; line-height: 1.06 !important; }
+[data-style="minimal"] .nav-logo { letter-spacing: 0 !important; }
 /* Eyebrows / labels — Inter for clean UI labels */
 [data-style="minimal"] .hero-eyebrow,
 [data-style="minimal"] .banner-eyebrow,
@@ -1816,7 +1832,7 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
 [data-style="minimal"] .footer-logo span {
   color: var(--accent) !important;
   font-style: normal !important;
-  font-weight: 600 !important;
+  font-weight: 700 !important;
 }
 
 /* ─── PRODUCT CARDS — Apple-style lift + image zoom ─────────────────────── */
@@ -1924,7 +1940,7 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
 
 /* Light = white pill on dark backgrounds */
 [data-style="minimal"] .btn-light {
-  background: #fff; color: var(--ink); border: none;
+  background: #fff; color: #1a1a18; border: none;
   box-shadow: 0 1px 3px rgba(0,0,0,0.12);
 }
 [data-style="minimal"] .btn-light:hover {
@@ -2129,16 +2145,26 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
 }
 
 /* ─── TOAST ─────────────────────────────────────────────────────────────── */
-/* react-hot-toast renders each notification as a div with role="status".
-   Inline styles from App.js (var(--radius-pill) = 4px, accent bg for success,
-   red for error) already produce a clean angular square. We override only
-   the font + padding here to feel theme-consistent. */
-[data-style="minimal"] [role="status"] {
-  font-family: 'Inter', sans-serif !important;
-  letter-spacing: -0.005em !important;
-  padding: 10px 18px !important;
+/* Simple: one solid shape (the outer ToastBar, keeping its inline type colour)
+   with plain text inside and a single soft shadow. The inner message is
+   flattened so there's no second shape / doubled shadow. */
+[data-style="minimal"] div:has(> [role="status"]) {
   border-radius: var(--radius) !important;
-  box-shadow: var(--shadow-lg) !important;
+  padding: 10px 18px !important;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.22) !important;
+}
+[data-style="minimal"] [role="status"] {
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: inherit !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 0.875rem !important;
+  font-weight: 500 !important;
+  letter-spacing: -0.005em !important;
 }
 
 /* ─── SPINNER ───────────────────────────────────────────────────────────── */
@@ -2588,7 +2614,7 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
 
 /* Light = white pill */
 [data-style="pastel-paper"] .btn-light {
-  background: #fff; color: var(--ink); border: none;
+  background: #fff; color: #1a1a18; border: none;
   box-shadow: 0 1px 3px rgba(82,68,50,0.12);
 }
 [data-style="pastel-paper"] .btn-light:hover {
@@ -2865,60 +2891,580 @@ h1, h2, h3 { font-family: 'DM Serif Display', serif; letter-spacing: -0.025em; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   PASTEL PAPER — Apple-style frosted capsule toast
+   PASTEL PAPER — single clean box toast
    ───────────────────────────────────────────────────────────────────────
-   Refined frosted-glass pill, similar to the macOS volume HUD or the
-   "AirPods connected" notification. No bright colored bg, no rotation,
-   no shouty icons — the text is the focus, the surface is glass.
-
-   react-hot-toast renders each toast as a div with role="status". App.js
-   sets inline styles via toastOptions; we override via !important so the
-   App.js config stays theme-agnostic.
+   react-hot-toast nests a message div (role="status") inside the ToastBar.
+   The previous frosted treatment styled BOTH the bar and the inner message,
+   which produced a box-inside-a-box. Here the OUTER bar is the one clean
+   rounded box — it keeps its inline type colour (sage = success, red = error,
+   ink = neutral) set in App.js — and the inner message is flattened to plain
+   text. `div:has(> [role="status"])` targets only the ToastBar (the direct
+   parent of the message), not the outer Toaster container.
 ═══════════════════════════════════════════════════════════════════════ */
+[data-style="pastel-paper"] div:has(> [role="status"]) {
+  border-radius: 12px !important;
+  padding: 10px 18px !important;
+  box-shadow: 0 6px 20px rgba(82,68,50,0.22) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-style="pastel-paper"][data-theme="dark"] div:has(> [role="status"]) {
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+}
+/* Dark-mode success: the dark-theme sage accent is light, so the inline #fff
+   text would wash out. Force dark ink text on the success box for legibility. */
+[data-style="pastel-paper"][data-theme="dark"] .ok-toast-success [role="status"] {
+  color: #15211a !important;
+}
+/* Inner message — plain text, no surface / shadow of its own. */
 [data-style="pastel-paper"] [role="status"] {
-  background: rgba(255,255,255,0.72) !important;
-  color: var(--ink) !important;
-  border: 1px solid rgba(255,255,255,0.5) !important;
-  border-radius: var(--radius-pill) !important;
-  padding: 10px 22px !important;
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: inherit !important;
   font-family: 'Inter', sans-serif !important;
-  font-size: 0.86rem !important;
+  font-size: 0.875rem !important;
   font-weight: 500 !important;
   letter-spacing: -0.005em !important;
-  backdrop-filter: blur(24px) saturate(180%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
-  box-shadow:
-    0 12px 32px rgba(82,68,50,0.16),
-    0 2px 8px rgba(82,68,50,0.08),
-    inset 0 0 0 0.5px rgba(255,255,255,0.4) !important;
-  transform: none !important;
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease !important;
 }
-[data-style="pastel-paper"][data-theme="dark"] [role="status"] {
-  background: rgba(29,26,21,0.72) !important;
-  color: var(--ink) !important;
-  border: 1px solid rgba(255,255,255,0.08) !important;
-  box-shadow:
-    0 12px 32px rgba(0,0,0,0.55),
-    0 2px 8px rgba(0,0,0,0.3),
-    inset 0 0 0 0.5px rgba(255,255,255,0.06) !important;
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PIXEL  —  data-style="pixel"
+   ───────────────────────────────────────────────────────────────────────────
+   Modern indie-game pixel UI. Fully independent of Classic / Origami /
+   Pastel Paper (those blocks are untouched; this only fires under
+   <html data-style="pixel">).
+     • Deep navy/slate surfaces (dark-leaning), vibrant controlled accents
+     • Pixelify Sans for all chrome (display + UI), Inter body
+     • Sharp square corners (radius 0), crisp 2px borders
+     • Hard offset pixel shadows (Npx Npx 0) instead of soft blurs
+     • Buttons "press" on hover (translate in, shadow shrinks then drops)
+     • Stepped steps() motion for a frame-by-frame feel
+     • Subtle pixel-grid texture on the base surface
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── TOKENS — light ──────────────────────────────────────────────────────── */
+[data-style="pixel"] {
+  --bg: #e4e8f5;
+  --bg-secondary: #d2d8ec;
+  --surface: #ffffff;
+  --surface-2: #eef1fb;
+  --ink: #1a1c2e;
+  --ink-muted: #565b7c;
+  --ink-faint: #9398b8;
+  --accent: #3b54f0;             /* electric blue primary */
+  --accent-hover: #2a3fd0;
+  --accent-light: #d4daff;
+  --accent-glow: rgba(59,84,240,0.28);
+  --border: #1a1c2e;             /* bold, crisp pixel border */
+  --border-subtle: #b9c0db;
+  /* Hard offset pixel shadows (no blur) */
+  --pixel-shadow: #1a1c2e;
+  --shadow-sm: 2px 2px 0 var(--pixel-shadow);
+  --shadow-md: 4px 4px 0 var(--pixel-shadow);
+  --shadow-lg: 6px 6px 0 var(--pixel-shadow);
+  --shadow-card: 4px 4px 0 var(--pixel-shadow);
+  /* Square everything */
+  --radius: 0px;
+  --radius-sm: 0px;
+  --radius-pill: 0px;
+  /* Snappy stepped motion — frame-by-frame feel */
+  --transition: 120ms steps(3, end);
+  --transition-bounce: 140ms steps(4, end);
+  --transition-slow: 200ms steps(5, end);
+  /* Supplemental pixel palette — fills stay vibrant in both modes; the *-ink
+     values are dark text meant to sit ON those bright fills. */
+  --pixel-lime: #4fb83a;   --pixel-lime-light: #d8f3cf;  --pixel-lime-ink: #123d0a;
+  --pixel-coral: #ec4452;  --pixel-coral-light: #ffd6da; --pixel-coral-ink: #5a0710;
+  --pixel-gold: #e0a313;   --pixel-gold-light: #ffe9b0;  --pixel-gold-ink: #4a3500;
 }
-/* Error variant — react-hot-toast tags error toasts with aria-live="assertive".
-   We don't change the surface (still frosted), just tint the text and add
-   a subtle rose ring. Restrained, Apple-style. */
-[data-style="pastel-paper"] [role="status"][aria-live="assertive"] {
-  color: var(--pastel-rose-ink) !important;
-  border-color: rgba(201,126,126,0.45) !important;
-  box-shadow:
-    0 12px 32px rgba(82,68,50,0.16),
-    0 2px 8px rgba(201,126,126,0.18),
-    inset 0 0 0 0.5px rgba(255,255,255,0.4) !important;
+
+/* ─── TOKENS — dark (the signature look: deep navy, hard black shadows) ────── */
+[data-style="pixel"][data-theme="dark"] {
+  --bg: #14141f;
+  --bg-secondary: #0d0d15;
+  --surface: #20212f;
+  --surface-2: #2a2b3d;
+  --ink: #eef1ff;
+  --ink-muted: #9ea3c6;
+  --ink-faint: #5e6488;
+  --accent: #5d80ff;             /* brighter electric blue for dark */
+  --accent-hover: #7a98ff;
+  --accent-light: rgba(93,128,255,0.18);
+  --accent-glow: rgba(93,128,255,0.38);
+  --border: #3d4068;
+  --border-subtle: #2a2b3d;
+  --pixel-shadow: #000000;
+  --shadow-sm: 2px 2px 0 var(--pixel-shadow);
+  --shadow-md: 4px 4px 0 var(--pixel-shadow);
+  --shadow-lg: 6px 6px 0 var(--pixel-shadow);
+  --shadow-card: 4px 4px 0 var(--pixel-shadow);
+  --pixel-lime: #62d94d;   --pixel-lime-light: rgba(98,217,77,0.18);   --pixel-lime-ink: #0c2e08;
+  --pixel-coral: #ff5e6c;  --pixel-coral-light: rgba(255,94,108,0.18); --pixel-coral-ink: #4d050d;
+  --pixel-gold: #ffc83d;   --pixel-gold-light: rgba(255,200,61,0.18);  --pixel-gold-ink: #3d2c00;
 }
-[data-style="pastel-paper"][data-theme="dark"] [role="status"][aria-live="assertive"] {
-  color: var(--pastel-rose-ink) !important;
-  border-color: rgba(232,152,152,0.35) !important;
-  box-shadow:
-    0 12px 32px rgba(0,0,0,0.55),
-    0 2px 10px rgba(232,152,152,0.18),
-    inset 0 0 0 0.5px rgba(255,255,255,0.06) !important;
+
+/* ─── TYPOGRAPHY ───────────────────────────────────────────────────────────
+   Body stays Inter (pixel fonts unreadable at paragraph sizes). Pixelify Sans
+   for display + buttons + small uppercase chrome / labels. */
+[data-style="pixel"] body,
+[data-style="pixel"] input,
+[data-style="pixel"] select,
+[data-style="pixel"] textarea,
+[data-style="pixel"] p,
+[data-style="pixel"] span,
+[data-style="pixel"] a,
+[data-style="pixel"] li,
+[data-style="pixel"] td,
+[data-style="pixel"] th {
+  font-family: 'Inter', sans-serif;
+}
+/* Functional headings / names / titles — clean Inter for readability.
+   The pixel font is intentionally NOT used here; the pixel identity comes from
+   the sharp borders, hard shadows, square corners and palette. */
+[data-style="pixel"] h1,
+[data-style="pixel"] h2,
+[data-style="pixel"] h3,
+[data-style="pixel"] h4,
+[data-style="pixel"] h5,
+[data-style="pixel"] h6,
+[data-style="pixel"] .card-name,
+[data-style="pixel"] .cart-item-name,
+[data-style="pixel"] .admin-stat-n,
+[data-style="pixel"] .card-img-placeholder,
+[data-style="pixel"] .modal-title,
+[data-style="pixel"] .admin-dashboard-header h1,
+[data-style="pixel"] [style*="DM Serif Display"] {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em !important;
+  font-style: normal !important;
+}
+/* Eyebrows / labels / badges — clean Inter, uppercase tracked (standard label) */
+[data-style="pixel"] .hero-eyebrow,
+[data-style="pixel"] .banner-eyebrow,
+[data-style="pixel"] .banner--overlay-eyebrow,
+[data-style="pixel"] .card-category,
+[data-style="pixel"] .label-sm,
+[data-style="pixel"] .form-label,
+[data-style="pixel"] .footer-col h4,
+[data-style="pixel"] .admin-stat-l,
+[data-style="pixel"] .card-chip-label,
+[data-style="pixel"] .modal-section-title,
+[data-style="pixel"] .status-badge,
+[data-style="pixel"] .card-badge {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase;
+}
+[data-style="pixel"] [style*="DM Sans"] {
+  font-family: 'Inter', sans-serif !important;
+}
+/* The ONLY pixel-font elements: large display titles + the logos. Big enough
+   to stay perfectly legible while giving the theme its pixel identity. Placed
+   last so they win over the Inter catch-all above. */
+[data-style="pixel"] .hero-title,
+[data-style="pixel"] .banner-title,
+[data-style="pixel"] .banner--overlay-title,
+[data-style="pixel"] .section-title,
+[data-style="pixel"] .nav-logo,
+[data-style="pixel"] .footer-logo,
+[data-style="pixel"] .auth-logo {
+  font-family: 'Pixelify Sans', sans-serif !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+  font-style: normal !important;
+}
+/* Title <em> / logo accent — stays Pixelify (its parent is a pixel display title) */
+[data-style="pixel"] .hero-title em,
+[data-style="pixel"] .banner-title em,
+[data-style="pixel"] .banner--overlay-title em,
+[data-style="pixel"] .nav-logo span,
+[data-style="pixel"] .auth-logo span,
+[data-style="pixel"] .footer-logo span {
+  font-family: 'Pixelify Sans', sans-serif !important;
+  font-style: normal !important;
+  font-weight: 700 !important;
+  color: var(--accent) !important;
+}
+
+/* ─── PIXEL-GRID TEXTURE ───────────────────────────────────────────────────
+   Faint graph-paper grid so the base surface reads as a pixel canvas. Subtle. */
+[data-style="pixel"] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background-image:
+    linear-gradient(rgba(26,28,46,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26,28,46,0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+[data-style="pixel"][data-theme="dark"] body::before {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+}
+/* Keep nav / overlays / toast above the grid texture */
+[data-style="pixel"] .ok-nav,
+[data-style="pixel"] .modal-overlay,
+[data-style="pixel"] #ok-toast,
+[data-style="pixel"] [role="status"] {
+  z-index: 200;
+}
+
+/* ─── SQUARE INLINE-ROUND ELEMENTS ─────────────────────────────────────────
+   Tokens already zero out var(--radius*). These catch hardcoded inline radii
+   (avatars, dots, count bubbles, pills). Pixel avatars are squares. */
+[data-style="pixel"] [style*="border-radius: 50%"],
+[data-style="pixel"] [style*="border-radius:50%"],
+[data-style="pixel"] [style*="border-radius: 999"],
+[data-style="pixel"] [style*="border-radius: 50px"],
+[data-style="pixel"] [style*="border-radius: 20px"],
+[data-style="pixel"] [style*="border-radius: 12px"],
+[data-style="pixel"] [style*="border-radius: 10px"],
+[data-style="pixel"] [style*="border-radius: 8px"],
+[data-style="pixel"] [style*="border-radius: 6px"] {
+  border-radius: 0 !important;
+}
+
+/* ─── PRODUCT CARDS — sprite tiles ─────────────────────────────────────────*/
+[data-style="pixel"] .product-card {
+  border: 2px solid var(--border);
+  border-radius: 0;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
+}
+[data-style="pixel"] .product-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 var(--pixel-shadow);
+  border-color: var(--accent);
+}
+[data-style="pixel"] .card-img,
+[data-style="pixel"] .card-img-placeholder {
+  background: var(--surface-2);
+  border-radius: 0;
+  border-bottom: 2px solid var(--border);
+}
+[data-style="pixel"] .card-img .card-img-primary,
+[data-style="pixel"] .card-img .card-img-secondary {
+  transition: opacity var(--transition), transform var(--transition);
+}
+[data-style="pixel"] .product-card:hover .card-img-primary { opacity: 0; }
+[data-style="pixel"] .product-card:hover .card-img-secondary { opacity: 1; }
+[data-style="pixel"] .product-card:hover .card-img-primary:only-of-type { opacity: 1; }
+[data-style="pixel"] .product-card:hover .card-name { color: var(--accent); }
+[data-style="pixel"] .card-badge {
+  border-radius: 0;
+  border: 2px solid var(--border);
+  box-shadow: 2px 2px 0 var(--pixel-shadow);
+  font-weight: 400;
+}
+[data-style="pixel"] .card-add-btn {
+  border-radius: 0;
+  border: 2px solid var(--border);
+  background: var(--accent); color: #fff;
+  box-shadow: 3px 3px 0 var(--pixel-shadow);
+  transition: transform var(--transition), box-shadow var(--transition), background var(--transition);
+}
+[data-style="pixel"] .card-add-btn:hover {
+  background: var(--accent-hover);
+  transform: translate(1px, 1px);
+  box-shadow: 2px 2px 0 var(--pixel-shadow);
+}
+[data-style="pixel"] .card-add-btn:active {
+  transform: translate(3px, 3px);
+  box-shadow: none;
+}
+
+/* ─── BUTTONS — solid sprite + press-down ──────────────────────────────────
+   rest: 4px hard shadow · hover: translate 2px + 2px shadow · active: seated */
+[data-style="pixel"] .btn-primary,
+[data-style="pixel"] .btn-dark,
+[data-style="pixel"] .btn-light,
+[data-style="pixel"] .btn-outline,
+[data-style="pixel"] .btn-accent,
+[data-style="pixel"] .btn-ghost,
+[data-style="pixel"] .btn-ghost-white,
+[data-style="pixel"] .nav-cart-btn,
+[data-style="pixel"] .nav-auth-link {
+  border-radius: 0 !important;
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  transition: transform var(--transition), box-shadow var(--transition), background var(--transition), color var(--transition);
+}
+[data-style="pixel"] .btn-dark::before,
+[data-style="pixel"] .nav-cart-btn::before { display: none !important; }
+
+[data-style="pixel"] .btn-primary,
+[data-style="pixel"] .btn-accent,
+[data-style="pixel"] .btn-dark {
+  background: var(--accent); color: #fff;
+  border: 2px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+[data-style="pixel"] .btn-primary:hover,
+[data-style="pixel"] .btn-accent:hover,
+[data-style="pixel"] .btn-dark:hover {
+  background: var(--accent-hover); color: #fff;
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-sm);
+}
+[data-style="pixel"] .btn-primary:active,
+[data-style="pixel"] .btn-accent:active,
+[data-style="pixel"] .btn-dark:active {
+  transform: translate(4px, 4px);
+  box-shadow: none;
+}
+[data-style="pixel"] .btn-outline {
+  background: transparent; color: var(--accent);
+  border: 2px solid var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+[data-style="pixel"] .btn-outline:hover {
+  background: var(--accent); color: #fff;
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+[data-style="pixel"] .btn-outline:active { transform: translate(2px, 2px); box-shadow: none; }
+[data-style="pixel"] .btn-light {
+  background: #fff; color: #1a1c2e;
+  border: 2px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+[data-style="pixel"] .btn-light:hover {
+  background: #fff;
+  transform: translate(2px, 2px);
+  box-shadow: var(--shadow-sm);
+}
+[data-style="pixel"] .btn-ghost,
+[data-style="pixel"] .btn-ghost-white {
+  background: rgba(255,255,255,0.12); color: #fff;
+  border: 2px solid rgba(255,255,255,0.5);
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+  box-shadow: var(--shadow-sm);
+}
+[data-style="pixel"] .btn-ghost:hover,
+[data-style="pixel"] .btn-ghost-white:hover {
+  background: rgba(255,255,255,0.2); color: #fff;
+  border-color: #fff;
+  transform: translate(2px, 2px); box-shadow: none;
+}
+[data-style="pixel"] .nav-cart-btn {
+  background: var(--accent); color: #fff;
+  border: 2px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+[data-style="pixel"] .nav-cart-btn:hover {
+  background: var(--accent-hover);
+  transform: translate(2px, 2px); box-shadow: none;
+}
+[data-style="pixel"] .section-cta:hover { transform: translate(2px, 2px); }
+
+/* ─── PILLS / VARIANTS / TAGS — square chips ───────────────────────────────*/
+[data-style="pixel"] .pill,
+[data-style="pixel"] .variant-btn,
+[data-style="pixel"] .admin-toggle,
+[data-style="pixel"] .admin-search {
+  border-radius: 0 !important;
+  transition: all var(--transition);
+}
+[data-style="pixel"] .pill {
+  border: 2px solid var(--border); padding: 7px 16px; background: var(--surface);
+  font-family: 'Inter', sans-serif; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;
+}
+[data-style="pixel"] .pill:hover { border-color: var(--accent); color: var(--accent); }
+[data-style="pixel"] .pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+[data-style="pixel"] .variant-btn { border: 2px solid var(--border); background: var(--surface); }
+[data-style="pixel"] .variant-btn:hover:not(.active):not(.variant-btn-fixed) {
+  border-color: var(--accent); color: var(--accent); background: var(--accent-light);
+}
+[data-style="pixel"] .variant-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+[data-style="pixel"] .section-link {
+  background: var(--accent-light); color: var(--accent);
+  border: 2px solid var(--accent);
+  padding: 6px 14px; border-radius: 0;
+  font-family: 'Inter', sans-serif; font-size: 0.76rem; font-weight: 600; text-transform: uppercase;
+  transition: all var(--transition);
+}
+[data-style="pixel"] .section-link:hover {
+  background: var(--accent); color: #fff;
+  transform: translate(1px, 1px);
+}
+/* status badges keep their per-variant colours; just square them + outline */
+[data-style="pixel"] .status-badge { border-radius: 0 !important; border: 2px solid currentColor; font-size: 0.7rem; font-weight: 600; }
+[data-style="pixel"] .status-select { border-radius: 0; }
+[data-style="pixel"] .banner--overlay-eyebrow { border-radius: 0; }
+[data-style="pixel"] .cat-link:hover { color: var(--accent); transform: translate(1px, 1px); }
+
+/* ─── NAVBAR ───────────────────────────────────────────────────────────────*/
+[data-style="pixel"] .ok-nav {
+  border-bottom: 2px solid var(--border);
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+[data-style="pixel"] .ok-nav.light-bg { background: var(--bg); }
+[data-style="pixel"][data-theme="dark"] .ok-nav.dark-bg { background: var(--bg); }
+[data-style="pixel"] .nav-links a,
+[data-style="pixel"] .nav-dropdown-trigger {
+  font-family: 'Inter', sans-serif; font-size: 0.82rem; font-weight: 500;
+  text-transform: none; letter-spacing: 0;
+}
+[data-style="pixel"] .nav-links a::after,
+[data-style="pixel"] .nav-dropdown-trigger::after { background: var(--accent); height: 3px; border-radius: 0; }
+[data-style="pixel"] .nav-icon-btn,
+[data-style="pixel"] .dark-toggle,
+[data-style="pixel"] .nav-avatar-btn,
+[data-style="pixel"] .mobile-menu-btn,
+[data-style="pixel"] .wishlist-btn,
+[data-style="pixel"] .qty-btn,
+[data-style="pixel"] .carousel-arrow,
+[data-style="pixel"] .social-btn {
+  border-radius: 0 !important;
+  border: 2px solid var(--border);
+  transition: all var(--transition);
+}
+[data-style="pixel"] .dark-toggle { background: var(--surface-2); }
+[data-style="pixel"] .dark-toggle:hover,
+[data-style="pixel"] .nav-icon-btn:hover { color: var(--accent); border-color: var(--accent); transform: translate(1px, 1px); }
+[data-style="pixel"] .nav-avatar-initials { background: var(--accent); color: #fff; }
+[data-style="pixel"] .qty-btn:hover,
+[data-style="pixel"] .carousel-arrow:hover {
+  background: var(--accent); color: #fff; border-color: var(--accent);
+}
+[data-style="pixel"] .social-btn:hover {
+  background: var(--pixel-lime); color: var(--pixel-lime-ink); border-color: var(--border);
+}
+[data-style="pixel"] .wishlist-btn:hover {
+  border-color: var(--pixel-coral); color: var(--pixel-coral); background: var(--pixel-coral-light);
+}
+
+/* ─── HERO / BANNERS ───────────────────────────────────────────────────────*/
+[data-style="pixel"] .hero-eyebrow { letter-spacing: 0.12em; }
+[data-style="pixel"] .hero-dot { border-radius: 0 !important; transition: all var(--transition); }
+[data-style="pixel"] .hero-dot.active { background: var(--accent); transform: scale(1.3); }
+[data-style="pixel"] .banner,
+[data-style="pixel"] .banner.banner--overlay,
+[data-style="pixel"] .banner.banner--stacked {
+  border-radius: 0 !important;
+  border: 2px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+[data-style="pixel"] .banner::before { display: none; }
+[data-style="pixel"] .banner.banner--fullbleed { border-radius: 0 !important; border: none; box-shadow: none; }
+[data-style="pixel"] .banner--overlay-eyebrow { border: 2px solid rgba(255,255,255,0.6); backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* ─── FORMS ────────────────────────────────────────────────────────────────*/
+[data-style="pixel"] .form-input,
+[data-style="pixel"] .form-select {
+  border-radius: 0;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  font-family: 'Inter', sans-serif;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+[data-style="pixel"] .form-input:focus,
+[data-style="pixel"] .form-select:focus {
+  border-color: var(--accent);
+  box-shadow: 3px 3px 0 var(--accent);
+  outline: none;
+}
+
+/* ─── CART / SHIPPING ──────────────────────────────────────────────────────*/
+[data-style="pixel"] .cart-img { border-radius: 0; border: 2px solid var(--border); background: var(--surface-2); }
+[data-style="pixel"] .shipping-progress-wrap { border-radius: 0; border: 2px solid var(--border); }
+[data-style="pixel"] .shipping-bar { border-radius: 0; }
+[data-style="pixel"] .shipping-fill { border-radius: 0; background: var(--accent); }
+
+/* ─── AUTH ─────────────────────────────────────────────────────────────────*/
+[data-style="pixel"] .auth-card { border-radius: 0; border: 2px solid var(--border); box-shadow: var(--shadow-lg); }
+[data-style="pixel"] .auth-tabs { border-radius: 0; }
+[data-style="pixel"] .auth-tab { border-radius: 0; }
+[data-style="pixel"] .auth-tab.active { box-shadow: var(--shadow-sm); }
+[data-style="pixel"] .google-btn { border-radius: 0; }
+
+/* ─── MODAL — sharp bordered panel ─────────────────────────────────────────*/
+[data-style="pixel"] .modal-body {
+  border-radius: 0 !important;
+  border: 2px solid var(--border);
+  box-shadow: var(--shadow-lg);
+}
+
+/* ─── MISC / FOOTER / ADMIN / FOCUS ────────────────────────────────────────*/
+[data-style="pixel"] .spinner { border-radius: 0; border-top-color: var(--accent); }
+[data-style="pixel"] ::selection { background: var(--accent); color: #fff; }
+[data-style="pixel"] .cat-strip { border-bottom: 2px solid var(--border); }
+[data-style="pixel"] .ok-footer { border-top: 2px solid var(--border); background: var(--bg-secondary); }
+[data-style="pixel"] .footer-col ul a:hover { color: var(--accent); }
+[data-style="pixel"] .admin-stat { border-radius: 0; border: 2px solid var(--border); transition: all var(--transition); }
+[data-style="pixel"] .admin-stat:hover { border-color: var(--accent); transform: translate(-2px, -2px); box-shadow: var(--shadow-sm); }
+[data-style="pixel"] .admin-tab.active { border-bottom-color: var(--accent); color: var(--accent); }
+[data-style="pixel"] :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 0; }
+/* Recolor legacy purple Variant/Add-on tags into the pixel palette. */
+[data-style="pixel"] [style*="rgba(120,80,200"],
+[data-style="pixel"] [style*="rgba(120, 80, 200"] {
+  background: var(--accent-light) !important;
+  color: var(--accent) !important;
+}
+
+/* ─── MOTION — stepped pop-in ──────────────────────────────────────────────*/
+@keyframes pixelPopIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+[data-style="pixel"] .product-card,
+[data-style="pixel"] .banner,
+[data-style="pixel"] .hero-content > * {
+  animation: pixelPopIn 180ms steps(4, end) both;
+}
+[data-style="pixel"] .hero-content > *:nth-child(1) { animation-delay: 0.04s; }
+[data-style="pixel"] .hero-content > *:nth-child(2) { animation-delay: 0.10s; }
+[data-style="pixel"] .hero-content > *:nth-child(3) { animation-delay: 0.16s; }
+[data-style="pixel"] .hero-content > *:nth-child(4) { animation-delay: 0.22s; }
+@media (prefers-reduced-motion: reduce) {
+  [data-style="pixel"] .product-card,
+  [data-style="pixel"] .banner,
+  [data-style="pixel"] .hero-content > * { animation: none; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PIXEL — toast: one simple solid square with plain text. No hard-offset
+   shadow / border (those read as "stacked squares"), no pixel font, no stepped
+   animation — just a clean square shape behind readable text.
+   ═══════════════════════════════════════════════════════════════════════════ */
+[data-style="pixel"] div:has(> [role="status"]) {
+  border-radius: 0 !important;
+  border: none !important;
+  padding: 10px 18px !important;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.35) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* Dark-mode success: accent is a brighter blue; keep the white text explicit. */
+[data-style="pixel"][data-theme="dark"] .ok-toast-success [role="status"] { color: #fff !important; }
+[data-style="pixel"] [role="status"] {
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: inherit !important;
+  font-family: 'Inter', sans-serif !important;
+  font-size: 0.875rem !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
 }

@@ -54,8 +54,8 @@ export default function App() {
                 // No emojis / checkmarks / X icons — text-only by design. Set on
                 // every variant so react-hot-toast doesn't sneak its defaults back.
                 icon: null,
-                success: { icon: null, style: { background: 'var(--accent)', color: '#fff' } },
-                error:   { icon: null, style: { background: '#c54848', color: '#fff' } },
+                success: { icon: null, className: 'ok-toast-success', style: { background: 'var(--accent)', color: '#fff' } },
+                error:   { icon: null, className: 'ok-toast-error',   style: { background: '#c54848', color: '#fff' } },
                 loading: { icon: null },
                 style: {
                   fontFamily: 'inherit', fontSize: '0.875rem', fontWeight: 500,

@@ -608,7 +608,7 @@ function ListEditorBody({ blocks, cardStyle, expanded, setExpanded, handlers, pr
                   {isDisabled ? '○' : '●'}
                 </button>
                 <button onClick={() => duplicateBlock(idx)} title="Duplicate" style={iconBtn(false)}>⎘</button>
-                <button onClick={() => deleteBlock(idx)} title="Delete" style={{ ...iconBtn(false), color: '#c0392b' }}>✕</button>
+                <button onClick={() => deleteBlock(idx)} title="Delete" style={{ ...iconBtn(false), color: 'var(--danger)' }}>✕</button>
                 <button onClick={() => setExpanded(e => ({ ...e, [block._id || idx]: !isExpanded }))} title={isExpanded ? 'Collapse' : 'Edit'}
                   style={{ ...iconBtn(false), fontWeight: 600, padding: '6px 10px', fontSize: '0.72rem' }}>
                   {isExpanded ? 'Done' : 'Edit'}
@@ -761,7 +761,7 @@ function CategoriesGridEditor({ data, onChange }) {
                   <span style={{ flex: 1, fontSize: '0.84rem' }}>{cat?.name || slug}</span>
                   <button type="button" onClick={() => move(slug, -1)} disabled={i === 0} style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--ink-muted)', cursor: i === 0 ? 'not-allowed' : 'pointer', opacity: i === 0 ? 0.4 : 1, fontSize: '0.7rem' }}>↑</button>
                   <button type="button" onClick={() => move(slug, 1)} disabled={i === selected.length - 1} style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--ink-muted)', cursor: i === selected.length - 1 ? 'not-allowed' : 'pointer', opacity: i === selected.length - 1 ? 0.4 : 1, fontSize: '0.7rem' }}>↓</button>
-                  <button type="button" onClick={() => toggle(slug)} style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: '#c0392b', cursor: 'pointer', fontSize: '0.78rem' }}>✕</button>
+                  <button type="button" onClick={() => toggle(slug)} style={{ width: 22, height: 22, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--danger)', cursor: 'pointer', fontSize: '0.78rem' }}>✕</button>
                 </div>
               );
             })}
@@ -1515,7 +1515,7 @@ function ProductPicker({ productIds, products, onChange, kindLabel = 'product', 
               </span>
               <button type="button" onClick={() => move(i, -1)} disabled={i === 0} style={miniIconBtn(i === 0)} title="Move up">↑</button>
               <button type="button" onClick={() => move(i, +1)} disabled={i === pinned.length - 1} style={miniIconBtn(i === pinned.length - 1)} title="Move down">↓</button>
-              <button type="button" onClick={() => remove(i)} style={{ ...miniIconBtn(false), color: '#c0392b' }} title="Remove">✕</button>
+              <button type="button" onClick={() => remove(i)} style={{ ...miniIconBtn(false), color: 'var(--danger)' }} title="Remove">✕</button>
             </div>
           ))}
         </div>
@@ -1666,7 +1666,7 @@ function MixedPicker({ value, products, groupBuys, onChange }) {
               </span>
               <button type="button" onClick={() => move(i, -1)} disabled={i === 0} style={miniIconBtn(i === 0)} title="Move up">↑</button>
               <button type="button" onClick={() => move(i, +1)} disabled={i === pinned.length - 1} style={miniIconBtn(i === pinned.length - 1)} title="Move down">↓</button>
-              <button type="button" onClick={() => remove(i)} style={{ ...miniIconBtn(false), color: '#c0392b' }} title="Remove">✕</button>
+              <button type="button" onClick={() => remove(i)} style={{ ...miniIconBtn(false), color: 'var(--danger)' }} title="Remove">✕</button>
             </div>
           ))}
         </div>
@@ -2981,7 +2981,7 @@ function ToolbarBtn({ children, onClick, title, disabled, danger }) {
       style={{
         width: 28, height: 28, borderRadius: 999,
         border: 'none', background: 'transparent',
-        color: disabled ? 'var(--ink-faint)' : (danger ? '#c0392b' : 'var(--ink)'),
+        color: disabled ? 'var(--ink-faint)' : (danger ? 'var(--danger)' : 'var(--ink)'),
         cursor: disabled ? 'not-allowed' : 'pointer',
         fontSize: '0.82rem', fontWeight: 600,
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

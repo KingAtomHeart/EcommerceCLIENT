@@ -239,7 +239,7 @@ function GBCard({ gb, gbs, fetchGbs, updateGbLocal, isExpanded, panel, onToggleP
           <div style={{ display: 'flex', gap: '10px', fontSize: '0.78rem', color: 'var(--ink-muted)', flexWrap: 'wrap' }}>
             <span>{displayPrice}</span><span>{gb.uniqueOrderCount ?? gb.orderCount ?? 0} orders</span>
             {icCount > 0 && <span>{icCount} interested</span>}
-            {!gb.isActive && <span style={{ color: '#c0392b' }}>Archived</span>}
+            {!gb.isActive && <span style={{ color: 'var(--danger)' }}>Archived</span>}
           </div>
         </div>
         <select value={gb.status} onChange={e => updateStatus(e.target.value)}
@@ -667,7 +667,7 @@ function GBOptionsManager({ gb, fetchGbs, onClose }) {
         <div key={gi} style={{ marginBottom: '12px', padding: '10px 12px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
             <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>{grp.name}</span>
-            <button onClick={() => removeGroup(gi)} style={{ fontSize: '0.68rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove Group</button>
+            <button onClick={() => removeGroup(gi)} style={{ fontSize: '0.68rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}>Remove Group</button>
           </div>
           {grp.values.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 1fr 56px 24px', gap: '4px', marginBottom: '4px' }}>
@@ -694,7 +694,7 @@ function GBOptionsManager({ gb, fetchGbs, onClose }) {
                 </label>
               </div>
               <button onClick={() => toggleAvailable(gi, vi)} style={{ fontSize: '0.62rem', padding: '3px 6px', borderRadius: '10px', border: '1px solid', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", background: val.available ? 'var(--accent-light)' : 'transparent', color: val.available ? 'var(--accent)' : 'var(--ink-faint)', borderColor: val.available ? 'var(--accent)' : 'var(--border)' }}>{val.available ? 'On' : 'Off'}</button>
-              <button onClick={() => removeValue(gi, vi)} style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+              <button onClick={() => removeValue(gi, vi)} style={{ fontSize: '0.65rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
             </div>
           ))}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 1fr auto', gap: '4px', alignItems: 'center', marginTop: '6px' }}>
@@ -797,7 +797,7 @@ function GBConfigManager({ gb, fetchGbs, onClose }) {
             <input className="form-input" style={{ ...inputSm, fontWeight: 600, fontSize: '0.82rem', width: 'auto', minWidth: 140 }}
               value={cfg.name}
               onChange={e => setConfigs(p => p.map((c, i) => i !== ci ? c : { ...c, name: e.target.value }))} />
-            <button onClick={() => removeConfig(ci)} style={{ fontSize: '0.7rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
+            <button onClick={() => removeConfig(ci)} style={{ fontSize: '0.7rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
           </div>
           {cfg.options.length > 0 && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 55px 1fr 44px 22px', gap: '4px', marginBottom: '4px' }}>
@@ -826,7 +826,7 @@ function GBConfigManager({ gb, fetchGbs, onClose }) {
                 </label>
               </div>
               <button onClick={() => toggleAvail(ci, oi)} style={{ fontSize: '0.6rem', padding: '2px 5px', borderRadius: '10px', border: '1px solid', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", background: opt.available ? 'var(--accent-light)' : 'transparent', color: opt.available ? 'var(--accent)' : 'var(--ink-faint)', borderColor: opt.available ? 'var(--accent)' : 'var(--border)' }}>{opt.available ? 'On' : 'Off'}</button>
-              <button onClick={() => removeOpt(ci, oi)} style={{ fontSize: '0.65rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+              <button onClick={() => removeOpt(ci, oi)} style={{ fontSize: '0.65rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
             </div>
           ))}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 55px 1fr auto', gap: '4px', alignItems: 'center', marginTop: '6px' }}>
@@ -1223,7 +1223,7 @@ export function UnifiedGBOrderCard({ items, updateOrderLocal, parentGbId, fetchO
                     {!isCancelled ? (
                       <button type="button" onClick={() => updateItemStatus(item._id, 'Cancelled')} disabled={updatingItemId === item._id}
                         title="Cancel this item — restores stock"
-                        style={{ fontSize: '0.7rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: '3px 9px', cursor: 'pointer' }}>
+                        style={{ fontSize: '0.7rem', color: 'var(--danger)', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: '3px 9px', cursor: 'pointer' }}>
                         Cancel
                       </button>
                     ) : (
@@ -1510,7 +1510,7 @@ function MilestoneRow({ milestone, onUpdate, onRemove, inputSm }) {
           {open ? 'Hide details' : summary}
         </button>
         <button type="button" onClick={onRemove}
-          style={{ fontSize: '0.78rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 8px', cursor: 'pointer' }}>✕</button>
+          style={{ fontSize: '0.78rem', color: 'var(--danger)', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 8px', cursor: 'pointer' }}>✕</button>
       </div>
       {open && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1532,7 +1532,7 @@ function MilestoneRow({ milestone, onUpdate, onRemove, inputSm }) {
               <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <img src={m.image.url} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--border)' }} />
                 <button type="button" onClick={() => onUpdate({ image: { url: '', altText: '' } })}
-                  style={{ fontSize: '0.72rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove image</button>
+                  style={{ fontSize: '0.72rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}>Remove image</button>
               </div>
             )}
           </div>
@@ -1881,7 +1881,7 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
                   <input className="form-input" style={{ ...inputSm, fontWeight: 600, fontSize: '0.82rem', width: 'auto', minWidth: 140 }}
                     value={cfg.name}
                     onChange={e => setConfigs(c => c.map((cc, i) => i !== ci ? cc : { ...cc, name: e.target.value }))} />
-                  <button type="button" onClick={() => setConfigs(c => c.filter((_, i) => i !== ci))} style={{ fontSize: '0.7rem', color: '#c0392b', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
+                  <button type="button" onClick={() => setConfigs(c => c.filter((_, i) => i !== ci))} style={{ fontSize: '0.7rem', color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer' }}>Remove</button>
                 </div>
                 {cfg.options.map((opt, oi) => (
                   <div key={oi} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 1fr auto', gap: '5px', alignItems: 'center', marginBottom: '4px' }}>
@@ -1894,7 +1894,7 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
                     <input className="form-input" style={inputSm} placeholder="Image URL"
                       value={opt.image?.url || ''}
                       onChange={e => setConfigs(c => c.map((cc, i) => i !== ci ? cc : { ...cc, options: cc.options.map((oo, j) => j !== oi ? oo : { ...oo, image: { ...(oo.image || {}), url: e.target.value } }) }))} />
-                    <button type="button" onClick={() => setConfigs(c => c.map((cc, i) => i !== ci ? cc : { ...cc, options: cc.options.filter((_, j) => j !== oi) }))} style={{ fontSize: '0.78rem', color: '#c0392b', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 8px', cursor: 'pointer' }}>✕</button>
+                    <button type="button" onClick={() => setConfigs(c => c.map((cc, i) => i !== ci ? cc : { ...cc, options: cc.options.filter((_, j) => j !== oi) }))} style={{ fontSize: '0.78rem', color: 'var(--danger)', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '3px 8px', cursor: 'pointer' }}>✕</button>
                   </div>
                 ))}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 1fr auto', gap: '5px', marginTop: '6px' }}>
