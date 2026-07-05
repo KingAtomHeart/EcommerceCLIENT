@@ -12,46 +12,63 @@ export const VALID_STYLES = ['classic', 'minimal', 'pastel-paper', 'pixel'];
 // `localStorage.ok_site_style` is only a cache to avoid a flash-of-classic
 // while the GET resolves. The fetched value always wins.
 export const SiteStyleProvider = ({ children }) => {
-  const [style, setStyleState] = useState(() => {
+  const initial = (() => {
     const cached = localStorage.getItem('ok_site_style');
     return VALID_STYLES.includes(cached) ? cached : 'classic';
-  });
+  })();
+  // `style` is what's currently APPLIED (drives data-style) — it may be an
+  // unsaved preview. `savedStyle` is what's actually persisted on the server.
+  const [style, setStyleState] = useState(initial);
+  const [savedStyle, setSavedStyle] = useState(initial);
 
+  // Applied style drives the live <html> attribute so previews show instantly.
   useEffect(() => {
     document.documentElement.setAttribute('data-style', style);
-    localStorage.setItem('ok_site_style', style);
   }, [style]);
+  // Only the SAVED style is cached, so a reload never resurrects an unsaved preview.
+  useEffect(() => {
+    localStorage.setItem('ok_site_style', savedStyle);
+  }, [savedStyle]);
 
   useEffect(() => {
     let cancelled = false;
     apiFetch('/site-settings')
       .then(data => {
         if (cancelled) return;
-        if (VALID_STYLES.includes(data?.style)) setStyleState(data.style);
+        if (VALID_STYLES.includes(data?.style)) { setStyleState(data.style); setSavedStyle(data.style); }
       })
       .catch(() => { /* keep cached value */ });
     return () => { cancelled = true; };
   }, []);
 
-  // Admin call. Optimistic update; reverts if the PATCH fails.
+  // Apply a style locally for preview only — does NOT persist (won't go live).
+  const previewStyle = useCallback((next) => {
+    if (VALID_STYLES.includes(next)) setStyleState(next);
+  }, []);
+
+  // Admin call. Persists the style (pushes it live for every visitor). Optimistic;
+  // reverts to the last saved value if the PATCH fails.
   const setStyle = useCallback(async (next) => {
     if (!VALID_STYLES.includes(next)) throw new Error('Invalid style');
-    const prev = style;
+    const prevSaved = savedStyle;
     setStyleState(next);
     try {
       const data = await apiFetch('/site-settings', {
         method: 'PATCH',
         body: JSON.stringify({ style: next }),
       });
-      if (VALID_STYLES.includes(data?.style)) setStyleState(data.style);
+      const applied = VALID_STYLES.includes(data?.style) ? data.style : next;
+      setStyleState(applied);
+      setSavedStyle(applied);
     } catch (err) {
-      setStyleState(prev);
+      setStyleState(prevSaved);
+      setSavedStyle(prevSaved);
       throw err;
     }
-  }, [style]);
+  }, [savedStyle]);
 
   return (
-    <SiteStyleContext.Provider value={{ style, setStyle }}>
+    <SiteStyleContext.Provider value={{ style, savedStyle, previewStyle, setStyle }}>
       {children}
     </SiteStyleContext.Provider>
   );

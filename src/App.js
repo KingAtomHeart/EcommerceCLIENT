@@ -13,6 +13,7 @@ import ScrollToTop from './components/ScrollToTop';
 import Home from './pages/Home';
 import Products from './pages/Products';
 import CategoryPage from './pages/CategoryPage';
+import CustomPage from './pages/CustomPage';
 import ProductView from './pages/ProductView';
 import CartView from './pages/CartView';
 import Checkout from './pages/Checkout';
@@ -78,6 +79,7 @@ export default function App() {
                 <Route path="/products" element={<Products />} />
                 <Route path="/products/:productId" element={<ProductView />} />
                 <Route path="/category/:slug" element={<CategoryPage />} />
+                <Route path="/p/:slug" element={<CustomPage />} />
                 <Route path="/cart" element={<CartView />} />
                 <Route path="/checkout" element={<Checkout />} />
                 <Route path="/login" element={<Login />} />

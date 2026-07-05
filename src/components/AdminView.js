@@ -6,7 +6,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useSiteStyle } from '../context/SiteStyleContext';
 import toast from 'react-hot-toast';
 import AdminHomepageEditor from './AdminHomepageEditor';
-import GroupBuyAdmin, { UnifiedGBOrderCard } from '../pages/GroupBuyAdmin';
+import GroupBuyAdmin, { UnifiedGBOrderCard, CreateGBModal } from '../pages/GroupBuyAdmin';
 // Description stays short; the long-form marketing content lives in
 // LandingPageEditor below the description as a section-based editor (Hero /
 // Banner / Text+Image / Gallery / Feature grid). Renderer stays wired in
@@ -88,6 +88,9 @@ export default function AdminView({ products, fetchData, loading }) {
     setSearchParams(t === 'products' ? {} : { tab: t }, { replace: true });
   };
   const [showCreate, setShowCreate] = useState(false);
+  // Create modal type: 'instock' uses the product system, 'groupbuy' uses the
+  // group-buy system. Toggled at the top of the create modal.
+  const [createMode, setCreateMode] = useState('instock');
   const [orders, setOrders] = useState([]);
   const [gbOrders, setGbOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -127,6 +130,14 @@ export default function AdminView({ products, fetchData, loading }) {
   useEffect(() => {
     if ((tab === 'orders' || tab === 'stats') && !ordersLoaded) fetchOrders();
   }, [tab, ordersLoaded]);
+
+  // Flag the document while the admin dashboard is mounted so admin-only CSS
+  // (currently a contrast boost for classic mode) can scope to it — set on
+  // <html> rather than a wrapper so it also covers portaled modals/toasts.
+  useEffect(() => {
+    document.documentElement.setAttribute('data-admin', 'true');
+    return () => document.documentElement.removeAttribute('data-admin');
+  }, []);
 
   // Top-level products only — add-ons live inside their parent's "Add-ons" panel.
   const topLevelProducts = products.filter(p => !p.parentProductId);
@@ -208,7 +219,7 @@ export default function AdminView({ products, fetchData, loading }) {
               </svg>
               <span>{showArchived ? 'Hide' : 'Show'} Archived</span>
             </button>
-            <button className="btn-dark" onClick={() => setShowCreate(true)} style={{ padding: '10px 24px' }}><span>+ New Product</span></button>
+            <button className="btn-dark" onClick={() => { setCreateMode('instock'); setShowCreate(true); }} style={{ padding: '10px 24px' }}><span>+ New Product</span></button>
           </div>
         )}
         {tab === 'group-buys' && (
@@ -244,7 +255,20 @@ export default function AdminView({ products, fetchData, loading }) {
         )}
       </div>
 
-      {showCreate && <CreateProductModal products={products} onClose={() => setShowCreate(false)} onCreated={() => { fetchData(); setShowCreate(false); }} />}
+      {showCreate && (createMode === 'groupbuy'
+        ? <CreateGBModal
+            gbs={[]}
+            topToggle={<CreateTypeToggle mode={createMode} setMode={setCreateMode} />}
+            onClose={() => setShowCreate(false)}
+            onCreated={() => { setShowCreate(false); setTab('group-buys'); }}
+          />
+        : <CreateProductModal
+            products={products}
+            topToggle={<CreateTypeToggle mode={createMode} setMode={setCreateMode} />}
+            onClose={() => setShowCreate(false)}
+            onCreated={() => { fetchData(); setShowCreate(false); }}
+          />
+      )}
 
       {tab === 'products' && (
         <>
@@ -366,6 +390,30 @@ export default function AdminView({ products, fetchData, loading }) {
 /* ═══════════════════════════════════════════════
    SHARED CARD HELPERS
 ═══════════════════════════════════════════════ */
+// Segmented toggle pinned to the top of the create modal. Switches the whole
+// modal between the In-Stock product system and the Group-Buy system; each side
+// renders its existing modal/form and saves through its existing API.
+function CreateTypeToggle({ mode, setMode }) {
+  const seg = (id, label) => (
+    <button type="button" onClick={() => setMode(id)}
+      style={{
+        padding: '8px 22px', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+        fontFamily: 'inherit', border: 'none', borderRadius: 0,
+        background: mode === id ? 'var(--accent)' : 'transparent',
+        color: mode === id ? '#fff' : 'var(--ink-muted)',
+        transition: 'all var(--transition)',
+      }}>
+      {label}
+    </button>
+  );
+  return (
+    <div style={{ display: 'inline-flex', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', marginBottom: 18 }}>
+      {seg('instock', 'In Stock')}
+      {seg('groupbuy', 'Group Buy')}
+    </div>
+  );
+}
+
 function Pill({ children, onClick, active }) {
   return <button onClick={onClick} style={{ padding: '8px 16px', borderRadius: 'var(--radius-pill)', border: '1px solid var(--border)', background: active ? 'var(--accent)' : 'none', color: active ? '#fff' : 'var(--ink-muted)', cursor: 'pointer', fontSize: '0.78rem', fontFamily: "'DM Sans', sans-serif", fontWeight: 500, transition: 'var(--transition)', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>{children}</button>;
 }
@@ -1612,8 +1660,17 @@ function PickerTile({ name, image, tag, selected, order, onClick }) {
    sets data-style on <html>, which globals.css keys off of.
 ═══════════════════════════════════════════════ */
 function AppearancePanel() {
-  const { style, setStyle } = useSiteStyle();
+  const { style, savedStyle, previewStyle, setStyle } = useSiteStyle();
   const [saving, setSaving] = useState(false);
+  const dirty = style !== savedStyle;
+
+  // Revert any unsaved preview when leaving the panel, so an un-saved choice
+  // never sticks. Refs keep the unmount cleanup reading the latest values.
+  const styleRef = useRef(style); styleRef.current = style;
+  const savedRef = useRef(savedStyle); savedRef.current = savedStyle;
+  useEffect(() => () => {
+    if (styleRef.current !== savedRef.current) previewStyle(savedRef.current);
+  }, [previewStyle]);
 
   const STYLES = [
     {
@@ -1642,25 +1699,33 @@ function AppearancePanel() {
     },
   ];
 
-  const choose = async (next) => {
+  // Selecting only PREVIEWS the style locally — it isn't pushed live until Save.
+  const choose = (next) => {
     if (next === style || saving) return;
+    previewStyle(next);
+  };
+
+  const save = async () => {
+    if (!dirty || saving) return;
     setSaving(true);
     try {
-      await setStyle(next);
-      toast.success(`Switched to ${STYLES.find(s => s.id === next)?.name || next}`);
+      await setStyle(style);
+      toast.success(`Site appearance saved — ${STYLES.find(s => s.id === style)?.name || style}`);
     } catch (err) {
-      toast.error(err.message || 'Failed to update theme');
+      toast.error(err.message || 'Failed to save appearance');
     } finally {
       setSaving(false);
     }
   };
+
+  const discard = () => { if (dirty && !saving) previewStyle(savedStyle); };
 
   return (
     <div style={{ marginBottom: 32, padding: 24, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
       <div style={{ marginBottom: 18 }}>
         <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.5rem', letterSpacing: '-0.02em', marginBottom: 4 }}>Site appearance</h2>
         <p style={{ color: 'var(--ink-muted)', fontSize: '0.86rem' }}>
-          Visual style applied to every visitor. Light/dark mode stays per-visitor.
+          Visual style applied to every visitor. Pick one to preview it here, then <strong>Save</strong> to push it live. Light/dark mode stays per-visitor.
         </p>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14 }}>
@@ -1685,11 +1750,16 @@ function AppearancePanel() {
                 opacity: saving && !active ? 0.6 : 1,
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
                 <span style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.15rem' }}>{s.name}</span>
                 {active && (
-                  <span style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent)', background: 'var(--surface)', padding: '3px 9px', borderRadius: 20 }}>
-                    Active
+                  <span style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: dirty ? '#b8860b' : 'var(--accent)', background: 'var(--surface)', padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                    {dirty ? 'Previewing' : 'Active'}
+                  </span>
+                )}
+                {!active && s.id === savedStyle && dirty && (
+                  <span style={{ fontSize: '0.66rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', background: 'var(--surface)', padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                    Live
                   </span>
                 )}
               </div>
@@ -1703,6 +1773,28 @@ function AppearancePanel() {
           );
         })}
       </div>
+
+      {/* Save bar — appears only when the previewed style differs from what's
+          live. Nothing reaches visitors until the admin explicitly saves. */}
+      {dirty && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap',
+          marginTop: 18, padding: '12px 16px',
+          background: 'var(--accent-light)', border: '1px solid var(--accent)', borderRadius: 'var(--radius-sm)',
+        }}>
+          <span style={{ fontSize: '0.84rem', color: 'var(--ink)', fontWeight: 500 }}>
+            You're previewing <strong>{STYLES.find(s => s.id === style)?.name || style}</strong>. Save to apply it for all visitors.
+          </span>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button type="button" className="btn-outline" onClick={discard} disabled={saving} style={{ padding: '8px 16px' }}>
+              Discard
+            </button>
+            <button type="button" className="btn-dark" onClick={save} disabled={saving} style={{ padding: '8px 18px' }}>
+              <span>{saving ? 'Saving…' : 'Save & apply'}</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -4372,7 +4464,7 @@ export function VariantRowCard({ row, idx, mode, dimensions, onUpdateAttr, onUpd
   );
 }
 
-function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentName, products = [] }) {
+function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentName, products = [], topToggle }) {
   const [form, setForm] = useState({ name: '', description: '', price: '', stocks: '', category: '' });
   const [images, setImages] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
@@ -4927,6 +5019,7 @@ function CreateProductModal({ onClose, onCreated, forcedParentId, forcedParentNa
   return (
     <div className="modal-overlay">
       <div className="modal-body">
+        {topToggle}
         <h2 className="modal-title">{forcedParentId ? 'New Add-on' : 'New Product'}</h2>
         <p className="modal-subtitle">
           {forcedParentId

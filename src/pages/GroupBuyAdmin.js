@@ -1589,7 +1589,7 @@ function MilestoneRow({ milestone, onUpdate, onRemove, inputSm }) {
    were designed around configs and existing data + GBConfigManager rely
    on this shape.
 ═══════════════════════════════════════════════ */
-function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
+export function CreateGBModal({ gbs, forcedParentId, onClose, onCreated, topToggle }) {
   const [form, setForm] = useState({
     name: '', description: '',
     basePrice: '', moq: '', maxOrders: '',
@@ -1761,6 +1761,7 @@ function CreateGBModal({ gbs, forcedParentId, onClose, onCreated }) {
   return (
     <div className="modal-overlay">
       <div className="modal-body">
+        {topToggle}
         <h2 className="modal-title">New Group Buy</h2>
         <p className="modal-subtitle">Create a new group buy or interest check.</p>
 

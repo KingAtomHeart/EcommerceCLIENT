@@ -285,6 +285,27 @@ const BLOCK_DEFAULTS = {
   catalog: () => ({}),
 };
 
+// Copy fields blanked out when a section is freshly ADDED (vs duplicated). A new
+// section should start empty so the admin fills in their own copy instead of
+// editing around pre-baked placeholder text ("Title here", "Featured Products"),
+// which read like real content. Only text/CTA fields are cleared — structural
+// defaults (layout, height, columns, source…) are kept so the empty section
+// still renders at a sensible size and is easy to click and edit.
+const BLOCK_BLANKS = {
+  hero:           { eyebrow: '', title: '', subtitle: '', primaryCtaLabel: '', primaryCtaLink: '', secondaryCtaLabel: '', secondaryCtaLink: '' },
+  collection:     { title: '', subtitle: '', eyebrow: '' },
+  banner:         { eyebrow: '', title: '', subtitle: '', ctaLabel: '', ctaLink: '' },
+  categoriesGrid: { title: '', subtitle: '', eyebrow: '' },
+};
+
+// Data for a brand-new (added, not duplicated) section: the type's structural
+// defaults with its copy fields blanked. Falls back to the plain defaults for
+// types with no copy to clear (categoryStrip, catalog).
+function blankBlockData(type) {
+  const base = (BLOCK_DEFAULTS[type] || (() => ({})))();
+  return BLOCK_BLANKS[type] ? { ...base, ...BLOCK_BLANKS[type] } : base;
+}
+
 async function uploadImage(file) {
   const fd = new FormData();
   fd.append('image', file);
@@ -301,12 +322,30 @@ const PAGE_OPTIONS = [
   { key: 'shop',       label: 'Shop',       endpoint: '/page-content/shop',          hasGridAlign: true  },
   { key: 'group-buys', label: 'Group Buys', endpoint: '/page-content/group-buys',    hasGridAlign: true  },
 ];
-const endpointFor = (pageKey) => (PAGE_OPTIONS.find(p => p.key === pageKey) || PAGE_OPTIONS[0]).endpoint;
+
+// Width of the docked edit panel. Roomy enough for the original modal's
+// two-column field layout. The editor content + save bar shift right by this
+// amount while a section is being edited, keeping the live preview visible.
+const EDIT_PANEL_W = 520;
 
 export default function AdminHomepageEditor() {
   // Which page surface this editor is currently driving.
   const [pageKey, setPageKey] = useState('homepage');
-  const pageMeta = PAGE_OPTIONS.find(p => p.key === pageKey) || PAGE_OPTIONS[0];
+  // Admin-created custom pages (the built-in homepage/shop/group-buys are static).
+  const [customPages, setCustomPages] = useState([]);
+  const allPages = [
+    ...PAGE_OPTIONS,
+    ...customPages.map(p => ({
+      key: p.pageKey,
+      label: p.title || p.pageKey,
+      endpoint: `/page-content/${p.pageKey}`,
+      hasGridAlign: true,
+      isCustom: true,
+      navInclude: !!p.navInclude,
+      navLabel: p.navLabel || '',
+    })),
+  ];
+  const pageMeta = allPages.find(p => p.key === pageKey) || allPages[0];
 
   const [doc, setDoc] = useState(null);
   const [blocks, setBlocks] = useState([]);
@@ -333,7 +372,7 @@ export default function AdminHomepageEditor() {
     setBlocks([]);
     setGridAlign('left');
     setDirty(false);
-    apiFetch(endpointFor(pageKey))
+    apiFetch(pageMeta.endpoint)
       .then(d => {
         setDoc(d);
         setBlocks(d.blocks || []);
@@ -356,7 +395,77 @@ export default function AdminHomepageEditor() {
   useEffect(() => {
     apiFetch('/products/active').then(d => setProducts(Array.isArray(d) ? d : [])).catch(() => {});
     apiFetch('/group-buys/active').then(d => setGroupBuys(Array.isArray(d) ? d : [])).catch(() => {});
+    fetchCustomPages();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Viewport width — used to compute where the preview sits when NOT editing so
+  // the open animation can slide it from there to its docked position.
+  const [vw, setVw] = useState(() => (typeof window !== 'undefined' ? window.innerWidth : 1440));
+  useEffect(() => {
+    const onResize = () => setVw(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // Drives the one-shot slide: when the panel OPENS we render the content at its
+  // pre-edit position for a frame, then flip `slid` true so the transform
+  // transitions to its docked spot — a pure horizontal slide, no resize/zoom.
+  // Keyed on open/closed only, so switching sections doesn't re-trigger it.
+  const panelOpen = editingIdx !== null;
+  const [slid, setSlid] = useState(false);
+  useEffect(() => {
+    if (!panelOpen) { setSlid(false); return; }
+    setSlid(false);
+    let r2;
+    const r1 = requestAnimationFrame(() => { r2 = requestAnimationFrame(() => setSlid(true)); });
+    return () => { cancelAnimationFrame(r1); if (r2) cancelAnimationFrame(r2); };
+  }, [panelOpen]);
+
+  // ── Custom page CRUD ──────────────────────────────────────────────────────
+  const fetchCustomPages = () => {
+    apiFetch('/page-content')
+      .then(list => setCustomPages((Array.isArray(list) ? list : []).filter(p => p.isCustom)))
+      .catch(() => {});
+  };
+
+  const createCustomPage = async () => {
+    const name = window.prompt('New page name (e.g. About, Lookbook):');
+    if (!name || !name.trim()) return;
+    try {
+      const doc = await apiFetch('/page-content', { method: 'POST', body: JSON.stringify({ title: name.trim() }) });
+      setCustomPages(cps => [...cps.filter(p => p.pageKey !== doc.pageKey), doc]);
+      setPageKey(doc.pageKey);
+      setEditingIdx(null);
+      toast.success(`Page created — lives at /p/${doc.pageKey}`);
+    } catch (err) {
+      toast.error(err?.message || 'Failed to create page');
+    }
+  };
+
+  const savePageMeta = async (patch) => {
+    try {
+      const updated = await apiFetch(pageMeta.endpoint, { method: 'PATCH', body: JSON.stringify(patch) });
+      setCustomPages(cps => cps.map(p => p.pageKey === updated.pageKey
+        ? { ...p, title: updated.title, navInclude: updated.navInclude, navLabel: updated.navLabel }
+        : p));
+    } catch (err) {
+      toast.error(err?.message || 'Update failed');
+    }
+  };
+
+  const deleteCustomPage = async () => {
+    if (!pageMeta.isCustom) return;
+    if (!window.confirm(`Delete "${pageMeta.label}"? The page and its sections are removed permanently.`)) return;
+    try {
+      await apiFetch(pageMeta.endpoint, { method: 'DELETE' });
+      setCustomPages(cps => cps.filter(p => p.pageKey !== pageMeta.key));
+      setPageKey('homepage');
+      toast.success('Page deleted');
+    } catch (err) {
+      toast.error(err?.message || 'Failed to delete page');
+    }
+  };
 
   // Switching pages with unsaved edits would otherwise silently nuke them.
   const switchPage = (next) => {
@@ -372,8 +481,10 @@ export default function AdminHomepageEditor() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const body = pageMeta.hasGridAlign ? { blocks, gridAlign } : { blocks };
-      const updated = await apiFetch(endpointFor(pageKey), {
+      // Drop the client-only `_justAdded` highlight flag before persisting.
+      const cleanBlocks = blocks.map(({ _justAdded, ...b }) => b);
+      const body = pageMeta.hasGridAlign ? { blocks: cleanBlocks, gridAlign } : { blocks: cleanBlocks };
+      const updated = await apiFetch(pageMeta.endpoint, {
         method: 'PATCH',
         body: JSON.stringify(body),
       });
@@ -413,7 +524,9 @@ export default function AdminHomepageEditor() {
     setBlocks(prev => {
       const next = [...prev];
       const src = next[idx];
-      next.splice(idx + 1, 0, { type: src.type, enabled: src.enabled !== false, data: JSON.parse(JSON.stringify(src.data || {})) });
+      // A duplicate keeps the source's content (that's the point), but is still a
+      // brand-new section — flag it so it's highlighted until saved.
+      next.splice(idx + 1, 0, { type: src.type, enabled: src.enabled !== false, data: JSON.parse(JSON.stringify(src.data || {})), _justAdded: true });
       return next;
     });
     setDirty(true);
@@ -423,25 +536,57 @@ export default function AdminHomepageEditor() {
     setBlocks(prev => prev.filter((_, i) => i !== idx));
     setDirty(true);
   };
+  // New sections start blank (no placeholder copy) and carry a transient
+  // `_justAdded` flag so the preview highlights them until the page is saved.
+  // The flag is client-only — handleSave strips it before persisting.
   const addBlock = (type) => {
-    const data = (BLOCK_DEFAULTS[type] || (() => ({})))();
-    setBlocks(prev => [...prev, { type, enabled: true, data }]);
+    setBlocks(prev => [...prev, { type, enabled: true, data: blankBlockData(type), _justAdded: true }]);
     setDirty(true);
   };
   const insertBlockAt = (idx, type) => {
-    const data = (BLOCK_DEFAULTS[type] || (() => ({})))();
     setBlocks(prev => {
       const next = [...prev];
-      next.splice(idx, 0, { type, enabled: true, data });
+      next.splice(idx, 0, { type, enabled: true, data: blankBlockData(type), _justAdded: true });
       return next;
     });
     setDirty(true);
   };
 
+  // ── Edit panel open / switch / close, with a discard guard ──
+  // Snapshot of the edited section's data taken when the panel opens, so we can
+  // tell whether it was touched and offer to discard on switch.
+  const editSnapshotRef = useRef(null);
+  const openEditorFor = (idx) => {
+    editSnapshotRef.current = { idx, json: JSON.stringify(blocks[idx]?.data || {}) };
+    setEditingIdx(idx);
+  };
+  const editDirty = () => {
+    const snap = editSnapshotRef.current;
+    if (!snap || editingIdx === null) return false;
+    return JSON.stringify(blocks[editingIdx]?.data || {}) !== snap.json;
+  };
+  // Clicking a section switches the panel to it. If the section currently open
+  // has unsaved edits, confirm first — "Yes" reverts it to how it was when the
+  // panel opened, then switches; "Cancel" keeps you on the current section.
+  const requestEdit = (idx) => {
+    if (idx === editingIdx) return;
+    if (editingIdx !== null && editDirty()) {
+      if (!window.confirm('Discard your unsaved edits to this section and switch to the one you clicked?')) return;
+      const snap = editSnapshotRef.current;
+      const reverted = JSON.parse(snap.json);
+      setBlocks(prev => prev.map((b, i) => i === snap.idx ? { ...b, data: reverted } : b));
+    }
+    openEditorFor(idx);
+  };
+  const closeEditor = () => {
+    setEditingIdx(null);
+    editSnapshotRef.current = null;
+  };
+
   const blockHandlers = {
     moveBlock, duplicateBlock, deleteBlock, toggleEnabled,
     addBlock, insertBlockAt, updateBlockData,
-    openEditor: setEditingIdx,
+    openEditor: requestEdit,
   };
 
   if (!doc) return <div className="loading-center"><div className="spinner" /></div>;
@@ -452,11 +597,40 @@ export default function AdminHomepageEditor() {
   };
   const note = { fontSize: '0.78rem', color: 'var(--ink-muted)', marginBottom: '14px', lineHeight: 1.5 };
 
+  const editing = editingIdx !== null && blocks[editingIdx];
+
+  // The editor's left edge when NOT editing (it's centered at a 1200px cap), and
+  // its docked left edge when editing (right after the panel). The content
+  // slides between the two — width is fixed in each state, so there's no zoom.
+  const restLeft = Math.max(0, (vw - 1200) / 2);
+  const dockLeft = EDIT_PANEL_W + 24;
+  const slideStyle = editing ? {
+    // Shift the preview right of the docked panel (instant, no reflow) and slide
+    // it in horizontally. The chrome above is untouched, so it stays full-width.
+    marginLeft: `calc(${dockLeft}px - var(--page-pad))`,
+    transform: slid ? 'translateX(0)' : `translateX(${restLeft - dockLeft}px)`,
+    transition: 'transform 0.28s ease',
+  } : {};
+
   return (
-    <div style={{ paddingBottom: '100px' }}>
-      {/* Page picker — selects which surface (homepage / shop / group buys) the editor drives. */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap' }}>
-        {PAGE_OPTIONS.map(opt => {
+    <div style={{
+      paddingBottom: '100px',
+      // While editing, break out of the dashboard's centered 1200px cap to the
+      // full viewport width and pad the left for the docked panel. Applied
+      // INSTANTLY (no width/padding transition) so the preview doesn't visibly
+      // resize — the slide-in is done purely by transforming the inner wrapper.
+      ...(editing ? {
+        width: '100vw',
+        marginLeft: 'calc(50% - 50vw)',
+        paddingLeft: 'var(--page-pad)',
+        paddingRight: 'var(--page-pad)',
+        boxSizing: 'border-box',
+      } : {}),
+    }}>
+      {/* Page picker — selects which surface (homepage / shop / group buys /
+          custom pages) the editor drives. */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 18, flexWrap: 'wrap', alignItems: 'center' }}>
+        {allPages.map(opt => {
           const active = opt.key === pageKey;
           return (
             <button key={opt.key} onClick={() => switchPage(opt.key)}
@@ -472,14 +646,61 @@ export default function AdminHomepageEditor() {
             </button>
           );
         })}
+        <button onClick={createCustomPage}
+          style={{
+            padding: '8px 16px', borderRadius: 'var(--radius-pill)',
+            border: '1px dashed var(--border)', background: 'transparent',
+            color: 'var(--ink-muted)', fontFamily: "'DM Sans', sans-serif",
+            fontSize: '0.82rem', fontWeight: 500, cursor: 'pointer',
+          }}>
+          + New page
+        </button>
       </div>
+
+      {/* Custom-page settings — name, public URL, navbar visibility, delete.
+          key={pageMeta.key} remounts the row per page so the uncontrolled
+          name/label inputs reset to the selected page's values. */}
+      {pageMeta.isCustom && (
+        <div key={pageMeta.key} style={{
+          display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+          padding: '12px 16px', marginBottom: 16,
+          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Page name</label>
+            <input className="form-input" defaultValue={pageMeta.label} style={{ padding: '7px 10px', fontSize: '0.84rem' }}
+              onBlur={e => { const v = e.target.value.trim(); if (v && v !== pageMeta.label) savePageMeta({ title: v }); }} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Navbar label</label>
+            <input className="form-input" defaultValue={pageMeta.navLabel} placeholder={pageMeta.label} style={{ padding: '7px 10px', fontSize: '0.84rem' }}
+              onBlur={e => savePageMeta({ navLabel: e.target.value.trim() })} />
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.84rem', color: 'var(--ink-muted)', cursor: 'pointer', alignSelf: 'flex-end', paddingBottom: 7 }}>
+            <input type="checkbox" checked={pageMeta.navInclude} onChange={e => savePageMeta({ navInclude: e.target.checked })} />
+            Show in navbar
+          </label>
+          <div style={{ flex: 1, minWidth: 140, alignSelf: 'flex-end', paddingBottom: 9 }}>
+            <span style={{ fontSize: '0.76rem', color: 'var(--ink-faint)' }}>Public URL: </span>
+            <a href={`/p/${pageMeta.key}`} target="_blank" rel="noreferrer" style={{ fontSize: '0.76rem', color: 'var(--accent)' }}>/p/{pageMeta.key}</a>
+          </div>
+          <button onClick={deleteCustomPage} style={{ alignSelf: 'flex-end', fontSize: '0.78rem', color: 'var(--danger)', background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '6px 12px', cursor: 'pointer' }}>
+            Delete page
+          </button>
+        </div>
+      )}
 
       {/* Mode switcher header */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: '18px' }}>
         <div>
-          <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.4rem', letterSpacing: '-0.02em', marginBottom: '6px' }}>
+          <h3 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.4rem', letterSpacing: '-0.02em', marginBottom: '4px' }}>
             {pageMeta.label}
           </h3>
+          {/* Save status (the "last saved" system, relocated out of the old save
+              bar). Turns into an unsaved-changes cue while editing. */}
+          <p style={{ fontSize: '0.74rem', fontWeight: 500, margin: '0 0 8px', color: dirty ? 'var(--accent)' : 'var(--ink-faint)' }}>
+            {dirty ? '● Unsaved changes' : `Last saved ${relativeTime(doc?.updatedAt)}`}
+          </p>
           <p style={note}>
             {mode === 'preview'
               ? 'You\'re seeing the page as a customer would. Hover any section to edit, hide, duplicate, or reorder it.'
@@ -504,7 +725,7 @@ export default function AdminHomepageEditor() {
               Catalog grid alignment
             </p>
             <p style={{ fontSize: '0.78rem', color: 'var(--ink-muted)', marginTop: 4 }}>
-              Controls the {pageMeta.key === 'shop' ? 'products' : 'group buys'} grid that renders below your blocks.
+              Controls the {pageMeta.key === 'shop' ? 'products' : pageMeta.key === 'group-buys' ? 'group buys' : 'catalog'} grid alignment{pageMeta.isCustom ? ' (add a Catalog Grid section to place it)' : ' that renders below your blocks'}.
             </p>
           </div>
           <div style={{ minWidth: 240 }}>
@@ -518,6 +739,10 @@ export default function AdminHomepageEditor() {
         </div>
       )}
 
+      {/* Preview wrapper — only the preview shifts right to clear the panel and
+          slides on open; the chrome above stays full-width so the panel (anchored
+          to the preview top) never hides it. */}
+      <div style={slideStyle}>
       {mode === 'preview' ? (
         <PreviewEditor
           blocks={blocks}
@@ -539,35 +764,39 @@ export default function AdminHomepageEditor() {
           pageKey={pageKey}
         />
       )}
+      </div>{/* end preview wrapper */}
 
-      {/* Sticky footer */}
-      <div style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
-        background: 'var(--surface)', borderTop: '1px solid var(--border)',
-        padding: '14px var(--page-pad)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <p style={{ fontSize: '0.8rem', color: dirty ? 'var(--accent)' : 'var(--ink-muted)' }}>
-          {dirty ? `Unsaved changes — ${pageMeta.label}` : `${pageMeta.label} · last saved ${relativeTime(doc?.updatedAt)}`}
-        </p>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button className="btn-outline" onClick={fetchContent} disabled={!dirty || saving}>Cancel</button>
-          <button className="btn-dark" onClick={handleSave} disabled={saving || !dirty}>
+      {/* Save / Cancel — bare buttons floated in the bottom-right corner, shown
+          ONLY when there are unsaved changes. No surrounding bar and no status
+          text (the "last saved" line lives up in the page header). Bottom-right
+          keeps them clear of the edit panel on the left and the add-section rail
+          on the right. */}
+      {dirty && (
+        <div style={{
+          position: 'fixed', bottom: 20, zIndex: 100,
+          right: mode === 'preview' ? 'calc(var(--page-pad) + 76px)' : 'var(--page-pad)',
+          display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <button className="btn-outline" onClick={fetchContent} disabled={saving}
+            style={{ background: 'var(--surface)', boxShadow: '0 6px 20px rgba(0,0,0,0.16)' }}>
+            Cancel
+          </button>
+          <button className="btn-dark" onClick={handleSave} disabled={saving}
+            style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.26)' }}>
             <span>{saving ? 'Saving…' : 'Save Changes'}</span>
           </button>
         </div>
-      </div>
-
-      {/* Inline edit modal (preview mode) */}
-      {editingIdx !== null && blocks[editingIdx] && (
-        <EditModal
-          block={blocks[editingIdx]}
-          onChange={patch => updateBlockData(editingIdx, patch)}
-          onClose={() => setEditingIdx(null)}
-          products={products}
-          groupBuys={groupBuys}
-        />
       )}
+
+      {/* Docked edit panel (preview mode) — always mounted so it slides in/out. */}
+      <EditPanel
+        open={!!editing}
+        block={editing || null}
+        onChange={patch => { if (editingIdx !== null) updateBlockData(editingIdx, patch); }}
+        onClose={closeEditor}
+        products={products}
+        groupBuys={groupBuys}
+      />
     </div>
   );
 }
@@ -587,14 +816,19 @@ function ListEditorBody({ blocks, cardStyle, expanded, setExpanded, handlers, pr
         const meta = BLOCK_META[block.type] || { label: block.type, icon: '?', summary: () => '' };
         const isExpanded = expanded[block._id || idx];
         const isDisabled = block.enabled === false;
+        const isNew = !!block._justAdded;
         return (
-          <div key={block._id || idx} style={{ ...cardStyle, opacity: isDisabled ? 0.55 : 1 }}>
+          <div key={block._id || idx} style={{
+            ...cardStyle, opacity: isDisabled ? 0.55 : 1,
+            ...(isNew ? { border: '1px solid var(--accent)', boxShadow: '0 0 0 2px var(--accent-light)' } : {}),
+          }}>
             {/* Header row */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: isExpanded ? '16px' : 0 }}>
               <span style={{ fontSize: '1.1rem', color: 'var(--accent)', width: 22, textAlign: 'center' }}>{meta.icon}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '0.62rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-muted)', fontWeight: 600 }}>{meta.label}</span>
+                  {isNew && <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: 4, background: 'var(--accent)', color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>New</span>}
                   {isDisabled && <span style={{ fontSize: '0.6rem', padding: '2px 6px', borderRadius: 4, background: 'var(--bg-secondary)', color: 'var(--ink-faint)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Hidden</span>}
                 </div>
                 <p style={{ fontSize: '0.88rem', color: 'var(--ink)', fontWeight: 500, marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -656,7 +890,7 @@ function ListEditorBody({ blocks, cardStyle, expanded, setExpanded, handlers, pr
             .filter(([, m]) => !m.hidden)
             // pageOnly restricts a block type to specific pageKeys (e.g. the
             // catalog marker only makes sense on Shop / Group Buys).
-            .filter(([, m]) => !m.pageOnly || m.pageOnly.includes(pageKey))
+            .filter(([, m]) => !m.pageOnly || pageKey !== 'homepage')
             .map(([type, m]) => (
               <button key={type} onClick={() => addBlock(type)} className="btn-outline" style={{ fontSize: '0.82rem', padding: '8px 14px' }}>
                 <span style={{ color: 'var(--accent)', marginRight: 6 }}>{m.icon}</span>{m.label}
@@ -2850,12 +3084,16 @@ function PreviewEditor({ blocks, products, groupBuys, countByCategory, handlers,
   const showFallbackCatalog = isCatalogPage && !hasCatalogBlock;
 
   return (
-    <div style={{
-      // Boxed preview frame — visually signals "this is the live customer view"
-      // without occupying the full admin nav width.
-      border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-      overflow: 'hidden', background: 'var(--bg)',
-    }}>
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+      {/* Boxed preview frame. A tinted backdrop + vertical padding makes each
+          section read as a separate card (an admin-only aid — the live customer
+          page has none of this chrome). */}
+      <div data-preview-box style={{
+        flex: 1, minWidth: 0,
+        border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+        overflow: 'hidden', background: 'var(--bg-secondary)',
+        padding: '6px 0 12px',
+      }}>
       {blocks.length === 0 && !showFallbackCatalog && (
         <div style={{ padding: '60px 20px', textAlign: 'center', color: 'var(--ink-muted)' }}>
           <p>Empty {pageKey === 'homepage' ? 'homepage' : 'page'} — add your first section below.</p>
@@ -2904,136 +3142,322 @@ function PreviewEditor({ blocks, products, groupBuys, countByCategory, handlers,
           </p>
         </div>
       )}
+      </div>{/* end preview box */}
+
+      {/* Add-section rail, docked beside the preview (sticky so it rides along). */}
+      <PreviewSideToolbar onAdd={handlers.insertBlockAt} pageKey={pageKey} />
     </div>
   );
 }
 
-/* Wraps a block with hover-only edit overlays. */
+// Clean line icons for the section types, used by the floating side toolbar.
+const SIDE_ICON_PATHS = {
+  hero:           <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9.5" r="1.5" /><path d="M21 16.5 16 11.5 8.5 19" /></>,
+  collection:     <><rect x="3" y="7" width="4.5" height="10" rx="1" /><rect x="9.75" y="7" width="4.5" height="10" rx="1" /><rect x="16.5" y="7" width="4.5" height="10" rx="1" /></>,
+  banner:         <><rect x="3" y="9" width="18" height="6" rx="1.5" /></>,
+  categoriesGrid: <><rect x="4" y="4" width="6.5" height="6.5" rx="1" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1" /></>,
+  categoryStrip:  <><rect x="3" y="10" width="5" height="4" rx="2" /><rect x="9.5" y="10" width="5" height="4" rx="2" /><rect x="16" y="10" width="5" height="4" rx="2" /></>,
+  catalog:        <><rect x="3.5" y="4.5" width="4.5" height="4.5" rx="1" /><rect x="9.75" y="4.5" width="4.5" height="4.5" rx="1" /><rect x="16" y="4.5" width="4.5" height="4.5" rx="1" /><rect x="3.5" y="11" width="4.5" height="4.5" rx="1" /><rect x="9.75" y="11" width="4.5" height="4.5" rx="1" /><rect x="16" y="11" width="4.5" height="4.5" rx="1" /></>,
+};
+function SideTypeIcon({ type }) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+      {SIDE_ICON_PATHS[type] || <><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></>}
+    </svg>
+  );
+}
+
+/* One icon button in the side rail. On hover the section-type name slides out to
+   the right of the icon. */
+function SideToolBtn({ type, label, onClick }) {
+  const [hov, setHov] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{ position: 'relative', display: 'flex' }}
+    >
+      <button type="button" onClick={onClick} aria-label={`Add ${label}`}
+        style={{
+          width: 40, height: 40, borderRadius: '50%', border: 'none',
+          background: hov ? 'var(--accent-light)' : 'transparent',
+          color: hov ? 'var(--accent)' : 'var(--ink-muted)', cursor: 'pointer',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'background 0.12s ease, color 0.12s ease',
+        }}>
+        <SideTypeIcon type={type} />
+      </button>
+      {/* Label flyout — sits to the LEFT of the icon (toward the preview) so it's
+          never clipped by the screen edge; slides out on hover. */}
+      <span style={{
+        position: 'absolute', right: '100%', top: '50%', marginRight: 8,
+        transform: hov ? 'translate(0, -50%)' : 'translate(8px, -50%)',
+        opacity: hov ? 1 : 0,
+        pointerEvents: 'none', whiteSpace: 'nowrap',
+        background: 'var(--ink)', color: 'var(--bg)',
+        padding: '5px 11px', borderRadius: 7, fontSize: '0.74rem', fontWeight: 600,
+        boxShadow: '0 6px 18px rgba(0,0,0,0.22)',
+        transition: 'opacity 0.16s ease, transform 0.16s ease',
+        zIndex: 5,
+      }}>
+        Add {label}
+      </span>
+    </div>
+  );
+}
+
+/* Add-section rail docked to the right of the preview. position:sticky so it
+   rides alongside the preview while scrolling (and is back up at the homepage
+   section when you scroll to the top). Each icon inserts that section type after
+   whichever section is currently nearest the viewport centre. */
+function PreviewSideToolbar({ onAdd, pageKey = 'homepage' }) {
+  const types = Object.entries(BLOCK_META)
+    .filter(([, m]) => !m.hidden)
+    .filter(([, m]) => !m.pageOnly || pageKey !== 'homepage');
+
+  const targetIndex = () => {
+    const els = Array.from(document.querySelectorAll('[data-block-idx]'));
+    if (!els.length) return 0;
+    const vh = window.innerHeight;
+    const center = vh / 2;
+    // Candidate insertion gaps: above each section (its top) and below it (its
+    // bottom). Pick the one nearest the viewport centre, preferring gaps that are
+    // actually on screen — so the new section lands where you're looking instead
+    // of far below a tall section.
+    const gaps = [];
+    for (const el of els) {
+      const r = el.getBoundingClientRect();
+      const idx = Number(el.dataset.blockIdx);
+      gaps.push({ index: idx, y: r.top });
+      gaps.push({ index: idx + 1, y: r.bottom });
+    }
+    const onScreen = gaps.filter(g => g.y >= 0 && g.y <= vh);
+    const pool = onScreen.length ? onScreen : gaps;
+    let best = pool[0];
+    for (const g of pool) {
+      if (Math.abs(g.y - center) < Math.abs(best.y - center)) best = g;
+    }
+    return best.index;
+  };
+
+  return (
+    <div style={{
+      position: 'sticky', top: 'calc(var(--nav-h, 64px) + 16px)',
+      alignSelf: 'flex-start', flexShrink: 0, zIndex: 20,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+      padding: 6,
+      background: 'var(--surface)', border: '1px solid var(--border)',
+      borderRadius: 24, boxShadow: '0 6px 24px rgba(0,0,0,0.14)',
+    }}>
+      {types.map(([type, m]) => (
+        <SideToolBtn key={type} type={type} label={m.label}
+          onClick={() => onAdd(targetIndex(), type)} />
+      ))}
+    </div>
+  );
+}
+
+/* Wraps a block with its edit controls. The controls live in a header bar that's
+   part of the section card, so it's unambiguous which section they belong to,
+   and the live content renders BELOW the bar (nothing gets covered). */
 function BlockEnvelope({ block, idx, total, handlers, children }) {
   const [hover, setHover] = useState(false);
   const isDisabled = block.enabled === false;
+  // Freshly added (or duplicated) sections carry a transient flag so they stand
+  // out until the page is saved — makes it obvious which sections are new.
+  const isNew = !!block._justAdded;
   const meta = BLOCK_META[block.type] || { label: block.type, icon: '?' };
 
   return (
     <div
+      data-block-idx={idx}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
         position: 'relative',
         opacity: isDisabled ? 0.45 : 1,
+        // Admin-only card framing so each section reads as its own block.
+        margin: '0 14px',
+        border: `1px solid ${hover || isNew ? 'var(--accent)' : 'var(--border)'}`,
+        borderRadius: 'var(--radius-sm)',
+        overflow: 'hidden',
+        background: 'var(--bg)',
+        boxShadow: hover
+          ? '0 6px 22px rgba(0,0,0,0.13)'
+          : isNew
+            ? '0 0 0 2px var(--accent-light), 0 2px 12px rgba(0,0,0,0.08)'
+            : '0 1px 5px rgba(0,0,0,0.06)',
+        transition: 'box-shadow 0.15s ease, border-color 0.15s ease',
       }}
     >
-      {/* The live render — pointer-events forwarded so hover works, but clicks
-          on actual product cards / CTAs are intercepted by the shield below to
-          prevent accidental navigation while editing. */}
-      <div style={{ pointerEvents: hover ? 'none' : 'auto' }}>
-        {children}
+      {/* Header bar — identifies and controls THIS section. Part of the card (not
+          floating in the gap), so ownership is clear; content sits below it so
+          nothing (e.g. a category strip) is hidden. Uses --ink (the inverse of
+          the background in every theme) for a clearly contrasting title bar. */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+        padding: '4px 5px 4px 12px',
+        background: hover ? 'var(--accent)' : 'var(--ink)',
+        color: 'var(--bg)',
+        borderBottom: '1px solid var(--border)',
+        transition: 'background 0.15s ease',
+      }}>
+        <span style={{
+          fontSize: '0.62rem', letterSpacing: '0.08em', textTransform: 'uppercase',
+          fontWeight: 700, color: 'var(--bg)', whiteSpace: 'nowrap',
+          overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0, opacity: 0.9,
+        }}>
+          <span style={{ marginRight: 6, opacity: 0.75 }}>{meta.icon}</span>
+          {meta.label}
+          {isNew && <span style={{
+            marginLeft: 8, padding: '1px 7px', borderRadius: 999,
+            background: 'var(--bg)', color: 'var(--accent)',
+            fontSize: '0.56rem', fontWeight: 800, letterSpacing: '0.08em',
+          }}>NEW</span>}
+          {isDisabled && <span style={{ marginLeft: 6, opacity: 0.6 }}>· Hidden</span>}
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
+          <ToolbarBtn onClick={() => handlers.openEditor(idx)} title="Edit fields" icon="edit">Edit</ToolbarBtn>
+          <ToolbarBtn onClick={() => handlers.moveBlock(idx, -1)} disabled={idx === 0} title="Move up" icon="up" />
+          <ToolbarBtn onClick={() => handlers.moveBlock(idx, +1)} disabled={idx === total - 1} title="Move down" icon="down" />
+          <ToolbarBtn onClick={() => handlers.toggleEnabled(idx)} title={isDisabled ? 'Show' : 'Hide'} icon={isDisabled ? 'show' : 'hide'} />
+          <ToolbarBtn onClick={() => handlers.duplicateBlock(idx)} title="Duplicate" icon="copy" />
+          <ToolbarBtn onClick={() => handlers.deleteBlock(idx)} title="Delete" danger icon="x" />
+        </div>
       </div>
 
-      {/* Click shield — only active while hovered. Without it, hovering a
-          product card lets the customer link fire if the admin clicks. */}
-      {hover && (
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 5,
-          // Subtle ring so the admin knows which block they're targeting.
-          outline: '2px solid var(--accent)',
-          outlineOffset: -2,
-          // No background — we still want to see the block visually.
-        }} />
-      )}
-
-      {/* Floating toolbar (top-right) */}
-      {hover && (
-        <div style={{
-          position: 'absolute', top: 10, right: 10, zIndex: 6,
-          display: 'flex', alignItems: 'center', gap: 4,
-          padding: '6px 8px',
-          background: 'var(--surface)', border: '1px solid var(--border)',
-          borderRadius: 999,
-          boxShadow: '0 6px 24px rgba(0,0,0,0.12)',
-        }}>
-          <span style={{
-            fontSize: '0.62rem', letterSpacing: '0.08em', textTransform: 'uppercase',
-            fontWeight: 600, color: 'var(--ink-muted)',
-            padding: '0 6px 0 2px', borderRight: '1px solid var(--border)',
-          }}>
-            <span style={{ color: 'var(--accent)', marginRight: 4 }}>{meta.icon}</span>
-            {meta.label}
-            {isDisabled && <span style={{ marginLeft: 6, color: 'var(--ink-faint)' }}>· Hidden</span>}
-          </span>
-          <ToolbarBtn onClick={() => handlers.openEditor(idx)} title="Edit fields">Edit</ToolbarBtn>
-          <ToolbarBtn onClick={() => handlers.moveBlock(idx, -1)} disabled={idx === 0} title="Move up">↑</ToolbarBtn>
-          <ToolbarBtn onClick={() => handlers.moveBlock(idx, +1)} disabled={idx === total - 1} title="Move down">↓</ToolbarBtn>
-          <ToolbarBtn onClick={() => handlers.toggleEnabled(idx)} title={isDisabled ? 'Show' : 'Hide'}>
-            {isDisabled ? '○' : '●'}
-          </ToolbarBtn>
-          <ToolbarBtn onClick={() => handlers.duplicateBlock(idx)} title="Duplicate">⎘</ToolbarBtn>
-          <ToolbarBtn onClick={() => handlers.deleteBlock(idx)} title="Delete" danger>✕</ToolbarBtn>
+      {/* Live render — pointer-events forwarded so hover works; the shield below
+          blocks accidental navigation and, on click, opens this section's editor. */}
+      <div style={{ position: 'relative' }}>
+        <div style={{ pointerEvents: hover ? 'none' : 'auto' }}>
+          {children}
         </div>
-      )}
+        {hover && (
+          <div
+            onClick={() => handlers.openEditor(idx)}
+            title="Click to edit this section"
+            style={{ position: 'absolute', inset: 0, zIndex: 5, cursor: 'pointer' }}
+          />
+        )}
+      </div>
     </div>
   );
 }
 
-function ToolbarBtn({ children, onClick, title, disabled, danger }) {
+// Modern line-icon paths (24x24, stroke). Keyed by name for the toolbar buttons.
+const TB_ICON_PATHS = {
+  edit: <><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" /></>,
+  up:   <><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></>,
+  down: <><line x1="12" y1="5" x2="12" y2="19" /><polyline points="19 12 12 19 5 12" /></>,
+  show: <><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" /><circle cx="12" cy="12" r="3" /></>,
+  hide: <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" /><line x1="1" y1="1" x2="23" y2="23" /></>,
+  copy: <><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></>,
+  x:    <><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>,
+};
+function TbIcon({ name }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', flexShrink: 0 }}>
+      {TB_ICON_PATHS[name]}
+    </svg>
+  );
+}
+
+function ToolbarBtn({ icon, children, onClick, title, disabled, danger }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled} title={title}
       style={{
-        width: 28, height: 28, borderRadius: 999,
+        height: 28, padding: children ? '0 10px' : '0 8px', borderRadius: 999,
         border: 'none', background: 'transparent',
-        color: disabled ? 'var(--ink-faint)' : (danger ? 'var(--danger)' : 'var(--ink)'),
+        // The header bar is --ink, so controls use the inverted --bg for contrast.
+        color: danger ? '#ff6b6b' : 'var(--bg)',
+        opacity: disabled ? 0.4 : 1,
         cursor: disabled ? 'not-allowed' : 'pointer',
-        fontSize: '0.82rem', fontWeight: 600,
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        padding: 0,
+        fontSize: '0.74rem', fontWeight: 600, whiteSpace: 'nowrap',
+        display: 'inline-flex', alignItems: 'center', gap: 5,
       }}
-      onMouseEnter={e => !disabled && (e.currentTarget.style.background = 'var(--bg-secondary)')}
+      onMouseEnter={e => !disabled && (e.currentTarget.style.background = danger ? 'rgba(255,90,90,0.22)' : 'rgba(128,128,128,0.3)')}
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
     >
-      {children}
+      {icon && <TbIcon name={icon} />}
+      {children && <span>{children}</span>}
     </button>
   );
 }
 
-/* Thin insertion divider between blocks. Reveals an add-block menu on hover. */
+/* Insertion point between sections. An always-visible "Add section" button that
+   opens a section-type chooser on CLICK (not hover, which made the pill hard to
+   click). Picking a type inserts it; clicking outside or Escape closes. */
 function AddBetween({ onAdd, pageKey = 'homepage' }) {
   const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const types = Object.entries(BLOCK_META)
+    .filter(([, m]) => !m.hidden)
+    .filter(([, m]) => !m.pageOnly || pageKey !== 'homepage');
+
   return (
-    <div
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-      style={{
-        position: 'relative', height: open ? 'auto' : 12,
-        minHeight: 12,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        transition: 'height 0.18s ease',
-      }}
-    >
-      {/* Hairline guide visible only on hover */}
+    <div ref={ref} style={{
+      position: 'relative',
+      zIndex: open ? 30 : 1,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '12px 0',
+    }}>
+      {/* Guide line, inset to match the section cards. */}
       <div style={{
-        position: 'absolute', left: 0, right: 0, top: '50%',
-        height: 2, background: open ? 'var(--accent)' : 'transparent',
-        transform: 'translateY(-50%)',
-        transition: 'background 0.18s ease',
+        position: 'absolute', left: 14, right: 14, top: '50%',
+        height: open ? 2 : 1, background: open ? 'var(--accent)' : 'var(--border)',
+        transform: 'translateY(-50%)', transition: 'background 0.15s ease',
       }} />
+
+      {/* Click to open the type chooser. */}
+      <button type="button" onClick={() => setOpen(o => !o)} title="Add a section here"
+        style={{
+          position: 'relative', zIndex: 2,
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '6px 16px',
+          background: open ? 'var(--accent)' : 'var(--surface)',
+          border: `1px solid ${open ? 'var(--accent)' : 'var(--border)'}`,
+          color: open ? '#fff' : 'var(--ink-muted)',
+          borderRadius: 999, cursor: 'pointer',
+          fontSize: '0.72rem', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+          transition: 'background 0.12s ease, color 0.12s ease, border-color 0.12s ease',
+        }}>
+        <span style={{ fontSize: '1rem', lineHeight: 1, marginTop: -1 }}>+</span>
+        Add section
+      </button>
+
+      {/* Type chooser — appears below the button on click. */}
       {open && (
         <div style={{
-          position: 'relative', zIndex: 1, display: 'flex', gap: 6,
-          padding: '8px 10px',
+          position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
+          zIndex: 3, marginTop: 8,
+          display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center',
+          padding: '12px 12px 10px', width: 'max-content', maxWidth: 'min(560px, 92vw)',
           background: 'var(--surface)', border: '1px solid var(--border)',
-          borderRadius: 999, boxShadow: '0 6px 24px rgba(0,0,0,0.12)',
-          margin: '6px 0',
+          borderRadius: 14, boxShadow: '0 12px 36px rgba(0,0,0,0.20)',
         }}>
-          <span style={{ fontSize: '0.7rem', color: 'var(--ink-muted)', alignSelf: 'center', padding: '0 6px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-            + Insert
+          <span style={{ width: '100%', textAlign: 'center', fontSize: '0.64rem', color: 'var(--ink-faint)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>
+            Choose a section type
           </span>
-          {Object.entries(BLOCK_META)
-            .filter(([, m]) => !m.hidden)
-            .filter(([, m]) => !m.pageOnly || m.pageOnly.includes(pageKey))
-            .map(([type, m]) => (
-            <button key={type} type="button" onClick={() => onAdd(type)}
+          {types.map(([type, m]) => (
+            <button key={type} type="button" onClick={() => { onAdd(type); setOpen(false); }}
               style={{
-                fontSize: '0.78rem', padding: '4px 10px',
+                fontSize: '0.78rem', padding: '7px 12px',
                 border: '1px solid var(--border)', borderRadius: 999,
                 background: 'var(--bg)', color: 'var(--ink)', cursor: 'pointer',
               }}>
@@ -3046,52 +3470,89 @@ function AddBetween({ onAdd, pageKey = 'homepage' }) {
   );
 }
 
-/* Modal that hosts the existing per-type editor for a single block. */
-function EditModal({ block, onChange, onClose, products, groupBuys = [] }) {
-  const meta = BLOCK_META[block.type] || { label: block.type, icon: '?' };
+/* Edit panel — docks to the left edge so the live preview (shifted right) stays
+   visible while editing. Sits below the fixed navbar; no backdrop, so the admin
+   can keep clicking other sections on the right to switch the editor to them.
+   Always mounted: `open` drives a smooth slide in/out. `shown` retains the last
+   block during the close slide so the content doesn't blank out mid-animation. */
+function EditPanel({ open, block, onChange, onClose, products, groupBuys = [] }) {
+  const [shown, setShown] = useState(block);
+  useEffect(() => { if (block) setShown(block); }, [block]);
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
-    };
+    return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  // Anchor the panel's top to the preview so it scrolls along with the sections
+  // (sticky-like): it sits at the preview top when scrolled up — leaving the
+  // full-width chrome above it visible — and clamps flush to the navbar once you
+  // scroll past, so there's no gap. The chrome above is never covered.
+  //
+  // The top is written straight to the DOM in the scroll handler (no React state)
+  // so it tracks the native scroll frame-for-frame instead of lagging a render
+  // behind. The preview's document offset is cached so each scroll only reads
+  // window.scrollY (no per-scroll layout reflow).
+  const panelRef = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const navH = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--nav-h'), 10) || 64;
+    let boxOffset = navH; // preview-box top relative to the document
+    const apply = () => {
+      const el = panelRef.current;
+      if (el) el.style.top = Math.max(navH, Math.round(boxOffset - window.scrollY)) + 'px';
+    };
+    const measure = () => {
+      const box = document.querySelector('[data-preview-box]');
+      boxOffset = box ? box.getBoundingClientRect().top + window.scrollY : navH;
+      apply();
+    };
+    measure();
+    window.addEventListener('scroll', apply, { passive: true });
+    window.addEventListener('resize', measure);
+    return () => { window.removeEventListener('scroll', apply); window.removeEventListener('resize', measure); };
+  }, [open]);
+
+  const meta = shown ? (BLOCK_META[shown.type] || { label: shown.type, icon: '?' }) : null;
+
   return (
-    <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, zIndex: 200,
-      background: 'rgba(0,0,0,0.45)',
-      display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-      padding: '60px 20px 100px',
-      overflowY: 'auto',
+    <div ref={panelRef} aria-hidden={!open} style={{
+      position: 'fixed', top: 'var(--nav-h, 64px)', left: 0, bottom: 0, zIndex: 150,
+      width: EDIT_PANEL_W, maxWidth: '92vw',
+      background: 'var(--surface)', borderRight: '1px solid var(--border)',
+      boxShadow: open ? '8px 0 40px rgba(0,0,0,0.16)' : 'none',
+      display: 'flex', flexDirection: 'column',
+      transform: open ? 'translateX(0)' : 'translateX(-100%)',
+      transition: 'transform 0.25s ease',
+      pointerEvents: open ? 'auto' : 'none',
     }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        background: 'var(--surface)', border: '1px solid var(--border)',
-        borderRadius: 'var(--radius)',
-        width: '100%', maxWidth: 720, padding: '24px 28px',
-        boxShadow: '0 24px 80px rgba(0,0,0,0.3)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
-          <div>
-            <p style={{ fontSize: '0.62rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-muted)', fontWeight: 600 }}>
-              Editing — <span style={{ color: 'var(--accent)' }}>{meta.icon}</span> {meta.label}
-            </p>
-            <p style={{ fontSize: '0.78rem', color: 'var(--ink-faint)', marginTop: 4 }}>
-              Changes preview instantly. Hit Save Changes at the bottom of the page to publish.
-            </p>
+      {shown && meta && (
+        <>
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, padding: '22px 28px', borderBottom: '1px solid var(--border)' }}>
+            <div>
+              <p style={{ fontSize: '0.62rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-muted)', fontWeight: 600 }}>
+                Editing — <span style={{ color: 'var(--accent)' }}>{meta.icon}</span> {meta.label}
+              </p>
+              <p style={{ fontSize: '0.78rem', color: 'var(--ink-faint)', marginTop: 4 }}>
+                Click any section on the right to edit it. Hit Save Changes to publish.
+              </p>
+            </div>
+            <button type="button" onClick={onClose}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.4rem', color: 'var(--ink-muted)', lineHeight: 1, padding: 4 }}>
+              ✕
+            </button>
           </div>
-          <button type="button" onClick={onClose}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.4rem', color: 'var(--ink-muted)', lineHeight: 1, padding: 4 }}>
-            ✕
-          </button>
-        </div>
-        <BlockEditor block={block} onChange={onChange} products={products} groupBuys={groupBuys} />
-        <div style={{ marginTop: 22, display: 'flex', justifyContent: 'flex-end' }}>
-          <button type="button" className="btn-dark" onClick={onClose}>Done</button>
-        </div>
-      </div>
+          {/* Scrollable field area */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
+            <BlockEditor block={shown} onChange={onChange} products={products} groupBuys={groupBuys} />
+          </div>
+          {/* Panel footer */}
+          <div style={{ padding: '16px 28px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end' }}>
+            <button type="button" className="btn-dark" onClick={onClose}>Done</button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

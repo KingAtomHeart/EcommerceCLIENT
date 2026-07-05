@@ -1,7 +1,21 @@
 import { useState } from 'react';
+import emailjs from '@emailjs/browser';
 import { apiFetch } from '../utils/api';
 
-function ContactForm({ fields, submitLabel, formType }) {
+// EmailJS config — the PRIMARY delivery channel. Submissions are emailed
+// straight to the shop's Gmail (via the EmailJS service connected to that
+// inbox). All three values are PUBLIC client-side keys (that's how EmailJS is
+// designed), so they're baked in as fallbacks. .env (REACT_APP_EMAILJS_*)
+// overrides them, but the hardcoded defaults guarantee delivery works even in a
+// build/dev-server that never loaded the .env values.
+const EMAILJS_SERVICE_ID = process.env.REACT_APP_EMAILJS_SERVICE_ID || 'service_281lukq';
+const EMAILJS_TEMPLATE_ID = process.env.REACT_APP_EMAILJS_TEMPLATE_ID || 'template_31z3lg7';
+const EMAILJS_PUBLIC_KEY = process.env.REACT_APP_EMAILJS_PUBLIC_KEY || '997bhOz5U46sTWykZ';
+// Only attempt the email channel once all three are present. Until the template
+// id + public key are filled in, the form still works via the server log below.
+const EMAILJS_READY = Boolean(EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && EMAILJS_PUBLIC_KEY);
+
+function ContactForm({ fields, submitLabel, formType, formLabel }) {
   const initial = fields.reduce((acc, f) => ({ ...acc, [f.name]: '' }), {});
   const [form, setForm] = useState(initial);
   const [submitted, setSubmitted] = useState(false);
@@ -10,22 +24,142 @@ function ContactForm({ fields, submitLabel, formType }) {
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
+  // Flatten the form into a normalized, template-friendly payload. `details` is
+  // a ready-to-print list of every field so a single generic EmailJS template
+  // covers both form types (and any future field) without edits. `reply_to`
+  // lets the shop reply to the customer straight from Gmail.
+  const buildEmailParams = () => {
+    const emailField = fields.find(f => f.type === 'email');
+    const nameField = fields.find(f => f.type === 'text' && f.required) || fields[0];
+    const subjectField = fields.find(f => f.type === 'select');
+    const details = fields.map(f => `${f.label}: ${form[f.name] || '—'}`).join('\n');
+    const senderName = nameField ? form[nameField.name] : '';
+    const senderEmail = emailField ? form[emailField.name] : '';
+    const subject = `[${formLabel || formType}]${subjectField && form[subjectField.name] ? ` ${form[subjectField.name]}` : ''}`;
+
+    // Escape sender-supplied text: details_html is injected into the email via a
+    // triple-brace ({{{details_html}}}) unescaped Handlebars var, so raw markup
+    // in a submission must be neutralized to prevent HTML/style injection.
+    const esc = (s) => String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+    // Structured field rows so the template can contrast the muted field LABELS
+    // against the sender-filled VALUES. Labels come from our config (trusted),
+    // values are escaped. The message/textarea keeps its line breaks.
+    const detailsHtml =
+      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">' +
+      fields.map((f, i) => {
+        const raw = form[f.name];
+        const isMsg = f.type === 'textarea';
+        const value = raw
+          ? `<div style="color:#1a1a18; font-size:15px; line-height:1.65;${isMsg ? ' white-space:pre-line;' : ''}">${esc(raw)}</div>`
+          : '<div style="color:#c4c1b8; font-size:15px;">—</div>';
+        const divider = i < fields.length - 1 ? 'border-bottom:1px solid #eeede8;' : '';
+        return `<tr><td style="padding:12px 0;${divider}">` +
+          `<div style="color:#9a978f; font-size:11px; font-weight:700; letter-spacing:1.3px; text-transform:uppercase; margin-bottom:4px;">${esc(f.label)}</div>` +
+          value + '</td></tr>';
+      }).join('') +
+      '</table>';
+
+    // Sort fields by role so the template can make the inquiry CONTENT the hero
+    // (subject heading, order badge, message card) and push the sender's contact
+    // info to a secondary "side" panel. Heuristic, works for both form types:
+    //   message  = the textarea      subject/type = the select
+    //   order    = a text field whose name/label mentions "order"
+    //   contact  = everything else (names, emails, company)
+    const messageField = fields.find(f => f.type === 'textarea');
+    const selectField = fields.find(f => f.type === 'select');
+    const orderField = fields.find(f => /order/i.test(f.name) || /order/i.test(f.label));
+    const contactFields = fields.filter(f => f !== messageField && f !== selectField && f !== orderField);
+
+    const inquiryTypeLabel = selectField ? selectField.label : 'Subject';
+    const inquiryType = selectField ? (form[selectField.name] || '—') : '';
+    const messageValue = messageField ? (form[messageField.name] || '') : (form.message || '');
+
+    // Order badge — empty string when the form has no order field/value, so the
+    // template (Handlebars has no inline conditionals here) renders nothing.
+    const orderValue = orderField ? form[orderField.name] : '';
+    const orderHtml = orderValue
+      ? `<div style="display:inline-block; background:#d6ebe3; color:#2e5d4b; font-size:12px; font-weight:700; letter-spacing:0.4px; padding:6px 15px; border-radius:50px;">${esc(orderField.label)}: ${esc(orderValue)}</div>`
+      : '';
+
+    // Pre-filled subject for the admin's "Reply to" mailto button: the inquiry
+    // type plus the order number when present. URL-encoded so it drops straight
+    // into the href (encodeURIComponent output has no HTML-special chars, so the
+    // {{reply_subject}} double-brace won't alter it).
+    const replyCore = (selectField && form[selectField.name]) ? form[selectField.name] : (formLabel || formType);
+    const replySubject = encodeURIComponent(`Re: ${replyCore}${orderValue ? ` — Order #${orderValue}` : ''}`);
+
+    // Secondary "who sent it" block — compact label/value rows for the side panel.
+    const contactHtml = contactFields.map(f => {
+      const v = form[f.name];
+      return '<div style="margin-bottom:14px;">' +
+        `<div style="color:#9a978f; font-size:10px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:2px;">${esc(f.label)}</div>` +
+        `<div style="color:#1a1a18; font-size:14px; line-height:1.5; word-break:break-word;">${v ? esc(v) : '—'}</div>` +
+        '</div>';
+    }).join('');
+
+    return {
+      // EmailJS default template variable names (match the {{name}}/{{email}}/
+      // {{title}}/{{message}} placeholders a new template ships with).
+      name: senderName,
+      email: senderEmail,
+      title: subject,
+      message: messageValue,
+      // Descriptive aliases, in case the template uses these instead.
+      form_type: formLabel || formType,
+      subject,
+      from_name: senderName,
+      reply_to: senderEmail,
+      details,          // plain-text fallback
+      details_html: detailsHtml, // full styled list — {{{details_html}}}
+      // Role-sorted pieces for the priority layout (order/subject = hero,
+      // contact = side panel). HTML pieces are unescaped → {{{ }}}.
+      inquiry_type_label: inquiryTypeLabel,
+      inquiry_type: inquiryType,
+      order_html: orderHtml,
+      contact_html: contactHtml,
+      reply_subject: replySubject,
+    };
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+
+    // Primary channel: email the inquiry straight to the shop's Gmail.
+    let emailOk = false;
+    if (EMAILJS_READY) {
+      try {
+        await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, buildEmailParams(), { publicKey: EMAILJS_PUBLIC_KEY });
+        emailOk = true;
+      } catch (err) {
+        console.error('EmailJS send failed:', err);
+      }
+    }
+
+    // Secondary channel: keep a copy in the site's message log (ContactAdmin).
+    // Best-effort — a failure here doesn't hide a successful email.
+    let saveOk = false;
     try {
       await apiFetch('/contact', {
         method: 'POST',
         body: JSON.stringify({ formType, fields: form }),
       });
+      saveOk = true;
+    } catch (err) {
+      console.error('Contact log save failed:', err);
+    }
+
+    if (emailOk || saveOk) {
       setSubmitted(true);
       setForm(initial);
-    } catch (err) {
-      setError(err.message || 'Something went wrong. Please try again.');
-    } finally {
-      setLoading(false);
+    } else {
+      setError('Something went wrong sending your message. Please try again, or email us directly.');
     }
+    setLoading(false);
   };
 
   if (submitted) {
@@ -224,6 +358,7 @@ export default function Contact() {
           fields={tab.fields}
           submitLabel={tab.submitLabel}
           formType={tab.key}
+          formLabel={tab.label}
         />
       </div>
     </div>

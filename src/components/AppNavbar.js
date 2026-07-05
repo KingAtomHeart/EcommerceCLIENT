@@ -2,12 +2,22 @@ import { useState, useContext, useEffect } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
 import UserContext from '../context/UserContext';
 import { useTheme } from '../context/ThemeContext';
+import { apiFetch } from '../utils/api';
 
 export default function AppNavbar() {
   const { user } = useContext(UserContext);
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Admin-built custom pages flagged to show in the navbar (sorted by navOrder
+  // server-side). Rendered alongside the built-in links.
+  const [navPages, setNavPages] = useState([]);
+
+  useEffect(() => {
+    apiFetch('/page-content')
+      .then(list => setNavPages((Array.isArray(list) ? list : []).filter(p => p.isCustom && p.navInclude)))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => { setMobileOpen(false); }, [location]);
   useEffect(() => {
@@ -61,6 +71,9 @@ export default function AppNavbar() {
                 </div>
               </li>
               <li><NavLink to="/group-buys" className={({ isActive }) => isActive ? 'active' : ''}>Group Buys</NavLink></li>
+              {navPages.map(p => (
+                <li key={p.pageKey}><NavLink to={`/p/${p.pageKey}`} className={({ isActive }) => isActive ? 'active' : ''}>{p.navLabel || p.title}</NavLink></li>
+              ))}
               <li><NavLink to="/community" className={({ isActive }) => isActive ? 'active' : ''}>Community</NavLink></li>
               <li><NavLink to="/contact" className={({ isActive }) => isActive ? 'active' : ''}>Contact</NavLink></li>
             </>
@@ -117,6 +130,9 @@ export default function AppNavbar() {
                 <Link to="/products?cat=keycaps" className={`mobile-link ${location.search.includes('keycaps') ? 'active' : ''}`} style={{ paddingLeft: 32 }}>Keycaps</Link>
                 <Link to="/products?cat=switches" className={`mobile-link ${location.search.includes('switches') ? 'active' : ''}`} style={{ paddingLeft: 32 }}>Switches</Link>
                 <NavLink to="/group-buys" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Group Buys</NavLink>
+                {navPages.map(p => (
+                  <NavLink key={p.pageKey} to={`/p/${p.pageKey}`} className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>{p.navLabel || p.title}</NavLink>
+                ))}
                 <NavLink to="/community" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Community</NavLink>
                 <NavLink to="/contact" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Contact</NavLink>
               </>
