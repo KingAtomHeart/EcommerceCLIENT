@@ -8,6 +8,27 @@ import toast from 'react-hot-toast';
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID;
 const GSI_SRC = 'https://accounts.google.com/gsi/client';
 
+// Eye toggle that reveals/hides a password field. Sits inside the input (which
+// gets extra right padding to make room).
+function PwToggle({ shown, onClick }) {
+  return (
+    <button type="button" onClick={onClick} tabIndex={-1}
+      aria-label={shown ? 'Hide password' : 'Show password'}
+      title={shown ? 'Hide password' : 'Show password'}
+      style={{
+        position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+        background: 'none', border: 'none', cursor: 'pointer', padding: 6,
+        color: 'var(--ink-muted)', display: 'inline-flex', alignItems: 'center',
+      }}>
+      {shown ? (
+        <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+      ) : (
+        <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+      )}
+    </button>
+  );
+}
+
 export default function Login() {
   const { user, loading: authLoading, setUser } = useContext(UserContext);
   const { theme } = useTheme();
@@ -17,9 +38,11 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [showLoginPw, setShowLoginPw] = useState(false);
 
   const [reg, setReg] = useState({ firstName: '', lastName: '', email: '', mobileNo: '', password: '' });
   const [regSubmitting, setRegSubmitting] = useState(false);
+  const [showRegPw, setShowRegPw] = useState(false);
 
   const googleBtnRef = useRef(null);
   const [needsMobile, setNeedsMobile] = useState(false);
@@ -202,7 +225,10 @@ export default function Login() {
             </div>
             <div className="form-group">
               <label className="form-label">Password</label>
-              <input type="password" className="form-input" required value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" />
+              <div style={{ position: 'relative' }}>
+                <input type={showLoginPw ? 'text' : 'password'} className="form-input" required value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" style={{ paddingRight: 44 }} />
+                <PwToggle shown={showLoginPw} onClick={() => setShowLoginPw(s => !s)} />
+              </div>
             </div>
             <button type="submit" className="btn-dark" disabled={submitting || !email || !password} style={{ width: '100%', justifyContent: 'center', marginTop: '8px' }}>
               <span>{submitting ? 'Signing in…' : 'Sign In'}</span>
@@ -232,7 +258,10 @@ export default function Login() {
             </div>
             <div className="form-group">
               <label className="form-label">Password</label>
-              <input type="password" className="form-input" required value={reg.password} onChange={setR('password')} autoComplete="new-password" />
+              <div style={{ position: 'relative' }}>
+                <input type={showRegPw ? 'text' : 'password'} className="form-input" required value={reg.password} onChange={setR('password')} autoComplete="new-password" style={{ paddingRight: 44 }} />
+                <PwToggle shown={showRegPw} onClick={() => setShowRegPw(s => !s)} />
+              </div>
             </div>
             <button type="submit" className="btn-dark" disabled={regSubmitting} style={{ width: '100%', justifyContent: 'center', marginTop: '8px' }}>
               <span>{regSubmitting ? 'Creating…' : 'Create Account'}</span>

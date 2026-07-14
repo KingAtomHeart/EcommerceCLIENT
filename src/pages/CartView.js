@@ -1,11 +1,13 @@
 import { useState, useEffect, useContext } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import UserContext from '../context/UserContext';
+import { useCurrency } from '../context/CurrencyContext';
 import { apiFetch } from '../utils/api';
 import toast from 'react-hot-toast';
 
 export default function CartView() {
   const { user } = useContext(UserContext);
+  const { format } = useCurrency();
   const navigate = useNavigate();
   const [cart, setCart] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -152,7 +154,7 @@ export default function CartView() {
                     />
                     <button className="qty-btn" onClick={() => updateQty(itemId, item.quantity + 1, item)}>+</button>
                   </div>
-                  <p className="cart-item-price">₱{item.subtotal?.toLocaleString()}</p>
+                  <p className="cart-item-price">{format(item.subtotal)}</p>
                   <button className="cart-remove" onClick={() => removeItem(itemId, item)}>
                     <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   </button>
@@ -167,7 +169,7 @@ export default function CartView() {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem', marginBottom: '12px' }}>
               <span style={{ color: 'var(--ink-muted)' }}>Subtotal ({items.length} item{items.length !== 1 ? 's' : ''})</span>
-              <span>₱{total.toLocaleString()}</span>
+              <span>{format(total)}</span>
             </div>
             {!isGroupBuyCart && (
               <p style={{ fontSize: '0.78rem', color: 'var(--ink-muted)', marginBottom: '12px' }}>
@@ -176,7 +178,7 @@ export default function CartView() {
             )}
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.1rem', fontWeight: 600, borderTop: '1px solid var(--border)', paddingTop: '16px', marginTop: '4px' }}>
               <span>{isGroupBuyCart ? 'Total' : 'Subtotal'}</span>
-              <span>₱{total.toLocaleString()}</span>
+              <span>{format(total)}</span>
             </div>
 
             <button onClick={goToCheckout} className="btn-dark" style={{ width: '100%', marginTop: '20px', justifyContent: 'center' }}>

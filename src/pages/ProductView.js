@@ -10,7 +10,7 @@ import { renderCustomPageTokens } from '../utils/customPage';
 import { apiFetch } from '../utils/api';
 import { allowedValuesForTarget } from '../utils/availabilityRules';
 import { resolveImages, findVariant, allowedValuesFor, getAttr, getDimValues, sumValueModifiers } from '../utils/variants';
-import { priceDelta } from '../utils/priceFormat';
+import { useCurrency } from '../context/CurrencyContext';
 import toast from 'react-hot-toast';
 
 const categoryLabel = (slug) => ({
@@ -20,6 +20,7 @@ const categoryLabel = (slug) => ({
 
 export default function ProductView() {
   const { productId } = useParams();
+  const { format, formatDelta } = useCurrency();
   const { user } = useContext(UserContext);
   const { token: addToOrderToken, info: addToOrderInfo } = useContext(AddToOrderContext);
   const navigate = useNavigate();
@@ -476,8 +477,8 @@ export default function ProductView() {
 
   const displayPrice = computeDisplayPrice();
   const priceDisplay = (hasOptions && !selectedOption)
-    ? `From ₱${((product.price || 0) + Math.min(...product.options.flatMap(g => g.values.map(v => v.price || 0)))).toLocaleString()}`
-    : `₱${displayPrice.toLocaleString()}`;
+    ? `From ${format((product.price || 0) + Math.min(...product.options.flatMap(g => g.values.map(v => v.price || 0))))}`
+    : format(displayPrice);
 
   return (
     <>
@@ -616,7 +617,7 @@ export default function ProductView() {
                           // selected variant's full price delta — so the +₱3,300 on
                           // Silver only appears on the Silver pill, not echoed across
                           // every other dimension's pills.
-                          const valDelta = priceDelta(priceModifier);
+                          const valDelta = formatDelta(priceModifier);
                           return (
                             <button key={vi}
                               className={`pill ${isSelected ? 'active' : ''}`}
@@ -687,9 +688,9 @@ export default function ProductView() {
                             style={!avail ? { textDecoration: 'line-through', opacity: 0.4 } : {}}
                           >
                             {val.value}
-                            {priceDelta(val.price) && (
+                            {formatDelta(val.price) && (
                               <span style={{ fontSize: '0.72rem', opacity: 0.7, marginLeft: '4px' }}>
-                                {priceDelta(val.price)}
+                                {formatDelta(val.price)}
                               </span>
                             )}
                           </button>
@@ -726,9 +727,9 @@ export default function ProductView() {
                               disabled={!avail}
                               style={!avail ? { textDecoration: 'line-through', opacity: 0.4 } : {}}>
                               {opt.value}
-                              {priceDelta(opt.priceModifier) && (
+                              {formatDelta(opt.priceModifier) && (
                                 <span style={{ fontSize: '0.72rem', opacity: 0.7, marginLeft: '4px' }}>
-                                  {priceDelta(opt.priceModifier)}
+                                  {formatDelta(opt.priceModifier)}
                                 </span>
                               )}
                             </button>

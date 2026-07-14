@@ -2,12 +2,41 @@ import { useState, useContext, useEffect } from 'react';
 import { NavLink, Link, useLocation } from 'react-router-dom';
 import UserContext from '../context/UserContext';
 import { useTheme } from '../context/ThemeContext';
+import { useCurrency } from '../context/CurrencyContext';
+import { useSiteStyle } from '../context/SiteStyleContext';
+import { navLabel } from '../utils/navItems';
 import { apiFetch } from '../utils/api';
+
+// Compact currency picker for the navbar. Changes only what shoppers SEE —
+// checkout still charges in the PHP base price.
+function CurrencySelect({ compact = false }) {
+  const { currency, setCurrency, supported } = useCurrency();
+  return (
+    <select
+      value={currency}
+      onChange={e => setCurrency(e.target.value)}
+      aria-label="Display currency"
+      title="Display currency"
+      style={{
+        appearance: 'none', WebkitAppearance: 'none',
+        background: 'transparent', border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-pill)', color: 'var(--ink-muted)',
+        fontFamily: 'inherit', fontSize: compact ? '0.8rem' : '0.78rem', fontWeight: 500,
+        padding: compact ? '8px 12px' : '6px 10px', cursor: 'pointer',
+      }}
+    >
+      {supported.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
+    </select>
+  );
+}
 
 export default function AppNavbar() {
   const { user } = useContext(UserContext);
   const { theme, toggleTheme } = useTheme();
+  const { navLabels } = useSiteStyle();
   const location = useLocation();
+  // Resolve a built-in link's label: admin override if set, else the default.
+  const L = (key, fallback) => navLabel(navLabels, key, fallback);
   const [mobileOpen, setMobileOpen] = useState(false);
   // Admin-built custom pages flagged to show in the navbar (sorted by navOrder
   // server-side). Rendered alongside the built-in links.
@@ -44,20 +73,20 @@ export default function AppNavbar() {
         <ul className="nav-links">
           {isAdmin ? (
             <>
-              <li><NavLink to="/" end className={({ isActive }) => isActive ? 'active' : ''}>Home</NavLink></li>
-              <li><NavLink to="/products" className={({ isActive }) => isActive ? 'active' : ''}>Dashboard</NavLink></li>
-              <li><NavLink to="/contact/admin" className={({ isActive }) => isActive ? 'active' : ''}>Messages</NavLink></li>
+              <li><NavLink to="/" end className={({ isActive }) => isActive ? 'active' : ''}>{L('home', 'Home')}</NavLink></li>
+              <li><NavLink to="/products" className={({ isActive }) => isActive ? 'active' : ''}>{L('dashboard', 'Dashboard')}</NavLink></li>
+              <li><NavLink to="/contact/admin" className={({ isActive }) => isActive ? 'active' : ''}>{L('messages', 'Messages')}</NavLink></li>
             </>
           ) : (
             <>
-              <li><NavLink to="/" end className={({ isActive }) => isActive ? 'active' : ''}>Home</NavLink></li>
+              <li><NavLink to="/" end className={({ isActive }) => isActive ? 'active' : ''}>{L('home', 'Home')}</NavLink></li>
               {/* Shop dropdown */}
               <li className="nav-dropdown-wrap">
                 <Link
                   to="/products"
                   className={`nav-dropdown-trigger ${isShopActive ? 'active' : ''}`}
                 >
-                  Shop
+                  {L('shop', 'Shop')}
                   <svg className="nav-dropdown-chevron" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" style={{ marginLeft: 4, transition: 'transform 0.2s' }}>
                     <polyline points="6 9 12 15 18 9"/>
                   </svg>
@@ -70,17 +99,18 @@ export default function AppNavbar() {
                   <Link to="/products?cat=switches" className="nav-dropdown-item">Switches</Link>
                 </div>
               </li>
-              <li><NavLink to="/group-buys" className={({ isActive }) => isActive ? 'active' : ''}>Group Buys</NavLink></li>
+              <li><NavLink to="/group-buys" className={({ isActive }) => isActive ? 'active' : ''}>{L('groupBuys', 'Group Buys')}</NavLink></li>
               {navPages.map(p => (
                 <li key={p.pageKey}><NavLink to={`/p/${p.pageKey}`} className={({ isActive }) => isActive ? 'active' : ''}>{p.navLabel || p.title}</NavLink></li>
               ))}
-              <li><NavLink to="/community" className={({ isActive }) => isActive ? 'active' : ''}>Community</NavLink></li>
-              <li><NavLink to="/contact" className={({ isActive }) => isActive ? 'active' : ''}>Contact</NavLink></li>
+              <li><NavLink to="/community" className={({ isActive }) => isActive ? 'active' : ''}>{L('community', 'Community')}</NavLink></li>
+              <li><NavLink to="/contact" className={({ isActive }) => isActive ? 'active' : ''}>{L('contact', 'Contact')}</NavLink></li>
             </>
           )}
         </ul>
 
         <div className="nav-actions">
+          <CurrencySelect />
           <button onClick={toggleTheme} className="dark-toggle" aria-label="Toggle dark mode">
             {theme === 'dark' ? (
               <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
@@ -117,24 +147,24 @@ export default function AppNavbar() {
           <div className="mobile-drawer-links">
             {isAdmin ? (
               <>
-                <NavLink to="/" end className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Home</NavLink>
-                <NavLink to="/products" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Dashboard</NavLink>
-                <NavLink to="/contact/admin" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Messages</NavLink>
+                <NavLink to="/" end className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>{L('home', 'Home')}</NavLink>
+                <NavLink to="/products" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>{L('dashboard', 'Dashboard')}</NavLink>
+                <NavLink to="/contact/admin" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>{L('messages', 'Messages')}</NavLink>
               </>
             ) : (
               <>
-                <NavLink to="/" end className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Home</NavLink>
-                <NavLink to="/products" className={({ isActive }) => `mobile-link ${isActive && !location.search ? 'active' : ''}`}>Shop All</NavLink>
+                <NavLink to="/" end className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>{L('home', 'Home')}</NavLink>
+                <NavLink to="/products" className={({ isActive }) => `mobile-link ${isActive && !location.search ? 'active' : ''}`}>{L('shop', 'Shop')}</NavLink>
                 <Link to="/products?cat=keyboards" className={`mobile-link ${location.search.includes('keyboards') ? 'active' : ''}`} style={{ paddingLeft: 32 }}>Keyboards</Link>
                 <Link to="/products?cat=desk-accessories" className={`mobile-link ${location.search.includes('desk-accessories') ? 'active' : ''}`} style={{ paddingLeft: 32 }}>Desk Accessories</Link>
                 <Link to="/products?cat=keycaps" className={`mobile-link ${location.search.includes('keycaps') ? 'active' : ''}`} style={{ paddingLeft: 32 }}>Keycaps</Link>
                 <Link to="/products?cat=switches" className={`mobile-link ${location.search.includes('switches') ? 'active' : ''}`} style={{ paddingLeft: 32 }}>Switches</Link>
-                <NavLink to="/group-buys" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Group Buys</NavLink>
+                <NavLink to="/group-buys" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>{L('groupBuys', 'Group Buys')}</NavLink>
                 {navPages.map(p => (
                   <NavLink key={p.pageKey} to={`/p/${p.pageKey}`} className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>{p.navLabel || p.title}</NavLink>
                 ))}
-                <NavLink to="/community" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Community</NavLink>
-                <NavLink to="/contact" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>Contact</NavLink>
+                <NavLink to="/community" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>{L('community', 'Community')}</NavLink>
+                <NavLink to="/contact" className={({ isActive }) => `mobile-link ${isActive ? 'active' : ''}`}>{L('contact', 'Contact')}</NavLink>
               </>
             )}
           </div>
@@ -153,6 +183,13 @@ export default function AppNavbar() {
           {/* Theme toggle — lives in the drawer on mobile since it doesn't
               fit comfortably in the top bar without crowding the logo. */}
           <div className="mobile-drawer-divider" />
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '8px 16px',
+          }}>
+            <span style={{ fontSize: '0.95rem', color: 'var(--ink-muted)' }}>Currency</span>
+            <CurrencySelect compact />
+          </div>
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '8px 16px',

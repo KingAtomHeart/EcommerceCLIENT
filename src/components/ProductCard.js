@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { cloudinaryOptimize } from '../utils/api';
+import { useCurrency } from '../context/CurrencyContext';
 
 const categoryLabel = (slug) => ({
   keyboards: 'Keyboard', keycaps: 'Keycaps', switches: 'Switches',
@@ -74,6 +75,7 @@ const STYLE_MAP = {
 };
 
 export default function ProductCard({ product, presentation }) {
+  const { format } = useCurrency();
   const { _id, name, description, price, images, category, isActive, stocks, useVariants, variants, options } = product;
   const imgUrl = cloudinaryOptimize(images?.[0]?.url, 600) || null;
   const secondImg = cloudinaryOptimize(images?.[1]?.url, 600) || null;
@@ -151,7 +153,7 @@ export default function ProductCard({ product, presentation }) {
                     {displayPriceInfo.prefix}
                   </span>
                 )}
-                ₱{displayPriceInfo.value?.toLocaleString()}
+                {format(displayPriceInfo.value)}
               </span>
             ) : <span />}
 

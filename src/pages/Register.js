@@ -4,11 +4,34 @@ import UserContext from '../context/UserContext';
 import { apiFetch } from '../utils/api';
 import toast from 'react-hot-toast';
 
+// Eye toggle that shows/hides a password field's value. Sits inside the input
+// (which gets extra right padding to make room).
+function PwToggle({ shown, onClick }) {
+  return (
+    <button type="button" onClick={onClick} tabIndex={-1}
+      aria-label={shown ? 'Hide password' : 'Show password'}
+      title={shown ? 'Hide password' : 'Show password'}
+      style={{
+        position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+        background: 'none', border: 'none', cursor: 'pointer', padding: 6,
+        color: 'var(--ink-muted)', display: 'inline-flex', alignItems: 'center',
+      }}>
+      {shown ? (
+        <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+      ) : (
+        <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+      )}
+    </button>
+  );
+}
+
 export default function Register() {
   const { user } = useContext(UserContext);
   const navigate = useNavigate();
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', mobileNo: '', password: '', confirmPassword: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   if (user?.id) return <Navigate to="/" />;
 
@@ -69,11 +92,17 @@ export default function Register() {
           </div>
           <div className="form-group">
             <label className="form-label">Password</label>
-            <input type="password" className="form-input" required value={form.password} onChange={set('password')} />
+            <div style={{ position: 'relative' }}>
+              <input type={showPassword ? 'text' : 'password'} className="form-input" required value={form.password} onChange={set('password')} style={{ paddingRight: 44 }} />
+              <PwToggle shown={showPassword} onClick={() => setShowPassword(s => !s)} />
+            </div>
           </div>
           <div className="form-group">
             <label className="form-label">Confirm Password</label>
-            <input type="password" className="form-input" required value={form.confirmPassword} onChange={set('confirmPassword')} />
+            <div style={{ position: 'relative' }}>
+              <input type={showConfirm ? 'text' : 'password'} className="form-input" required value={form.confirmPassword} onChange={set('confirmPassword')} style={{ paddingRight: 44 }} />
+              <PwToggle shown={showConfirm} onClick={() => setShowConfirm(s => !s)} />
+            </div>
           </div>
           {form.password && form.confirmPassword && form.password !== form.confirmPassword && (
             <p style={{ color: '#c0392b', fontSize: '0.82rem', marginBottom: '12px' }}>Passwords do not match.</p>

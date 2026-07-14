@@ -8,7 +8,7 @@ import { renderCustomPageTokens } from '../utils/customPage';
 import GroupBuyCard from '../components/GroupBuyCard';
 import ProductCard from '../components/ProductCard';
 import { apiFetch } from '../utils/api';
-import { priceDelta } from '../utils/priceFormat';
+import { useCurrency } from '../context/CurrencyContext';
 import toast from 'react-hot-toast';
 
 const statusLabel = {
@@ -18,6 +18,7 @@ const statusLabel = {
 
 export default function GroupBuyView() {
   const { id } = useParams();
+  const { format, formatDelta } = useCurrency();
   const { user } = useContext(UserContext);
   const { token: addToOrderToken, info: addToOrderInfo } = useContext(AddToOrderContext);
   const navigate = useNavigate();
@@ -318,9 +319,9 @@ export default function GroupBuyView() {
 
   const basePriceDisplay = hasOptions
     ? selectedOption
-      ? `₱${computedPrice.toLocaleString()}`
-      : `From ₱${((gb.basePrice || 0) + Math.min(...gb.options.flatMap(g => g.values.map(v => v.price || 0)))).toLocaleString()}`
-    : `₱${computedPrice.toLocaleString()}`;
+      ? format(computedPrice)
+      : `From ${format((gb.basePrice || 0) + Math.min(...gb.options.flatMap(g => g.values.map(v => v.price || 0))))}`
+    : format(computedPrice);
 
   return (
     <div className="page-body gb-page" style={{ padding: '44px var(--page-pad) 80px' }}>
@@ -493,9 +494,9 @@ export default function GroupBuyView() {
                           style={!avail ? { textDecoration: 'line-through', opacity: 0.4 } : {}}
                         >
                           {val.value}
-                          {priceDelta(val.price) && (
+                          {formatDelta(val.price) && (
                             <span style={{ fontSize: '0.72rem', opacity: 0.7, marginLeft: '4px' }}>
-                              {priceDelta(val.price)}
+                              {formatDelta(val.price)}
                             </span>
                           )}
                           {val.stocks >= 0 && val.stocks <= 10 && (
@@ -537,9 +538,9 @@ export default function GroupBuyView() {
                           className={`pill ${configs[cfg.name] === opt.value ? 'active' : ''}`}
                           style={!avail ? { textDecoration: 'line-through', opacity: 0.4 } : {}}>
                           {opt.value}
-                          {priceDelta(opt.priceModifier) && (
+                          {formatDelta(opt.priceModifier) && (
                             <span style={{ fontSize: '0.72rem', opacity: 0.7, marginLeft: '4px' }}>
-                              {priceDelta(opt.priceModifier)}
+                              {formatDelta(opt.priceModifier)}
                             </span>
                           )}
                         </button>

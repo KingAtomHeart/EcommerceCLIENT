@@ -21,6 +21,14 @@ export const SiteStyleProvider = ({ children }) => {
   const [style, setStyleState] = useState(initial);
   const [savedStyle, setSavedStyle] = useState(initial);
 
+  // Admin-chosen overrides for the built-in navbar link labels ({ key: label }).
+  // Cached in localStorage only to avoid a flash of default labels before the GET
+  // resolves; the fetched value always wins.
+  const [navLabels, setNavLabelsState] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('ok_nav_labels')) || {}; }
+    catch { return {}; }
+  });
+
   // Applied style drives the live <html> attribute so previews show instantly.
   useEffect(() => {
     document.documentElement.setAttribute('data-style', style);
@@ -36,9 +44,26 @@ export const SiteStyleProvider = ({ children }) => {
       .then(data => {
         if (cancelled) return;
         if (VALID_STYLES.includes(data?.style)) { setStyleState(data.style); setSavedStyle(data.style); }
+        if (data && typeof data.navLabels === 'object' && data.navLabels !== null) {
+          setNavLabelsState(data.navLabels);
+          localStorage.setItem('ok_nav_labels', JSON.stringify(data.navLabels));
+        }
       })
       .catch(() => { /* keep cached value */ });
     return () => { cancelled = true; };
+  }, []);
+
+  // Admin call. Persists navbar label overrides (pushes them live for every
+  // visitor). Send the full { key: label } map — blank values clear an override.
+  const setNavLabels = useCallback(async (next) => {
+    const data = await apiFetch('/site-settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ navLabels: next }),
+    });
+    const applied = (data && typeof data.navLabels === 'object' && data.navLabels !== null) ? data.navLabels : next;
+    setNavLabelsState(applied);
+    localStorage.setItem('ok_nav_labels', JSON.stringify(applied));
+    return applied;
   }, []);
 
   // Apply a style locally for preview only — does NOT persist (won't go live).
@@ -68,7 +93,7 @@ export const SiteStyleProvider = ({ children }) => {
   }, [savedStyle]);
 
   return (
-    <SiteStyleContext.Provider value={{ style, savedStyle, previewStyle, setStyle }}>
+    <SiteStyleContext.Provider value={{ style, savedStyle, previewStyle, setStyle, navLabels, setNavLabels }}>
       {children}
     </SiteStyleContext.Provider>
   );

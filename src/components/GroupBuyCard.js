@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useCurrency } from '../context/CurrencyContext';
 
 const statusLabel = {
   'interest-check': 'Interest Check',
@@ -33,6 +34,7 @@ const STYLE_MAP = {
 };
 
 export default function GroupBuyCard({ gb, presentation }) {
+  const { format } = useCurrency();
   // Defaults preserve historical look when no presentation is passed; the
   // homepage admin overrides these to customize.
   const p = {
@@ -52,8 +54,8 @@ export default function GroupBuyCard({ gb, presentation }) {
   const daysLeft = endDate ? Math.max(0, Math.ceil((endDate - new Date()) / 86400000)) : null;
 
   const priceLine = (gb.options?.length > 0)
-    ? `From ₱${((gb.basePrice || 0) + Math.min(...gb.options.flatMap(g => (g.values || []).map(v => v.price || 0)))).toLocaleString()}`
-    : `₱${gb.basePrice?.toLocaleString()}`;
+    ? `From ${format((gb.basePrice || 0) + Math.min(...gb.options.flatMap(g => (g.values || []).map(v => v.price || 0))))}`
+    : format(gb.basePrice);
 
   const metaJsx = p.showMeta && (
     <div style={{

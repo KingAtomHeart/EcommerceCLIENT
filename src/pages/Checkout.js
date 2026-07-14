@@ -1,17 +1,23 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useContext, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
 import UserContext from '../context/UserContext';
 import AddToOrderContext from '../context/AddToOrderContext';
+import { useCurrency } from '../context/CurrencyContext';
 import { apiFetch } from '../utils/api';
 import { computeShippingFromProvince } from '../utils/shipping';
 import AddressForm, { emptyAddress } from '../components/AddressForm';
 import toast from 'react-hot-toast';
 
 const NEW = '__new__';
+// Public PayPal client id (safe to expose). When unset, checkout falls back to
+// the manual "Place Order" flow so the page still works before keys are added.
+const PAYPAL_CLIENT_ID = process.env.REACT_APP_PAYPAL_CLIENT_ID || '';
 
 export default function Checkout() {
   const { user } = useContext(UserContext);
   const { token: addToken, info: addInfo, clear: clearAddToken } = useContext(AddToOrderContext);
+  const { format, currency } = useCurrency();
   const navigate = useNavigate();
   const [cart, setCart] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -24,6 +30,10 @@ export default function Checkout() {
 
   const [billingSame, setBillingSame] = useState(true);
   const [billing, setBilling] = useState(emptyAddress());
+
+  // PayPal refs (declared with the other hooks so they run before any early return).
+  const paypalOrderRef = useRef(null);
+  const suppressPaypalError = useRef(false);
 
   useEffect(() => {
     if (!user) { setLoading(false); return; }
@@ -66,7 +76,10 @@ export default function Checkout() {
 
   const isAddMode = !!addToken;
   const activeAddress = selectedId === NEW ? newAddress : savedAddresses.find(a => a._id === selectedId) || newAddress;
-  const ship = (!isGroupBuy && !isAddMode && activeAddress?.province) ? computeShippingFromProvince(activeAddress.province) : null;
+  // International shipping isn't wired up yet — global addresses can be entered
+  // and saved, but checkout is gated to PH until the shipping calculator lands.
+  const isIntl = !isAddMode && !!activeAddress?.country && activeAddress.country !== 'Philippines';
+  const ship = (!isGroupBuy && !isAddMode && !isIntl && activeAddress?.province) ? computeShippingFromProvince(activeAddress.province) : null;
   const shippingFee = ship?.fee ?? 0;
   const grandTotal = subtotal + shippingFee;
 
@@ -80,6 +93,7 @@ export default function Checkout() {
   const placeOrder = async () => {
     if (submitting) return;
     if (!isAddMode) {
+      if (isIntl) { toast.error("International shipping isn't available yet — we currently ship within the Philippines."); return; }
       if (!validate(activeAddress)) { toast.error('Please complete the shipping address.'); return; }
       if (!billingSame && !validate(billing)) { toast.error('Please complete the billing address.'); return; }
     }
@@ -108,6 +122,51 @@ export default function Checkout() {
       toast.error(e.message);
       setSubmitting(false);
     }
+  };
+
+  // ── PayPal (standard in-stock checkout only) ──
+  // Pay online with PayPal: the server builds an awaiting-payment order, PayPal
+  // handles approval, then the server captures + finalizes (marks paid, decrements
+  // stock, clears cart). Add-to-order and group-buy checkouts keep placeOrder.
+  const useOnlinePayment = !isAddMode && !isGroupBuy && !isIntl && !!PAYPAL_CLIENT_ID;
+
+  const createPaypalOrder = async () => {
+    if (!validate(activeAddress)) { suppressPaypalError.current = true; toast.error('Please complete the shipping address.'); throw new Error('Incomplete address'); }
+    if (!billingSame && !validate(billing)) { suppressPaypalError.current = true; toast.error('Please complete the billing address.'); throw new Error('Incomplete billing'); }
+    // Persist a brand-new address to the profile (non-blocking convenience).
+    if (selectedId === NEW && saveNew) {
+      try {
+        const res = await apiFetch('/users/addresses', { method: 'POST', body: JSON.stringify({ address: newAddress }) });
+        setSavedAddresses(res.addresses || []);
+      } catch { /* non-blocking */ }
+    }
+    const res = await apiFetch('/orders/paypal/create-order', {
+      method: 'POST',
+      body: JSON.stringify({ shippingAddress: activeAddress, billingAddress: billingSame ? null : billing }),
+    });
+    paypalOrderRef.current = res.orderId;
+    return res.paypalOrderId;
+  };
+
+  const onPaypalApprove = async (data) => {
+    setSubmitting(true);
+    try {
+      await apiFetch('/orders/paypal/capture-order', {
+        method: 'POST',
+        body: JSON.stringify({ paypalOrderId: data.orderID, orderId: paypalOrderRef.current }),
+      });
+      toast.success('Payment successful — order placed!');
+      navigate(`/payment-success?orderId=${paypalOrderRef.current}`);
+    } catch (e) {
+      toast.error(e.message || 'Payment could not be confirmed. If you were charged, please contact support.');
+      setSubmitting(false);
+    }
+  };
+
+  const onPaypalError = (err) => {
+    if (suppressPaypalError.current) { suppressPaypalError.current = false; return; } // our own validation toast already shown
+    console.error('PayPal error:', err);
+    toast.error('PayPal ran into a problem. Please try again.');
   };
 
   return (
@@ -218,28 +277,59 @@ export default function Checkout() {
                     <p style={{ fontSize: '0.86rem', fontWeight: 500, lineHeight: 1.3, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayName}</p>
                     {variantAttrs && <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', margin: '2px 0 0', lineHeight: 1.3 }}>{variantAttrs}</p>}
                   </div>
-                  <span style={{ fontSize: '0.86rem', fontWeight: 500 }}>₱{item.subtotal?.toLocaleString()}</span>
+                  <span style={{ fontSize: '0.86rem', fontWeight: 500 }}>{format(item.subtotal)}</span>
                 </div>
               );
             })}
           </div>
 
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <Row label="Subtotal" value={`₱${subtotal.toLocaleString()}`} />
-            <Row label="Shipping" value={ship ? `₱${shippingFee.toLocaleString()}` : <span style={{ color: 'var(--ink-faint)', fontStyle: 'italic' }}>Enter address</span>} />
+            <Row label="Subtotal" value={format(subtotal)} />
+            <Row label="Shipping" value={isIntl ? <span style={{ color: 'var(--ink-faint)', fontStyle: 'italic' }}>Not available yet</span> : ship ? format(shippingFee) : <span style={{ color: 'var(--ink-faint)', fontStyle: 'italic' }}>Enter address</span>} />
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.2rem', fontWeight: 600, borderTop: '1px solid var(--border)', paddingTop: '16px', marginTop: '14px' }}>
             <span>Total</span>
-            <span>₱{grandTotal.toLocaleString()}</span>
+            <span>{format(grandTotal)}</span>
           </div>
+          {currency !== 'PHP' && (
+            <p style={{ fontSize: '0.72rem', color: 'var(--ink-muted)', textAlign: 'right', marginTop: '8px', lineHeight: 1.5 }}>
+              Prices shown in {currency} are approximate. You'll be charged <strong>₱{grandTotal.toLocaleString()}</strong>.
+            </p>
+          )}
 
-          <button onClick={placeOrder} className="btn-dark" style={{ width: '100%', marginTop: '24px', justifyContent: 'center' }} disabled={submitting}>
-            <span>{submitting ? 'Placing order…' : 'Place Order'}</span>
-          </button>
-          <p style={{ fontSize: '0.72rem', color: 'var(--ink-faint)', textAlign: 'center', marginTop: '10px', lineHeight: 1.5 }}>
-            Payment instructions will be coordinated after order placement.
-          </p>
+          {isIntl ? (
+            <div style={{ marginTop: '24px', padding: '14px 16px', borderRadius: 10, background: 'var(--bg-secondary)', border: '1px solid var(--border)', fontSize: '0.84rem', color: 'var(--ink-muted)', lineHeight: 1.6 }}>
+              <strong style={{ color: 'var(--ink)' }}>International shipping is coming soon.</strong><br />
+              We currently ship within the Philippines. You can still save this address to your profile — <Link to="/contact" style={{ color: 'var(--accent)' }}>contact us</Link> to arrange an international order.
+            </div>
+          ) : useOnlinePayment ? (
+            <div style={{ marginTop: '24px' }}>
+              <PayPalScriptProvider options={{ 'client-id': PAYPAL_CLIENT_ID, currency: 'PHP', intent: 'capture' }}>
+                <PayPalButtons
+                  style={{ layout: 'vertical', shape: 'pill', color: 'gold', label: 'paypal' }}
+                  disabled={submitting}
+                  forceReRender={[grandTotal, selectedId, billingSame, JSON.stringify(newAddress)]}
+                  createOrder={createPaypalOrder}
+                  onApprove={onPaypalApprove}
+                  onError={onPaypalError}
+                  onCancel={() => toast('Payment cancelled — you have not been charged.')}
+                />
+              </PayPalScriptProvider>
+              <p style={{ fontSize: '0.72rem', color: 'var(--ink-faint)', textAlign: 'center', marginTop: '10px', lineHeight: 1.5 }}>
+                Secure payment via PayPal — you can also pay by card without a PayPal account.
+              </p>
+            </div>
+          ) : (
+            <>
+              <button onClick={placeOrder} className="btn-dark" style={{ width: '100%', marginTop: '24px', justifyContent: 'center' }} disabled={submitting}>
+                <span>{submitting ? 'Placing order…' : 'Place Order'}</span>
+              </button>
+              <p style={{ fontSize: '0.72rem', color: 'var(--ink-faint)', textAlign: 'center', marginTop: '10px', lineHeight: 1.5 }}>
+                Payment instructions will be coordinated after order placement.
+              </p>
+            </>
+          )}
         </div>
       </div>
 

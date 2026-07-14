@@ -28,6 +28,12 @@ export default function Profile() {
   // Password state
   const [pw, setPw] = useState({ current: '', new: '', confirm: '' });
   const [pwLoading, setPwLoading] = useState(false);
+  const [showPw, setShowPw] = useState({ current: false, new: false, confirm: false });
+
+  // Account-info edit state
+  const [editingInfo, setEditingInfo] = useState(false);
+  const [infoDraft, setInfoDraft] = useState({ firstName: '', lastName: '', mobileNo: '' });
+  const [infoSaving, setInfoSaving] = useState(false);
 
   // Avatar upload state
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -119,6 +125,31 @@ export default function Profile() {
     } catch (err) { toast.error(err.message); }
   };
 
+  // ── Account info editing (name + mobile) ──
+  const startEditInfo = () => {
+    setInfoDraft({ firstName: details?.firstName || '', lastName: details?.lastName || '', mobileNo: details?.mobileNo || '' });
+    setEditingInfo(true);
+  };
+  const cancelEditInfo = () => setEditingInfo(false);
+  const saveInfo = async () => {
+    if (!infoDraft.firstName.trim() || !infoDraft.lastName.trim()) { toast.error('Name cannot be empty.'); return; }
+    if (!/^\d{11}$/.test(infoDraft.mobileNo)) { toast.error('Mobile number must be exactly 11 digits.'); return; }
+    setInfoSaving(true);
+    try {
+      const res = await apiFetch('/users/update-profile', {
+        method: 'PATCH',
+        body: JSON.stringify({ firstName: infoDraft.firstName.trim(), lastName: infoDraft.lastName.trim(), mobileNo: infoDraft.mobileNo }),
+      });
+      const u = res.user;
+      // Merge only the changed fields so flags like hasPassword on `details` survive.
+      setDetails(prev => ({ ...prev, firstName: u.firstName, lastName: u.lastName, mobileNo: u.mobileNo }));
+      setUser(prev => ({ ...prev, firstName: u.firstName, lastName: u.lastName, mobileNo: u.mobileNo }));
+      setEditingInfo(false);
+      toast.success('Profile updated');
+    } catch (err) { toast.error(err.message || 'Failed to update profile'); }
+    finally { setInfoSaving(false); }
+  };
+
   // FIX: Wrap in useCallback and add setUser to dep array
   const loadProfile = useCallback(() => {
     apiFetch('/users/details')
@@ -135,6 +166,16 @@ export default function Profile() {
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
+
+  // The security tab is hidden for Google-only accounts; if one lands on
+  // ?tab=security directly, send them back to Account so the page isn't blank.
+  useEffect(() => {
+    if (details && details.hasPassword === false && activeTab === 'security') {
+      setActiveTab('account');
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [details, activeTab]);
 
   // Fetch orders (regular + group buy) when tab is first opened
   useEffect(() => {
@@ -239,10 +280,14 @@ export default function Profile() {
 
   const initials = `${details?.firstName?.[0] || ''}${details?.lastName?.[0] || ''}`;
 
+  // Google-only accounts have no password, so there's nothing to change — hide
+  // the whole Password & Security section for them.
+  const isGoogleAccount = details ? details.hasPassword === false : false;
+
   const tabs = [
     { id: 'account', label: 'Account Details', icon: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg> },
     ...(!user?.isAdmin ? [{ id: 'orders', label: 'Order History', icon: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg> }] : []),
-    { id: 'security', label: 'Password & Security', icon: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> },
+    ...(!isGoogleAccount ? [{ id: 'security', label: 'Password & Security', icon: <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> }] : []),
   ];
 
   return (
@@ -309,18 +354,51 @@ export default function Profile() {
           {/* Account Details */}
           {activeTab === 'account' && (
             <div style={{ animation: 'fadeIn 0.25s ease' }}>
-              <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.6rem', marginBottom: '8px' }}>Account Details</h2>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: '8px' }}>
+                <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.6rem' }}>Account Details</h2>
+                {!editingInfo && (
+                  <button onClick={startEditInfo} className="btn-light" style={{ padding: '8px 18px', fontSize: '0.84rem' }}>
+                    <span>Edit</span>
+                  </button>
+                )}
+              </div>
               <p style={{ color: 'var(--ink-muted)', fontSize: '0.88rem', marginBottom: '32px' }}>
                 Manage your personal information.
               </p>
               <div className="profile-info-grid">
-                <InfoBlock label="First Name" value={details?.firstName} />
-                <InfoBlock label="Last Name" value={details?.lastName} />
-                <InfoBlock label="Email Address" value={details?.email} />
-                <InfoBlock label="Mobile Number" value={details?.mobileNo} />
-                <InfoBlock label="Account Type" value={details?.isAdmin ? 'Administrator' : 'Customer'} />
-                <InfoBlock label="Member Since" value={details?.createdAt ? new Date(details.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long' }) : '—'} />
+                {editingInfo ? (
+                  <>
+                    <EditableField label="First Name" value={infoDraft.firstName} onChange={v => setInfoDraft(d => ({ ...d, firstName: v }))} />
+                    <EditableField label="Last Name" value={infoDraft.lastName} onChange={v => setInfoDraft(d => ({ ...d, lastName: v }))} />
+                    <InfoBlock label="Email Address" value={details?.email} />
+                    <EditableField label="Mobile Number" value={infoDraft.mobileNo} maxLength={11} onChange={v => setInfoDraft(d => ({ ...d, mobileNo: v.replace(/\D/g, '').slice(0, 11) }))} />
+                    <InfoBlock label="Account Type" value={details?.isAdmin ? 'Administrator' : 'Customer'} />
+                    <InfoBlock label="Member Since" value={details?.createdAt ? new Date(details.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long' }) : '—'} />
+                  </>
+                ) : (
+                  <>
+                    <InfoBlock label="First Name" value={details?.firstName} />
+                    <InfoBlock label="Last Name" value={details?.lastName} />
+                    <InfoBlock label="Email Address" value={details?.email} />
+                    <InfoBlock label="Mobile Number" value={details?.mobileNo} />
+                    <InfoBlock label="Account Type" value={details?.isAdmin ? 'Administrator' : 'Customer'} />
+                    <InfoBlock label="Member Since" value={details?.createdAt ? new Date(details.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long' }) : '—'} />
+                  </>
+                )}
               </div>
+              {editingInfo && (
+                <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
+                  <button onClick={saveInfo} className="btn-dark" disabled={infoSaving} style={{ padding: '10px 22px' }}>
+                    <span>{infoSaving ? 'Saving…' : 'Save Changes'}</span>
+                  </button>
+                  <button onClick={cancelEditInfo} className="btn-light" disabled={infoSaving} style={{ padding: '10px 22px' }}>
+                    <span>Cancel</span>
+                  </button>
+                </div>
+              )}
+              <p style={{ color: 'var(--ink-faint)', fontSize: '0.78rem', marginTop: editingInfo ? 14 : 0 }}>
+                {editingInfo ? 'Your email address can’t be changed here — contact support if you need to update it.' : ''}
+              </p>
 
               {/* ── Saved Addresses — hidden for admin ── */}
               {!user?.isAdmin && <div style={{ marginTop: '44px' }}>
@@ -412,7 +490,7 @@ export default function Profile() {
           )}
 
           {/* Password & Security */}
-          {activeTab === 'security' && (
+          {activeTab === 'security' && !isGoogleAccount && (
             <div style={{ animation: 'fadeIn 0.25s ease' }}>
               <h2 style={{ fontFamily: "'DM Serif Display', serif", fontSize: '1.6rem', marginBottom: '8px' }}>Password & Security</h2>
               <p style={{ color: 'var(--ink-muted)', fontSize: '0.88rem', marginBottom: '32px' }}>
@@ -421,15 +499,24 @@ export default function Profile() {
               <form onSubmit={changePassword} style={{ maxWidth: '400px' }}>
                 <div className="form-group">
                   <label className="form-label">Current Password</label>
-                  <input type="password" className="form-input" required value={pw.current} onChange={e => setPw(p => ({ ...p, current: e.target.value }))} />
+                  <div style={{ position: 'relative' }}>
+                    <input type={showPw.current ? 'text' : 'password'} className="form-input" required value={pw.current} onChange={e => setPw(p => ({ ...p, current: e.target.value }))} style={{ paddingRight: 44 }} />
+                    <PwToggle shown={showPw.current} onClick={() => setShowPw(s => ({ ...s, current: !s.current }))} />
+                  </div>
                 </div>
                 <div className="form-group">
                   <label className="form-label">New Password</label>
-                  <input type="password" className="form-input" required minLength={8} value={pw.new} onChange={e => setPw(p => ({ ...p, new: e.target.value }))} placeholder="Min. 8 characters" />
+                  <div style={{ position: 'relative' }}>
+                    <input type={showPw.new ? 'text' : 'password'} className="form-input" required minLength={8} value={pw.new} onChange={e => setPw(p => ({ ...p, new: e.target.value }))} placeholder="Min. 8 characters" style={{ paddingRight: 44 }} />
+                    <PwToggle shown={showPw.new} onClick={() => setShowPw(s => ({ ...s, new: !s.new }))} />
+                  </div>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Confirm New Password</label>
-                  <input type="password" className="form-input" required value={pw.confirm} onChange={e => setPw(p => ({ ...p, confirm: e.target.value }))} />
+                  <div style={{ position: 'relative' }}>
+                    <input type={showPw.confirm ? 'text' : 'password'} className="form-input" required value={pw.confirm} onChange={e => setPw(p => ({ ...p, confirm: e.target.value }))} style={{ paddingRight: 44 }} />
+                    <PwToggle shown={showPw.confirm} onClick={() => setShowPw(s => ({ ...s, confirm: !s.confirm }))} />
+                  </div>
                 </div>
                 {pw.new && pw.confirm && pw.new !== pw.confirm && (
                   <p style={{ color: '#c0392b', fontSize: '0.82rem', marginBottom: '12px' }}>Passwords do not match.</p>
@@ -496,6 +583,44 @@ function InfoBlock({ label, value }) {
     <div className="profile-info-block">
       <p className="profile-info-label">{label}</p>
       <p className="profile-info-value">{value || '—'}</p>
+    </div>
+  );
+}
+
+// Eye toggle that reveals/hides a password field. Sits inside the input (which
+// gets extra right padding to make room).
+function PwToggle({ shown, onClick }) {
+  return (
+    <button type="button" onClick={onClick} tabIndex={-1}
+      aria-label={shown ? 'Hide password' : 'Show password'}
+      title={shown ? 'Hide password' : 'Show password'}
+      style={{
+        position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+        background: 'none', border: 'none', cursor: 'pointer', padding: 6,
+        color: 'var(--ink-muted)', display: 'inline-flex', alignItems: 'center',
+      }}>
+      {shown ? (
+        <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+      ) : (
+        <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+      )}
+    </button>
+  );
+}
+
+// Editable counterpart of InfoBlock, used when the Account Details tab is in edit mode.
+function EditableField({ label, value, onChange, maxLength, type = 'text' }) {
+  return (
+    <div className="profile-info-block">
+      <label className="profile-info-label" style={{ display: 'block', marginBottom: 6 }}>{label}</label>
+      <input
+        type={type}
+        className="form-input"
+        value={value}
+        maxLength={maxLength}
+        onChange={e => onChange(e.target.value)}
+        style={{ width: '100%' }}
+      />
     </div>
   );
 }

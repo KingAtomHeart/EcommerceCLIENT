@@ -317,6 +317,9 @@ export function BlockRenderer({ block, isFirst, products, groupBuys, loading, co
         />
       );
       break;
+    case 'customHtml':
+      content = <CustomHtmlBlock data={data} adminMode={adminMode} />;
+      break;
     default:
       return null;
   }
@@ -334,6 +337,26 @@ export function BlockRenderer({ block, isFirst, products, groupBuys, loading, co
       <Reveal disabled={adminMode}>{content}</Reveal>
     </div>
   );
+}
+
+
+/* ─── Custom HTML Block ───────────────────────────────────────────────
+   Renders admin-pasted markup as-is, full page width. Because it's injected via
+   innerHTML, <script> tags are inert (won't execute), so this can't run JS — but
+   markup, inline styles, and images render. Admin-authored content only. */
+function CustomHtmlBlock({ data, adminMode }) {
+  const html = (data.html || '').trim();
+  if (!html) {
+    // Empty state is shown only in the admin editor so the section stays selectable.
+    if (!adminMode) return null;
+    return (
+      <div style={{ padding: '48px var(--page-pad)', textAlign: 'center', border: '1px dashed var(--border)', borderRadius: 'var(--radius-sm)', margin: '8px var(--page-pad)', background: 'var(--bg-secondary)', color: 'var(--ink-muted)' }}>
+        <p style={{ fontSize: '0.78rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', margin: '0 0 6px' }}>Custom HTML</p>
+        <p style={{ fontSize: '0.84rem', margin: 0 }}>Empty — paste your HTML in the editor.</p>
+      </div>
+    );
+  }
+  return <div className="custom-html-block" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 

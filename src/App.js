@@ -6,6 +6,7 @@ import UserContext from './context/UserContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { SiteStyleProvider } from './context/SiteStyleContext';
 import { AddToOrderProvider } from './context/AddToOrderContext';
+import { CurrencyProvider } from './context/CurrencyContext';
 import AppNavbar from './components/AppNavbar';
 import Footer from './components/Footer';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -46,6 +47,7 @@ export default function App() {
       <SiteStyleProvider>
       <UserProvider>
         <AddToOrderProvider>
+          <CurrencyProvider>
           <Router>
             <ScrollToTop />
             <Toaster
@@ -100,6 +102,7 @@ export default function App() {
             </ErrorBoundary>
             <Footer />
           </Router>
+          </CurrencyProvider>
         </AddToOrderProvider>
       </UserProvider>
       </SiteStyleProvider>

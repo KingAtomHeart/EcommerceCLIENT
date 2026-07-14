@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useMemo, Fragment } from 'react';
 import { apiFetch } from '../utils/api';
 import { BlockRenderer } from '../pages/Home';
 import { useCategories } from '../utils/categories';
+import { useSiteStyle } from '../context/SiteStyleContext';
+import { NAV_ITEMS, NAV_LABEL_MAXLEN } from '../utils/navItems';
 import toast from 'react-hot-toast';
 
 function relativeTime(dateStr) {
@@ -77,6 +79,8 @@ const BLOCK_META = {
   // Buys page. Drag it to control where the catalog renders relative to the
   // other section blocks. Hidden on the Homepage tab (no catalog there).
   catalog:       { label: 'Catalog Grid',   icon: '▥', summary: () => 'Live product / group-buy grid', pageOnly: ['shop', 'group-buys'] },
+  // Raw HTML section — admin pastes their own markup. Rendered as-is on the page.
+  customHtml:    { label: 'Custom HTML',     icon: '</>', summary: (d) => (d.html && d.html.trim()) ? 'Custom HTML block' : 'Empty — paste HTML' },
   // Legacy types — kept here so already-rendered admin rows display correctly
   // before the controller migrates them to `collection`. `hidden: true` keeps
   // them out of the "+ Insert" / "+ Add Section" menus.
@@ -283,6 +287,8 @@ const BLOCK_DEFAULTS = {
   // No data needed — the Shop / Group Buys page renders its live catalog
   // wherever the block is positioned in the list.
   catalog: () => ({}),
+  // Raw HTML pasted by the admin. Starts empty.
+  customHtml: () => ({ html: '' }),
 };
 
 // Copy fields blanked out when a section is freshly ADDED (vs duplicated). A new
@@ -323,12 +329,49 @@ const PAGE_OPTIONS = [
   { key: 'group-buys', label: 'Group Buys', endpoint: '/page-content/group-buys',    hasGridAlign: true  },
 ];
 
+// Default label per built-in nav key, for placeholders in the label editor.
+const NAV_DEFAULTS = Object.fromEntries(NAV_ITEMS.map(it => [it.key, it.default]));
+
+// Built-in links in the order they appear in the navbar. Custom pages slot in
+// between STOREFRONT_BEFORE and STOREFRONT_AFTER (matching AppNavbar).
+const STOREFRONT_BEFORE = ['home', 'shop', 'groupBuys'];
+const STOREFRONT_AFTER = ['community', 'contact'];
+const ADMIN_NAV = ['dashboard', 'messages'];
+
+// One navbar label field. Locally controlled + saves on blur/Enter, so it never
+// PATCHes per keystroke and never loses focus (module scope = no remount).
+function NavLabelInput({ navKey, defaultLabel, current, onSave, style }) {
+  const [val, setVal] = useState(current || '');
+  // Re-seed when the saved value changes (async load / save elsewhere).
+  useEffect(() => { setVal(current || ''); }, [current]);
+  const commit = () => {
+    const trimmed = val.trim();
+    if (trimmed !== (current || '')) onSave(navKey, trimmed);
+    else if (trimmed !== val) setVal(trimmed);
+  };
+  return (
+    <input
+      className="form-input"
+      value={val}
+      placeholder={defaultLabel}
+      maxLength={NAV_LABEL_MAXLEN}
+      onChange={e => setVal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+      style={{ padding: '7px 10px', fontSize: '0.84rem', ...style }}
+    />
+  );
+}
+
 // Width of the docked edit panel. Roomy enough for the original modal's
 // two-column field layout. The editor content + save bar shift right by this
 // amount while a section is being edited, keeping the live preview visible.
 const EDIT_PANEL_W = 520;
 
 export default function AdminHomepageEditor() {
+  // Built-in navbar link labels (site-wide overrides). Renaming a built-in page's
+  // navbar link and the "Other navbar links" both write here.
+  const { navLabels, setNavLabels } = useSiteStyle();
   // Which page surface this editor is currently driving.
   const [pageKey, setPageKey] = useState('homepage');
   // Admin-created custom pages (the built-in homepage/shop/group-buys are static).
@@ -364,6 +407,9 @@ export default function AdminHomepageEditor() {
 
   // Index of the block currently being edited in a modal (preview mode only).
   const [editingIdx, setEditingIdx] = useState(null);
+
+  // "Navbar labels" dropdown open/closed.
+  const [navMgrOpen, setNavMgrOpen] = useState(false);
 
   const fetchContent = () => {
     // Clear stale state up front so a failed fetch doesn't leave the previous
@@ -453,6 +499,55 @@ export default function AdminHomepageEditor() {
       toast.error(err?.message || 'Update failed');
     }
   };
+
+  // Rename a built-in navbar link. Sends the full { key: label } map (blank
+  // clears an override, restoring the default) so the server merge is unambiguous.
+  const saveNavLabel = async (key, value) => {
+    const next = {};
+    NAV_ITEMS.forEach(it => { next[it.key] = (navLabels && navLabels[it.key]) || ''; });
+    next[key] = value;
+    try {
+      await setNavLabels(next);
+      toast.success(value ? 'Navbar label updated' : 'Navbar label reset to default');
+    } catch (err) {
+      toast.error(err?.message || 'Failed to update navbar label');
+    }
+  };
+
+  // Rename a custom page's navbar link (its own doc, not the site-wide store) —
+  // wired into the same label editor so every navbar link lives in one place.
+  const saveCustomNavLabel = async (pk, value) => {
+    try {
+      const updated = await apiFetch(`/page-content/${pk}`, { method: 'PATCH', body: JSON.stringify({ navLabel: value }) });
+      setCustomPages(cps => cps.map(p => p.pageKey === updated.pageKey
+        ? { ...p, title: updated.title, navInclude: updated.navInclude, navLabel: updated.navLabel }
+        : p));
+      toast.success(value ? 'Navbar label updated' : 'Navbar label reset to page name');
+    } catch (err) {
+      toast.error(err?.message || 'Failed to update navbar label');
+    }
+  };
+
+  // Custom pages shown in the navbar, in navOrder — they appear in the label
+  // editor between the built-in storefront links.
+  const navCustomPages = customPages.filter(p => p.navInclude);
+
+  // One built-in nav label field (keyed by nav id). Not a component so it can't
+  // remount mid-edit; NavLabelInput below owns the focus-safe input.
+  const renderBuiltinNavField = (key) => (
+    <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <label style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>
+        {NAV_DEFAULTS[key]}
+      </label>
+      <NavLabelInput
+        navKey={key}
+        defaultLabel={NAV_DEFAULTS[key]}
+        current={navLabels && navLabels[key]}
+        onSave={saveNavLabel}
+        style={{ minWidth: 150 }}
+      />
+    </div>
+  );
 
   const deleteCustomPage = async () => {
     if (!pageMeta.isCustom) return;
@@ -671,11 +766,6 @@ export default function AdminHomepageEditor() {
             <input className="form-input" defaultValue={pageMeta.label} style={{ padding: '7px 10px', fontSize: '0.84rem' }}
               onBlur={e => { const v = e.target.value.trim(); if (v && v !== pageMeta.label) savePageMeta({ title: v }); }} />
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <label style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>Navbar label</label>
-            <input className="form-input" defaultValue={pageMeta.navLabel} placeholder={pageMeta.label} style={{ padding: '7px 10px', fontSize: '0.84rem' }}
-              onBlur={e => savePageMeta({ navLabel: e.target.value.trim() })} />
-          </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.84rem', color: 'var(--ink-muted)', cursor: 'pointer', alignSelf: 'flex-end', paddingBottom: 7 }}>
             <input type="checkbox" checked={pageMeta.navInclude} onChange={e => savePageMeta({ navInclude: e.target.checked })} />
             Show in navbar
@@ -689,6 +779,73 @@ export default function AdminHomepageEditor() {
           </button>
         </div>
       )}
+
+      {/* Navbar labels — ONE place to rename every link in the navbar (built-in
+          pages, custom pages, and admin-only links). Editing here never switches
+          the editor to another page, so nothing reloads. */}
+      <div style={{ marginBottom: 16, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+        <button
+          type="button"
+          onClick={() => setNavMgrOpen(o => !o)}
+          style={{
+            width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+            padding: '12px 16px', background: navMgrOpen ? 'var(--bg)' : 'transparent',
+            border: 'none', borderBottom: navMgrOpen ? '1px solid var(--border)' : '1px solid transparent',
+            cursor: 'pointer', textAlign: 'left', fontFamily: "'DM Sans', sans-serif",
+            transition: 'background var(--transition)',
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+            style={{ color: 'var(--ink-muted)', flexShrink: 0, transform: navMgrOpen ? 'rotate(90deg)' : 'none', transition: 'transform var(--transition)' }}>
+            <polyline points="9 6 15 12 9 18" />
+          </svg>
+          <span style={{ fontSize: '0.86rem', fontWeight: 600, color: 'var(--ink)' }}>Navbar labels</span>
+          <span style={{ fontSize: '0.78rem', color: 'var(--ink-faint)', fontWeight: 400 }}>
+            Rename any link in the navbar
+          </span>
+          <span style={{ marginLeft: 'auto', fontSize: '0.72rem', fontWeight: 600, color: 'var(--accent)' }}>
+            {navMgrOpen ? 'Hide' : 'Edit'}
+          </span>
+        </button>
+        {navMgrOpen && (
+          <div style={{ padding: '14px 16px' }}>
+            <p style={{ fontSize: '0.76rem', color: 'var(--ink-faint)', margin: '0 0 14px' }}>
+              These rename the wording only — links, pages and URLs stay the same. Leave a field blank to keep its default. Changes save when you click away.
+            </p>
+
+            {/* Storefront navbar — the order customers see. */}
+            <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 10 }}>
+              Storefront navbar
+            </div>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
+              {STOREFRONT_BEFORE.map(renderBuiltinNavField)}
+              {navCustomPages.map(p => (
+                <div key={p.pageKey} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <label style={{ fontSize: '0.68rem', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)' }}>
+                    {p.title} <span style={{ color: 'var(--accent)', fontWeight: 500 }}>(page)</span>
+                  </label>
+                  <NavLabelInput
+                    navKey={p.pageKey}
+                    defaultLabel={p.title}
+                    current={p.navLabel}
+                    onSave={(_k, v) => saveCustomNavLabel(p.pageKey, v)}
+                    style={{ minWidth: 150 }}
+                  />
+                </div>
+              ))}
+              {STOREFRONT_AFTER.map(renderBuiltinNavField)}
+            </div>
+
+            {/* Admin navbar — only visible to you when signed in as admin. */}
+            <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ink-faint)', marginBottom: 10 }}>
+              Admin navbar <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>· only you see these</span>
+            </div>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              {ADMIN_NAV.map(renderBuiltinNavField)}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Mode switcher header */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: '18px' }}>
@@ -929,8 +1086,33 @@ function BlockEditor({ block, onChange, products = [], groupBuys = [] }) {
     case 'groupBuys':     return <GroupBuysEditor data={data} onChange={onChange} />;
     case 'banner':        return <BannerEditor data={data} onChange={onChange} />;
     case 'categoriesGrid':return <CategoriesGridEditor data={data} onChange={onChange} />;
+    case 'customHtml':    return <CustomHtmlEditor data={data} onChange={onChange} />;
     default:              return <p>Unknown block type</p>;
   }
+}
+
+/* ─── Custom HTML editor — admin pastes raw markup for the section. ───
+   Rendered as-is on the page (see Home.js CustomHtmlBlock). <script> tags won't
+   execute, but any markup/inline styles/images will. Admin-authored only. */
+function CustomHtmlEditor({ data, onChange }) {
+  return (
+    <>
+      <Field label="HTML">
+        <textarea
+          className="form-input"
+          value={data.html || ''}
+          onChange={e => onChange({ html: e.target.value })}
+          placeholder={'<div style="padding:40px; text-align:center;">\n  <h2>Your custom section</h2>\n  <p>Paste any HTML here.</p>\n</div>'}
+          rows={16}
+          spellCheck={false}
+          style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '0.8rem', lineHeight: 1.5, resize: 'vertical', minHeight: 220, whiteSpace: 'pre', overflowWrap: 'normal', overflowX: 'auto' }}
+        />
+      </Field>
+      <p style={{ fontSize: '0.75rem', color: 'var(--ink-faint)', lineHeight: 1.55, marginTop: 4 }}>
+        Paste any HTML — it renders exactly as written, full-width. Inline styles and images work; <code>&lt;script&gt;</code> tags won't run for security. The live preview on the right updates as you type.
+      </p>
+    </>
+  );
 }
 
 /* ─── Categories Grid editor — picks which categories to show + layout knobs. */
@@ -3158,6 +3340,7 @@ const SIDE_ICON_PATHS = {
   categoriesGrid: <><rect x="4" y="4" width="6.5" height="6.5" rx="1" /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1" /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1" /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1" /></>,
   categoryStrip:  <><rect x="3" y="10" width="5" height="4" rx="2" /><rect x="9.5" y="10" width="5" height="4" rx="2" /><rect x="16" y="10" width="5" height="4" rx="2" /></>,
   catalog:        <><rect x="3.5" y="4.5" width="4.5" height="4.5" rx="1" /><rect x="9.75" y="4.5" width="4.5" height="4.5" rx="1" /><rect x="16" y="4.5" width="4.5" height="4.5" rx="1" /><rect x="3.5" y="11" width="4.5" height="4.5" rx="1" /><rect x="9.75" y="11" width="4.5" height="4.5" rx="1" /><rect x="16" y="11" width="4.5" height="4.5" rx="1" /></>,
+  customHtml:     <><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></>,
 };
 function SideTypeIcon({ type }) {
   return (

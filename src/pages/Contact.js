@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback, useContext } from 'react';
 import emailjs from '@emailjs/browser';
 import { apiFetch } from '../utils/api';
+import UserContext from '../context/UserContext';
 
 // EmailJS config — the PRIMARY delivery channel. Submissions are emailed
 // straight to the shop's Gmail (via the EmailJS service connected to that
@@ -16,11 +17,56 @@ const EMAILJS_PUBLIC_KEY = process.env.REACT_APP_EMAILJS_PUBLIC_KEY || '997bhOz5
 const EMAILJS_READY = Boolean(EMAILJS_SERVICE_ID && EMAILJS_TEMPLATE_ID && EMAILJS_PUBLIC_KEY);
 
 function ContactForm({ fields, submitLabel, formType, formLabel }) {
-  const initial = fields.reduce((acc, f) => ({ ...acc, [f.name]: '' }), {});
-  const [form, setForm] = useState(initial);
+  const { user } = useContext(UserContext);
+  // Per-tab draft key so leaving the page (e.g. to grab an order number from the
+  // profile) and returning restores what was typed instead of wiping it.
+  const storageKey = `ok_contact_draft_${formType}`;
+
+  const emptyForm = useCallback(
+    () => fields.reduce((acc, f) => ({ ...acc, [f.name]: '' }), {}),
+    [fields]
+  );
+
+  // Fill name/email fields from the signed-in user's profile. Never clobbers a
+  // value that's already there (a restored draft or a field the user edited).
+  const applyPrefill = useCallback((base) => {
+    if (!user) return base;
+    const next = { ...base };
+    fields.forEach(f => {
+      if (next[f.name]) return;
+      if (f.type === 'email') next[f.name] = user.email || '';
+      else if (/name/i.test(f.name)) next[f.name] = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    });
+    return next;
+  }, [user, fields]);
+
+  // Restore a saved draft if one exists; otherwise start blank.
+  const [form, setForm] = useState(() => {
+    const saved = sessionStorage.getItem(storageKey);
+    if (saved) {
+      try { return { ...fields.reduce((a, f) => ({ ...a, [f.name]: '' }), {}), ...JSON.parse(saved) }; }
+      catch { /* fall through to blank */ }
+    }
+    return fields.reduce((a, f) => ({ ...a, [f.name]: '' }), {});
+  });
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Fill any still-empty name/email fields from the signed-in profile — by
+  // default, and even over a restored draft. Runs once the user object is
+  // available; applyPrefill never clobbers a value the user already typed.
+  const prefilled = useRef(false);
+  useEffect(() => {
+    if (prefilled.current || !user) return;
+    prefilled.current = true;
+    setForm(prev => applyPrefill(prev));
+  }, [user, applyPrefill]);
+
+  // Persist the draft on every change.
+  useEffect(() => {
+    sessionStorage.setItem(storageKey, JSON.stringify(form));
+  }, [form, storageKey]);
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
@@ -154,8 +200,10 @@ function ContactForm({ fields, submitLabel, formType, formLabel }) {
     }
 
     if (emailOk || saveOk) {
+      sessionStorage.removeItem(storageKey);
       setSubmitted(true);
-      setForm(initial);
+      // Reset for a possible next message — blank, but re-prefilled from profile.
+      setForm(applyPrefill(emptyForm()));
     } else {
       setError('Something went wrong sending your message. Please try again, or email us directly.');
     }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { StatusBadge } from '../utils/statusColors';
+import { useCurrency } from '../context/CurrencyContext';
 
 function CopyButton({ value, label }) {
   // Span (not button) so it can nest inside the header <button> without invalid HTML.
@@ -77,6 +78,7 @@ function sameAddress(a, b) {
 
 export default function OrderCard({ order }) {
   const [open, setOpen] = useState(false);
+  const { format, formatDelta } = useCurrency();
 
   const isGrouped = !!order.isGrouped;
   const firstItem = order.productsOrdered?.[0];
@@ -173,7 +175,7 @@ export default function OrderCard({ order }) {
           }
           return <StatusBadge status={order.status} />;
         })()}
-        <span style={{ fontSize: '0.95rem', fontWeight: 600, whiteSpace: 'nowrap' }}>₱{(isGrouped ? groupedActiveTotal : order.totalPrice)?.toLocaleString()}</span>
+        <span style={{ fontSize: '0.95rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{format(isGrouped ? groupedActiveTotal : order.totalPrice)}</span>
       </button>
 
       {open && (
@@ -208,7 +210,7 @@ export default function OrderCard({ order }) {
                       {li.selectedOption?.value && <div style={{ fontSize: '0.78rem', color: 'var(--ink-muted)', marginTop: 2 }}>{li.selectedOption.groupName}: {li.selectedOption.value}</div>}
                       {cfg && <div style={{ fontSize: '0.78rem', color: 'var(--ink-muted)', marginTop: 2 }}>{cfg}</div>}
                     </span>
-                    <span style={{ fontWeight: 500, textDecoration: cancelled ? 'line-through' : 'none' }}>₱{li.totalPrice?.toLocaleString()}</span>
+                    <span style={{ fontWeight: 500, textDecoration: cancelled ? 'line-through' : 'none' }}>{format(li.totalPrice)}</span>
                   </div>
                 );
               })}
@@ -230,7 +232,7 @@ export default function OrderCard({ order }) {
                       {item.selectedOption?.value && <div style={{ fontSize: '0.78rem', color: 'var(--ink-muted)', marginTop: 2 }}>{item.selectedOption.groupName}: {item.selectedOption.value}</div>}
                       {(variant || cfg) && <div style={{ fontSize: '0.78rem', color: 'var(--ink-muted)', marginTop: 2 }}>{variant || cfg}</div>}
                     </span>
-                    <span style={{ fontWeight: 500, textDecoration: item.status === 'Cancelled' ? 'line-through' : 'none' }}>₱{item.subtotal?.toLocaleString()}</span>
+                    <span style={{ fontWeight: 500, textDecoration: item.status === 'Cancelled' ? 'line-through' : 'none' }}>{format(item.subtotal)}</span>
                   </div>
                 );
               })}
@@ -238,13 +240,13 @@ export default function OrderCard({ order }) {
               {!isGrouped && order.isGroupBuy && order.selectedOption?.value && (
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: '0.88rem' }}>
                   <span><span style={{ fontWeight: 500 }}>{order.selectedOption.groupName}: {order.selectedOption.value}</span><span style={{ color: 'var(--ink-muted)' }}> × {order.quantity}</span></span>
-                  <span style={{ fontWeight: 500 }}>₱{(order.selectedOption.price * order.quantity)?.toLocaleString()}</span>
+                  <span style={{ fontWeight: 500 }}>{format(order.selectedOption.price * order.quantity)}</span>
                 </div>
               )}
               {!isGrouped && order.isGroupBuy && order.kits?.length > 0 && order.kits.map((kit, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: '0.88rem', borderTop: '1px solid var(--border-subtle)' }}>
                   <span><span style={{ fontWeight: 500 }}>{kit.name}</span><span style={{ color: 'var(--ink-muted)' }}> × {kit.quantity}</span></span>
-                  <span style={{ fontWeight: 500 }}>₱{(kit.price * kit.quantity)?.toLocaleString()}</span>
+                  <span style={{ fontWeight: 500 }}>{format(kit.price * kit.quantity)}</span>
                 </div>
               ))}
               {!isGrouped && order.isGroupBuy && order.configurations?.length > 0 && (
@@ -259,12 +261,12 @@ export default function OrderCard({ order }) {
               )}
 
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.86rem' }}>
-                <Row label="Subtotal" value={`₱${subtotal.toLocaleString()}`} muted />
-                {isGrouped && groupedCancelledTotal > 0 && <Row label="Cancelled items" value={`−₱${groupedCancelledTotal.toLocaleString()}`} muted />}
-                {!order.isGroupBuy && <Row label={order.shippingRegion ? `Shipping (${order.shippingRegion})` : 'Shipping'} value={`₱${shippingFee.toLocaleString()}`} muted />}
+                <Row label="Subtotal" value={format(subtotal)} muted />
+                {isGrouped && groupedCancelledTotal > 0 && <Row label="Cancelled items" value={formatDelta(-groupedCancelledTotal)} muted />}
+                {!order.isGroupBuy && <Row label={order.shippingRegion ? `Shipping (${order.shippingRegion})` : 'Shipping'} value={format(shippingFee)} muted />}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '0.95rem', paddingTop: 6, borderTop: '1px solid var(--border-subtle)' }}>
                   <span>Total</span>
-                  <span>₱{(isGrouped ? groupedActiveTotal : order.totalPrice)?.toLocaleString()}</span>
+                  <span>{format(isGrouped ? groupedActiveTotal : order.totalPrice)}</span>
                 </div>
               </div>
             </div>
